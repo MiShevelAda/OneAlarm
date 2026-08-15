@@ -167,10 +167,14 @@ actor WhoopAdapter: DeviceAdapter {
         return .signedIn
     }
 
-    func submitCode(_ code: String) async throws {
-        // Falls back to the stored copy, because reading the code means leaving the app and the
-        // in-memory one does not survive being suspended.
-        guard let challenge = pendingChallenge ?? storedChallenge() else {
+    /// - Parameter known: the challenge the caller was handed by `signIn`.
+    ///
+    /// Taken as a parameter rather than read from actor state, because relying on state that has to
+    /// survive the user leaving the app to fetch the code has now failed twice: once in memory, and
+    /// once through the Keychain. The caller already holds the value, so it hands it back and there
+    /// is nothing left to lose. Actor state and the stored copy remain as fallbacks.
+    func submitCode(_ code: String, using known: Challenge? = nil) async throws {
+        guard let challenge = known ?? pendingChallenge ?? storedChallenge() else {
             throw AdapterError.authenticationFailed(
                 "That sign in attempt has expired. Tap Send a new code and try again."
             )

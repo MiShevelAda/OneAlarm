@@ -317,6 +317,8 @@ struct WhoopLinkView: View {
     @State private var failure: String?
     @State private var busy = false
     @State private var choices: [RemoteAlarmChoice] = []
+    /// Held here so confirming the code cannot depend on the adapter still remembering it.
+    @State private var challenge: WhoopAdapter.Challenge?
 
     var body: some View {
         switch stage {
@@ -433,7 +435,13 @@ struct WhoopLinkView: View {
             QuietButton(title: "Send a new code") {
                 failure = nil
                 codeText = ""
-                stage = .credentials
+                // Requests a fresh code with the credentials already held, rather than sending the
+                // user back to retype a password they just entered.
+                if password.isEmpty {
+                    stage = .credentials
+                } else {
+                    Task { await signIn() }
+                }
             }
         }
     }
@@ -467,12 +475,16 @@ struct WhoopLinkView: View {
             // One attempt. Never a retry loop: repeated failures rate limit the auth endpoint.
             switch try await store.whoop.signIn(email: email, password: password) {
             case .signedIn:
+                // Only now is the password genuinely finished with.
+                password = ""
                 await finish()
-            case .needsCode(let challenge):
-                prompt = challenge.prompt
+            case .needsCode(let issued):
+                // Deliberately kept until the challenge is answered, so Send a new code can
+                // actually send one instead of demanding the password be retyped.
+                challenge = issued
+                prompt = issued.prompt
                 stage = .code
             }
-            password = ""
         } catch {
             failure = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
         }
@@ -535,7 +547,10 @@ struct WhoopLinkView: View {
     private func confirm() async {
         busy = true
         do {
-            try await store.whoop.submitCode(codeText)
+            try await store.whoop.submitCode(codeText, using: challenge)
+            // The challenge is answered, so neither of these is needed any longer.
+            password = ""
+            challenge = nil
             codeText = ""
             await finish()
         } catch {
