@@ -262,6 +262,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OneAlarm;
 				INFOPLIST_KEY_NSAlarmKitUsageDescription = "OneAlarm needs permission to set the alarm that actually wakes you, so it can ring through Silent and Focus.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -289,6 +290,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OneAlarm;
 				INFOPLIST_KEY_NSAlarmKitUsageDescription = "OneAlarm needs permission to set the alarm that actually wakes you, so it can ring through Silent and Focus.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

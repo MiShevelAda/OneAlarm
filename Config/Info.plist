@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  This file exists for exactly one key.
+
+	  NSAlarmKitUsageDescription cannot be supplied through the
+	  INFOPLIST_KEY_NSAlarmKitUsageDescription build setting: Xcode only maps a curated list of
+	  keys that way, and this iOS 26 one is not on it. Proven rather than assumed, by inspecting
+	  the built app: INFOPLIST_KEY_CFBundleDisplayName appeared in the bundled Info.plist and this
+	  key did not.
+
+	  Without it AlarmKit refuses to schedule anything and reports authorisation as denied, with no
+	  system prompt ever shown and no Alarms row in Settings. Silent, and fatal to the whole app.
+
+	  It lives in Config/ rather than in OneAlarm/ because that folder is a synchronised source
+	  group, and a plist sitting inside it would be copied into the bundle as a stray resource.
+
+	  GENERATE_INFOPLIST_FILE stays on, so every other key still generates and merges into this one.
+	-->
+	<key>NSAlarmKitUsageDescription</key>
+	<string>OneAlarm needs permission to set the alarm that actually wakes you, so it can ring through Silent mode and a Focus.</string>
+</dict>
+</plist>
