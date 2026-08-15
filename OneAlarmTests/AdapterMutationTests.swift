@@ -122,34 +122,36 @@ final class WhoopMutationTests: XCTestCase {
         )
     }
 
+    /// The field names here are the ones a real Whoop account returned on 2026-08-15, read off the
+    /// diagnostic the picker shows when a parse comes back empty. They are not the ones the
+    /// reference spec named: `day_of_week_list`, `enabled`, `time_zone_offset` and `sleep_goal` do
+    /// not exist, and sending them earned a 422 on every write. Do not restore them from a document.
     private var serverSchedule: [String: Any] {
         [
             "schedule_id": "uuid-1",
-            "enabled": false,
-            "day_of_week_list": ["SUNDAY"],
+            "alarm_on": false,
+            "scheduled_days": ["SUNDAY"],
             "latest_wake_time": "07:30:00",
             "alarm_mode": "IN_THE_GREEN",
-            "sleep_goal": "",
-            "time_zone_offset": "-0700",
+            "alarm_mode_label_display": "In the green",
+            "days_scheduled_label_display": "Sun",
         ]
     }
 
-    func testWakeTimeDaysAndOffsetAreReplaced() throws {
+    func testWakeTimeAndDaysAreReplaced() throws {
         let payload = try WhoopAdapter.mutate(serverSchedule, to: target)
 
         XCTAssertEqual(payload["latest_wake_time"] as? String, "06:55:00")
-        XCTAssertEqual(payload["day_of_week_list"] as? [String], ["MONDAY", "WEDNESDAY"])
-        XCTAssertEqual(payload["enabled"] as? Bool, true)
-        XCTAssertEqual(payload["time_zone_offset"] as? String, "+0200")
+        XCTAssertEqual(payload["scheduled_days"] as? [String], ["MONDAY", "WEDNESDAY"])
+        XCTAssertEqual(payload["alarm_on"] as? Bool, true)
     }
 
     /// This PUT replaces rather than merges, so the smart wake mode he chose in the Whoop app is
     /// lost unless it is carried through.
-    func testSmartWakeModeAndGoalSurvive() throws {
+    func testSmartWakeModeSurvives() throws {
         let payload = try WhoopAdapter.mutate(serverSchedule, to: target)
 
         XCTAssertEqual(payload["alarm_mode"] as? String, "IN_THE_GREEN")
-        XCTAssertEqual(payload["sleep_goal"] as? String, "")
     }
 
     func testIdentifiersAreNotEchoedIntoTheBody() throws {
@@ -159,17 +161,61 @@ final class WhoopMutationTests: XCTestCase {
         XCTAssertNil(payload["id"])
     }
 
-    /// The read shape here is the least verified thing in the whole app. If the fields we depend on
-    /// are not where we expect, refusing is the honest outcome, because a replacing PUT built from
-    /// a partial read silently resets settings we never meant to touch.
-    func testAnUnexpectedShapeIsRefusedRatherThanPartiallyWritten() {
-        var missingMode = serverSchedule
-        missingMode.removeValue(forKey: "alarm_mode")
-        XCTAssertThrowsError(try WhoopAdapter.mutate(missingMode, to: target))
+    /// Server rendered labels describe the old time. Echoing them back is at best noise, and was a
+    /// live suspect for the 422.
+    func testDisplayLabelsAreStripped() throws {
+        let payload = try WhoopAdapter.mutate(serverSchedule, to: target)
 
+        XCTAssertTrue(payload.keys.allSatisfy { !$0.hasSuffix("_label_display") })
+    }
+
+    /// The spec was wrong about the names, so it is not evidence about the types either. Whatever
+    /// arrives is what goes back.
+    func testTheOutgoingTypeMatchesTheIncomingOne() throws {
+        var numeric = serverSchedule
+        numeric["latest_wake_time"] = 450          // 07:30 as minutes since midnight
+        numeric["scheduled_days"] = [1]            // Sunday, Calendar's numbering
+
+        let payload = try WhoopAdapter.mutate(numeric, to: target)
+
+        XCTAssertEqual(payload["latest_wake_time"] as? Int, 415)
+        XCTAssertEqual(payload["scheduled_days"] as? [Int], [2, 4])
+        XCTAssertNil(payload["latest_wake_time"] as? String)
+    }
+
+    func testShortDaySpellingIsFollowedRatherThanImposed() throws {
+        var short = serverSchedule
+        short["scheduled_days"] = ["SUN"]
+
+        let payload = try WhoopAdapter.mutate(short, to: target)
+
+        XCTAssertEqual(payload["scheduled_days"] as? [String], ["MON", "WED"])
+    }
+
+    /// A replacing PUT built from a read we could not parse silently resets settings we never meant
+    /// to touch, so a missing wake time is a refusal rather than a best effort.
+    func testAnUnexpectedShapeIsRefusedRatherThanPartiallyWritten() {
         var missingWakeTime = serverSchedule
         missingWakeTime.removeValue(forKey: "latest_wake_time")
         XCTAssertThrowsError(try WhoopAdapter.mutate(missingWakeTime, to: target))
+    }
+
+    // MARK: Reading
+
+    func testWakeTimeIsParsedFromEitherShape() {
+        XCTAssertEqual(WhoopAdapter.wakeTime(from: "07:30:00"), WallClockTime(hour: 7, minute: 30))
+        XCTAssertEqual(WhoopAdapter.wakeTime(from: "07:30"), WallClockTime(hour: 7, minute: 30))
+        XCTAssertEqual(WhoopAdapter.wakeTime(from: 450), WallClockTime(hour: 7, minute: 30))
+        XCTAssertEqual(WhoopAdapter.wakeTime(from: 27_000), WallClockTime(hour: 7, minute: 30))
+        XCTAssertNil(WhoopAdapter.wakeTime(from: "later"))
+        XCTAssertNil(WhoopAdapter.wakeTime(from: nil))
+    }
+
+    func testDaysAreParsedFromEitherShape() {
+        XCTAssertEqual(WhoopAdapter.days(from: ["MONDAY", "WEDNESDAY"]), [.monday, .wednesday])
+        XCTAssertEqual(WhoopAdapter.days(from: ["mon", "wed"]), [.monday, .wednesday])
+        XCTAssertEqual(WhoopAdapter.days(from: [2, 4]), [.monday, .wednesday])
+        XCTAssertEqual(WhoopAdapter.days(from: nil), [])
     }
 }
 

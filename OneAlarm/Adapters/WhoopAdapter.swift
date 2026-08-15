@@ -287,12 +287,8 @@ actor WhoopAdapter: DeviceAdapter {
     func availableAlarms() async throws -> [RemoteAlarmChoice] {
         try await fetchSchedules().compactMap { schedule in
             guard let id = Self.scheduleID(schedule) else { return nil }
-            let parts = (schedule["latest_wake_time"] as? String)?
-                .split(separator: ":").compactMap { Int($0) } ?? []
-            let time = parts.count >= 2 ? WallClockTime(hour: parts[0], minute: parts[1]) : nil
-
-            let names = Set((schedule["day_of_week_list"] as? [String]) ?? [])
-            let days = Set(Locale.Weekday.displayOrder.filter { names.contains($0.whoopName) })
+            let time = Self.wakeTime(from: schedule["latest_wake_time"])
+            let days = Self.days(from: schedule["scheduled_days"])
 
             let mode = (schedule["alarm_mode"] as? String)?
                 .replacingOccurrences(of: "_", with: " ")
@@ -302,9 +298,9 @@ actor WhoopAdapter: DeviceAdapter {
                 id: id,
                 time: time,
                 weekdays: days,
-                isEnabled: (schedule["enabled"] as? Bool) ?? true,
+                isEnabled: (schedule["alarm_on"] as? Bool) ?? true,
                 detail: mode,
-                rawKeys: schedule.keys.sorted()
+                rawKeys: Self.describe(schedule)
             )
         }
     }
@@ -386,6 +382,66 @@ actor WhoopAdapter: DeviceAdapter {
         return access
     }
 
+    /// Tolerant of what Whoop might actually be sending, since the spec was wrong about the names
+    /// and is therefore not trustworthy about the types either.
+    static func wakeTime(from value: Any?) -> WallClockTime? {
+        if let text = value as? String {
+            let parts = text.split(separator: ":").compactMap { Int($0) }
+            if parts.count >= 2 { return WallClockTime(hour: parts[0], minute: parts[1]) }
+            // Could be an ISO instant rather than a wall clock.
+            if let date = ISO8601DateFormatter.parseFlexible(text) {
+                let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+                if let h = c.hour, let m = c.minute { return WallClockTime(hour: h, minute: m) }
+            }
+            return nil
+        }
+        if let number = value as? NSNumber {
+            let raw = number.intValue
+            // Minutes since midnight, or seconds since midnight.
+            if raw < 1440 { return WallClockTime(minutesSinceMidnight: raw) }
+            if raw < 86_400 { return WallClockTime(minutesSinceMidnight: raw / 60) }
+        }
+        return nil
+    }
+
+    static func days(from value: Any?) -> Set<Locale.Weekday> {
+        if let names = value as? [String] {
+            let upper = Set(names.map { $0.uppercased() })
+            return Set(Locale.Weekday.displayOrder.filter {
+                upper.contains($0.whoopName) || upper.contains(String($0.whoopName.prefix(3)))
+            })
+        }
+        if let numbers = value as? [Int] {
+            return Set(numbers.map { Locale.Weekday.from(calendarIndex: $0) })
+        }
+        return []
+    }
+
+    static func encodeDays(_ days: Set<Locale.Weekday>, like existing: Any?) -> Any {
+        let ordered = Locale.Weekday.displayOrder.filter { days.contains($0) }
+        if let sample = (existing as? [String])?.first {
+            // Follow whatever spelling is already there rather than imposing one.
+            let short = sample.count <= 3
+            return ordered.map { short ? String($0.whoopName.prefix(3)) : $0.whoopName }
+        }
+        if existing is [Int] {
+            return ordered.map(\.calendarIndex)
+        }
+        return ordered.map(\.whoopName)
+    }
+
+    /// Field names, and the values for the two that decide whether a write can work at all.
+    /// Alarm schedule data, never a credential.
+    static func describe(_ schedule: [String: Any]) -> [String] {
+        var lines = schedule.keys.sorted()
+        for key in ["latest_wake_time", "scheduled_days", "alarm_on"] {
+            if let value = schedule[key] {
+                lines.append("\(key) = \(value)")
+            }
+        }
+        return lines
+    }
+
     private func backOff() {
         let next = min((currentBackoff == 0 ? 60 : currentBackoff * 2), 900)
         currentBackoff = next
@@ -457,20 +513,36 @@ actor WhoopAdapter: DeviceAdapter {
     /// check against. If the two we depend on are not where we expect, the honest outcome is a
     /// refusal, not a write that silently resets the smart wake mode he chose.
     static func mutate(_ schedule: [String: Any], to target: ResolvedTarget) throws -> [String: Any] {
-        guard schedule["latest_wake_time"] is String, schedule["alarm_mode"] is String else {
+        guard schedule["latest_wake_time"] != nil else {
             throw AdapterError.unexpectedResponse(
-                "Whoop returned a schedule in an unexpected shape, so it was not changed."
+                "Whoop returned a schedule with no wake time, so it was not changed."
             )
         }
+
         var payload = schedule
-        payload["latest_wake_time"] = target.localTime.hhmmss
-        payload["day_of_week_list"] = Locale.Weekday.displayOrder
-            .filter { target.weekdays.contains($0) }
-            .map(\.whoopName)
-        payload["enabled"] = true
-        // A fixed offset string with no daylight saving awareness, so it is re-sent on every write
-        // and recomputed for the specific instant the alarm will fire.
-        payload["time_zone_offset"] = target.utcOffsetString
+
+        // Match the type that arrived rather than assuming one. The field names here came from a
+        // real account, not from the reference spec, which named four fields Whoop has never heard
+        // of and got a 422 for every one.
+        if schedule["latest_wake_time"] is String {
+            payload["latest_wake_time"] = target.localTime.hhmmss
+        } else if schedule["latest_wake_time"] is NSNumber {
+            payload["latest_wake_time"] = target.localTime.minutesSinceMidnight
+        }
+
+        if schedule["scheduled_days"] != nil {
+            payload["scheduled_days"] = Self.encodeDays(target.weekdays, like: schedule["scheduled_days"])
+        }
+        if schedule["alarm_on"] != nil {
+            payload["alarm_on"] = true
+        }
+
+        // Server rendered display strings. Sending stale ones back is at best noise and at worst
+        // what a 422 is complaining about. Snapshot the keys first: removing from the dictionary
+        // being iterated is a trap even where it happens to work.
+        for key in Array(payload.keys) where key.hasSuffix("_label_display") {
+            payload.removeValue(forKey: key)
+        }
         payload.removeValue(forKey: "schedule_id")
         payload.removeValue(forKey: "id")
         return payload
@@ -483,9 +555,8 @@ actor WhoopAdapter: DeviceAdapter {
 
         var sketch: [String: Any] = [:]
         sketch["latest_wake_time"] = target.localTime.hhmmss
-        sketch["day_of_week_list"] = days
-        sketch["enabled"] = true
-        sketch["time_zone_offset"] = target.utcOffsetString
+        sketch["scheduled_days"] = days
+        sketch["alarm_on"] = true
 
         return WritePreview(
             device: .whoop,
@@ -494,7 +565,7 @@ actor WhoopAdapter: DeviceAdapter {
             url: "\(Self.host)/smart-alarm-bff/v1/schedule/{id}?apiVersion=7",
             body: HTTPClient.redactedPreview(
                 sketch,
-                showing: ["latest_wake_time", "day_of_week_list", "enabled", "time_zone_offset"]
+                showing: ["latest_wake_time", "scheduled_days", "alarm_on"]
             )
         )
     }
@@ -557,30 +628,24 @@ actor WhoopAdapter: DeviceAdapter {
         )
     }
 
-    /// Whoop returns no absolute timestamp, so the check reconstructs one from the wall clock and
-    /// offset it echoes back and compares that against the instant we intended.
+    /// Whoop returns no absolute timestamp, so the check reconstructs one from the wall clock it
+    /// echoes back and compares that against the instant we intended.
     func verify(_ receipt: WriteReceipt, against target: ResolvedTarget) async throws -> Verification {
         let schedules = try await fetchSchedules()
-        guard
-            let updated = schedules.first(where: { Self.scheduleID($0) == receipt.remoteID }),
-            let wake = updated["latest_wake_time"] as? String
-        else {
+        guard let updated = schedules.first(where: { Self.scheduleID($0) == receipt.remoteID }) else {
             return .unavailable(reason: "Whoop did not return the updated schedule.")
         }
-
-        let parts = wake.split(separator: ":").compactMap { Int($0) }
-        guard parts.count >= 2 else {
+        guard let echoed = Self.wakeTime(from: updated["latest_wake_time"]) else {
             return .unavailable(reason: "Whoop returned an unreadable wake time.")
         }
 
-        // Both halves have to be checked. Comparing wall clock alone would pass even if the server
-        // rewrote or ignored the offset, which is precisely the failure that wakes him an hour out,
-        // so the echoed offset is reconstructed into a real instant and compared against the one we
-        // intended.
-        let echoed = WallClockTime(hour: parts[0], minute: parts[1])
-        let echoedOffset = (updated["time_zone_offset"] as? String) ?? target.utcOffsetString
+        // A real account carries no timezone field on the schedule, so there is nothing to check the
+        // offset against and no honest way to pretend otherwise. Whoop stores a local wall clock and
+        // resolves the zone from the strap, which is also why the wall clock alone is the answer
+        // here rather than half of it.
+        let echoedOffset = target.utcOffsetString
 
-        guard echoed == target.localTime, echoedOffset == target.utcOffsetString else {
+        guard echoed == target.localTime else {
             let actual = Self.instant(matching: echoed, offset: echoedOffset, near: target.nextOccurrence)
             return .mismatch(expected: target.nextOccurrence, actual: actual ?? target.nextOccurrence)
         }

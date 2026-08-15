@@ -278,19 +278,21 @@ Bluetooth with no cloud API at all.
 | Breaks when Whoop changes a backend | yes, silently | no |
 | Language to port from | TypeScript | **already Swift** |
 | Hardware verification | none, no alarm fixture in the repo | **confirmed buzzing on a real WHOOP 4.0** |
-| Recurrence | native, `day_of_week_list` | one-shot epoch, so we re-arm daily |
+| Recurrence | native, `scheduled_days` | one-shot epoch, so we re-arm daily |
 | Verified on WHOOP 5 / MG | endpoints are model-agnostic | **no, arm ACKs but firing unverified** |
 
 ### 2.2 Why the HTTP path is weaker than it first appears
 
-The `PUT /smart-alarm-bff/v1/schedule/{id}` body is a literal captured mitmproxy request, and that
-fact is established. Everything around it is thinner:
+The `PUT /smart-alarm-bff/v1/schedule/{id}` body was presented as a literal captured mitmproxy
+request. **On 2026-08-15 a live account disproved it**: see the correction in 2.3. The endpoint and
+the method were right; the body was not. Everything around it was already thinner:
 
 - The repo has 235+ tests and 30+ captured JSON fixtures, and **not one is a smart-alarm fixture**.
-  Every other major surface has a recorded response. The alarm does not.
+  Every other major surface has a recorded response. The alarm does not. This is what a wrong body
+  looks like before you find out: there was nothing to check it against.
 - The GET response shape carries the author's own hedge in a source comment: *"so on GET they're
   likely inside `alarm_bounds`"*. The projection tolerates both `schedule_id` and `id` because he
-  was not sure which the API returns.
+  was not sure which the API returns. `schedule_id` is the one that came back.
 - Schedule **create** and **delete** were never captured. Only PUT on an existing schedule.
 - `PUT /smart-alarm-service/v1/strap-status`, which pushes the time to strap firmware, is
   **deliberately not sent** by totem, which relies on the official app being installed to sync.
@@ -338,13 +340,23 @@ The write, which is the whole point. It **replaces rather than merges**, so read
 
 ```http
 PUT https://api.prod.whoop.com/smart-alarm-bff/v1/schedule/{schedule_id}?apiVersion=7
-{"sleep_goal":"",
- "day_of_week_list":["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"],
- "time_zone_offset":"-0700",
- "enabled":true,
+{"scheduled_days":["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"],
+ "alarm_on":true,
  "latest_wake_time":"07:30:00",
  "alarm_mode":"IN_THE_GREEN"}
 ```
+
+> **Corrected 2026-08-15 against a live account, and this is the only Whoop shape in this document
+> that was observed rather than ported.** What the reference project documented was
+> `sleep_goal`, `day_of_week_list`, `time_zone_offset` and `enabled`. Not one of those four exists.
+> Every write built from them returned **HTTP 422**. The real names, read off the schedule the
+> account returned, are `scheduled_days`, `alarm_on`, `latest_wake_time`, `alarm_mode`,
+> `schedule_id`, plus a set of server rendered `*_label_display` strings which describe the old time
+> and are stripped before the PUT. There is **no timezone field at all**, which is consistent with
+> Whoop storing a local wall clock and resolving the zone from the strap.
+>
+> The adapter now matches the type it was given rather than assuming one, because a spec wrong about
+> four names is not evidence about types either.
 
 Semantics worth knowing before designing the UI:
 
@@ -353,11 +365,11 @@ Semantics worth knowing before designing the UI:
   before it: `IN_THE_GREEN`, `EXACT_TIME_PEAK`, `EXACT_TIME_OPTIMIZE_SLEEP`.
 - The `lower_time_bound` and `upper_time_bound` pair in global preferences is **ignored by the
   server whenever an explicit schedule exists**. Do not set wake time through it.
-- There are **three independent enable levels**: per-schedule `enabled`, global `schedule_enabled`,
-  and a master `PUT /smart-alarm-service/v1/alarm-schedule/enable|disable`. Expect to need all three
-  right.
-- `time_zone_offset` is a fixed offset string like `"-0700"`, **with no DST handling**, so we own
-  re-sending it across a DST boundary.
+- There are **at least two independent enable levels**: per-schedule `alarm_on` and a master
+  `PUT /smart-alarm-service/v1/alarm-schedule/enable|disable`. The reference also named a global
+  `schedule_enabled`, which was not on the live schedule and is now doubtful along with the rest of
+  that field list. The observed symptom is real either way: the app said *"alarm schedule is
+  switched off"* while a schedule existed.
 
 One irony in our favour: a native Swift app naturally produces the iOS TLS and HTTP/2 fingerprint
 that totem explicitly says it cannot fake from Node. Our port is less detectable than the thing we
