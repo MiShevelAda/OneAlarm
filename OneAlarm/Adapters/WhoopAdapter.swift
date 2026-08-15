@@ -698,7 +698,8 @@ actor WhoopAdapter: DeviceAdapter {
             body: HTTPClient.redactedPreview(
                 sketch,
                 showing: ["latest_wake_time", "scheduled_days", "alarm_on"]
-            )
+            ),
+            reconstructed: true
         )
     }
 

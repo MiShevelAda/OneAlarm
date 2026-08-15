@@ -1,9 +1,14 @@
 import SwiftUI
 
-/// The preview and confirm gate. Shows exactly what would go out before anything goes out.
+/// The preview and confirm gate. Shows what would go out before anything goes out.
 ///
-/// `preview` on each adapter performs no I/O at all, so opening this sheet cannot send anything, and
-/// the body shown here is built by the same code path that builds the real request.
+/// `preview` on each adapter performs no I/O at all, so opening this sheet cannot send anything.
+///
+/// That same property is why the two remote bodies are **reconstructions** rather than the real
+/// request. Both legs read, edit and resend, so the real body is built from the account's own
+/// schedule, which this screen cannot fetch without doing the I/O it promises not to do. It says so
+/// on screen rather than implying otherwise, because the one thing worse than an approximate
+/// preview is an approximate preview that claims to be exact.
 @MainActor
 struct WritePreviewSheet: View {
     @Environment(ScheduleStore.self) private var store
@@ -17,8 +22,13 @@ struct WritePreviewSheet: View {
     var body: some View {
         Screen(title: "Preview", onBack: { dismiss() }) {
             VStack(alignment: .leading, spacing: 16) {
-                Notice(.good, title: "Nothing has been sent.",
-                       "This is built by the same code that builds the real request.")
+                if preview?.reconstructed == true {
+                    Notice(.good, title: "Nothing has been sent.",
+                           "The address, the method and the values are exact. The body is rebuilt from your settings, not read from the account: this leg edits the schedule the service already has, so the real request also carries that schedule's own fields and its time format.")
+                } else {
+                    Notice(.good, title: "Nothing has been sent.",
+                           "This is built by the same code that builds the real request.")
+                }
 
                 if let target {
                     VStack(alignment: .leading, spacing: 0) {

@@ -338,7 +338,8 @@ actor EightSleepAdapter: DeviceAdapter {
             summary: "Update the existing alarm to \(target.localTime.hhmm) local, keeping its vibration and thermal settings untouched.",
             method: "PUT",
             url: "\(Self.appHost)/v1/users/{userId}/alarms/{alarmId}",
-            body: HTTPClient.redactedPreview(sketch, showing: Self.previewKeys)
+            body: HTTPClient.redactedPreview(sketch, showing: Self.previewKeys),
+            reconstructed: true
         )
     }
 

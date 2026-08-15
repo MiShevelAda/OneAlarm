@@ -41,8 +41,35 @@ struct WritePreview: Equatable, Sendable {
     let url: String
     /// Already redacted. No adapter puts a credential in here.
     let body: String?
+    /// `true` when the body is rebuilt from the target alone rather than from the account's own
+    /// schedule.
+    ///
+    /// This distinction is not cosmetic. Both remote legs read, edit and resend, so the real body
+    /// carries fields this screen has never seen and, on Whoop, copies the time format out of the
+    /// response. A gate that quietly shows an approximation while claiming to show the request is
+    /// worse than no gate: it is the screen you would check to rule out exactly the bug that has
+    /// been failing all evening, and it would have cleared it.
+    let reconstructed: Bool
+
+    init(
+        device: DeviceID,
+        summary: String,
+        method: String,
+        url: String,
+        body: String?,
+        reconstructed: Bool = false
+    ) {
+        self.device = device
+        self.summary = summary
+        self.method = method
+        self.url = url
+        self.body = body
+        self.reconstructed = reconstructed
+    }
 
     static func local(device: DeviceID, summary: String) -> WritePreview {
+        // Nothing is reconstructed here: AlarmKit takes a schedule, not a payload, so there is no
+        // request shape to be approximate about.
         WritePreview(device: device, summary: summary, method: "LOCAL", url: "AlarmKit", body: nil)
     }
 }
