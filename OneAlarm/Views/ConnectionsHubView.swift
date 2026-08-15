@@ -104,7 +104,7 @@ struct EightSleepLinkView: View {
     @Environment(ScheduleStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    enum Stage { case prerequisite, credentials, working, choose, done }
+    enum Stage { case prerequisite, credentials, working, choose, blocked, done }
 
     @State private var stage: Stage = .prerequisite
     @State private var email = ""
@@ -119,6 +119,7 @@ struct EightSleepLinkView: View {
         case .credentials: credentials
         case .working: working
         case .choose: picker
+        case .blocked: blocked
         case .done: done
         }
     }
@@ -257,12 +258,44 @@ struct EightSleepLinkView: View {
             stage = .done
         } catch AdapterError.alarmChoiceNeeded {
             choices = (try? await store.eightSleep.availableAlarms()) ?? []
-            stage = choices.isEmpty ? .credentials : .choose
-        } catch {
-            failure = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
+            stage = choices.isEmpty ? .blocked : .choose
+        } catch AdapterError.authenticationFailed(let detail) {
+            // The password genuinely is the problem, so the password field is the right place.
+            failure = AdapterError.authenticationFailed(detail).errorDescription
             stage = .credentials
+        } catch {
+            // Signed in fine. An inactive subscription or a missing alarm is not a typo.
+            failure = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
+            stage = .blocked
         }
         await store.refreshAuthStates()
+    }
+
+    /// Signed in, but something on the Eight Sleep side still needs doing.
+    private var blocked: some View {
+        Screen(title: "Eight Sleep", onBack: { dismiss() }) {
+            VStack(spacing: 16) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 22, weight: .bold))
+                    .frame(width: 56, height: 56)
+                    .background(Theme.State.confirmed.opacity(0.14), in: Circle())
+                    .foregroundStyle(Theme.State.confirmed)
+                    .padding(.top, 34)
+
+                Text("You are signed in to Eight Sleep")
+                    .font(.system(size: 24, weight: .bold)).tracking(-0.6)
+                    .multilineTextAlignment(.center)
+
+                Notice(.warn, title: "One thing left, in the Eight Sleep app.", failure ?? "")
+
+                Notice("Your phone alarm is unaffected and will still ring.")
+            }
+        } footer: {
+            SolidButton(title: "I have fixed it, check again") {
+                Task { await finish() }
+            }
+            QuietButton(title: "Leave it for now") { dismiss() }
+        }
     }
 }
 
@@ -273,7 +306,7 @@ struct WhoopLinkView: View {
     @Environment(ScheduleStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    enum Stage { case warning, credentials, code, choose, done }
+    enum Stage { case warning, credentials, code, choose, blocked, done }
 
     @State private var stage: Stage = .warning
     @State private var email = ""
@@ -291,6 +324,7 @@ struct WhoopLinkView: View {
         case .credentials: credentials
         case .code: code
         case .choose: picker
+        case .blocked: blocked
         case .done: done
         }
     }
@@ -460,11 +494,42 @@ struct WhoopLinkView: View {
             stage = .done
         } catch AdapterError.alarmChoiceNeeded {
             choices = (try? await store.whoop.availableAlarms()) ?? []
-            stage = choices.isEmpty ? .credentials : .choose
+            stage = choices.isEmpty ? .blocked : .choose
         } catch {
+            // Signed in already. Whatever went wrong here is not the password, so do not dump the
+            // user back on a credentials or code field as though they typed something wrong.
             failure = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
+            stage = .blocked
         }
         await store.refreshAuthStates()
+    }
+
+    /// Signed in, but something on the Whoop side still needs doing.
+    private var blocked: some View {
+        Screen(title: "Whoop", onBack: { dismiss() }) {
+            VStack(spacing: 16) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 22, weight: .bold))
+                    .frame(width: 56, height: 56)
+                    .background(Theme.State.confirmed.opacity(0.14), in: Circle())
+                    .foregroundStyle(Theme.State.confirmed)
+                    .padding(.top, 34)
+
+                Text("You are signed in to Whoop")
+                    .font(.system(size: 24, weight: .bold)).tracking(-0.6)
+                    .multilineTextAlignment(.center)
+
+                Notice(.warn, title: "One thing left, in the Whoop app.", failure ?? "")
+
+                Notice("Your bed and your phone are unaffected and will still be set.")
+            }
+        } footer: {
+            SolidButton(title: "I have fixed it, check again", busy: busy) {
+                busy = true
+                Task { await finish(); busy = false }
+            }
+            QuietButton(title: "Leave it for now") { dismiss() }
+        }
     }
 
     private func confirm() async {
