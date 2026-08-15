@@ -184,12 +184,16 @@ final class ScheduleStore {
     /// wrong from the last Sunday of the month until somebody notices. AlarmKit's relative schedule
     /// and Eight Sleep's server side zone both handle the transition themselves.
     func applyIfClockMoved() async {
-        let previous = targets
+        // Keyed by device rather than zipped. `targets` is sorted by when each one fires, and that
+        // order is not stable: an offset that crosses midnight moves a device nearly a week away
+        // and reorders the array, so comparing position against position compares two different
+        // devices and gets the answer wrong in both directions.
+        let before = Dictionary(uniqueKeysWithValues: targets.map { ($0.device, $0.utcOffsetSeconds) })
         recompute()
-        let offsetChanged = zip(previous, targets).contains { $0.utcOffsetSeconds != $1.utcOffsetSeconds }
-        if offsetChanged || previous.count != targets.count {
-            await apply()
-        }
+        let after = Dictionary(uniqueKeysWithValues: targets.map { ($0.device, $0.utcOffsetSeconds) })
+
+        guard before != after else { return }
+        await apply()
     }
 
     private func apply(target: ResolvedTarget, using adapter: any DeviceAdapter) async {
