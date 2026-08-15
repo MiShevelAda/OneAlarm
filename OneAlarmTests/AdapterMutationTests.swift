@@ -249,6 +249,26 @@ final class WhoopMutationTests: XCTestCase {
         XCTAssertThrowsError(try WhoopAdapter.mutate(unreadable, to: target))
     }
 
+    /// The second attempt only exists to try a different shape. If the first attempt already used
+    /// the canonical form there is nothing to retry, and sending the identical body again would be
+    /// a wasted request against a private API.
+    func testTheCanonicalRetryIsOnlyOfferedWhenItDiffers() throws {
+        let twelveHour = try WhoopAdapter.mutate(serverSchedule, to: target)
+        let variant = WhoopAdapter.canonicalVariant(of: twelveHour, target: target)
+        XCTAssertEqual(variant?["latest_wake_time"] as? String, "06:55:00")
+        XCTAssertEqual(variant?["alarm_mode"] as? String, "SLEEP_GOAL")
+
+        var padded = serverSchedule
+        padded["latest_wake_time"] = "07:45:00"
+        let alreadyCanonical = try WhoopAdapter.mutate(padded, to: target)
+        XCTAssertNil(WhoopAdapter.canonicalVariant(of: alreadyCanonical, target: target))
+
+        var numeric = serverSchedule
+        numeric["latest_wake_time"] = 465
+        let asNumber = try WhoopAdapter.mutate(numeric, to: target)
+        XCTAssertNil(WhoopAdapter.canonicalVariant(of: asNumber, target: target))
+    }
+
     // MARK: Reading
 
     func testWakeTimeIsParsedFromEitherShape() {

@@ -523,6 +523,42 @@ actor WhoopAdapter: DeviceAdapter {
         return ordered.map(\.whoopName)
     }
 
+    /// The same payload with the wake time in the canonical `"HH:mm:ss"` form, or `nil` when the
+    /// first attempt already used it and a second request would be identical.
+    ///
+    /// Exists because the read format and the write format need not be the same on a BFF. The
+    /// schedule comes back carrying half a dozen `*_label_display` strings, so a rendered
+    /// `"7:45 am"` in `latest_wake_time` is entirely plausible as a seventh.
+    static func canonicalVariant(of payload: [String: Any], target: ResolvedTarget) -> [String: Any]? {
+        guard let text = payload["latest_wake_time"] as? String, text != target.localTime.hhmmss else {
+            return nil
+        }
+        var variant = payload
+        variant["latest_wake_time"] = target.localTime.hhmmss
+        return variant
+    }
+
+    /// What the server actually objected to, so the next fix is read rather than guessed.
+    ///
+    /// This is an error about an alarm schedule on a request whose credential is in the headers, so
+    /// there is nothing here to redact. Truncated because it has to fit in a row on a phone.
+    static func serverMessage(_ data: Data) -> String {
+        guard var text = String(data: data, encoding: .utf8), !text.isEmpty else {
+            return "nothing"
+        }
+        text = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        return text.count > 200 ? String(text.prefix(200)) + "..." : text
+    }
+
+    /// A value with its type, because `"7:45 am"` and `7:45 am` are different bugs.
+    static func describeValue(_ value: Any?) -> String {
+        guard let value else { return "nothing" }
+        if let text = value as? String { return "\"\(text)\"" }
+        return "\(value)"
+    }
+
     /// Field names, and the values for the two that decide whether a write can work at all.
     /// Alarm schedule data, never a credential.
     static func describe(_ schedule: [String: Any]) -> [String] {
@@ -698,23 +734,55 @@ actor WhoopAdapter: DeviceAdapter {
             throw AdapterError.transport("Bad schedule update URL.")
         }
 
-        let body = try HTTPClient.json(try Self.mutate(existing, to: target))
-        let response = try await http.send(
-            "PUT", url,
-            headers: Self.dataHeaders(token: token, timeZone: TimeZone.current.identifier),
-            body: body
-        )
+        // This endpoint is a BFF, and the schedule it returns is full of server rendered
+        // `*_label_display` strings. "7:45 am" may well be another one of them, in which case the
+        // write wants the canonical form even though the read never shows it. Rather than guess and
+        // make him rebuild again, try what it gave us and, only if that is rejected as bad input,
+        // try the canonical form once. Two requests at most, no loop, and the receipt says which
+        // one the server took so this stops being a question.
+        var attempts = [try Self.mutate(existing, to: target)]
+        if let canonical = Self.canonicalVariant(of: attempts[0], target: target) {
+            attempts.append(canonical)
+        }
 
-        if response.status == 429 { throw AdapterError.rateLimited }
-        guard response.isSuccess else {
-            throw AdapterError.unexpectedResponse("HTTP \(response.status) updating the alarm.")
+        var accepted: [String: Any]?
+        var lastFailure = ""
+
+        for payload in attempts {
+            let response = try await http.send(
+                "PUT", url,
+                headers: Self.dataHeaders(token: token, timeZone: TimeZone.current.identifier),
+                body: try HTTPClient.json(payload)
+            )
+
+            if response.status == 429 { throw AdapterError.rateLimited }
+            if response.isSuccess {
+                accepted = payload
+                break
+            }
+
+            lastFailure = """
+                HTTP \(response.status) updating the alarm. \
+                Sent \(Self.describeValue(payload["latest_wake_time"])). \
+                Whoop said: \(Self.serverMessage(response.data))
+                """
+
+            // Only a complaint about the body is worth a second shape. Anything else, stop.
+            guard response.status == 400 || response.status == 422 else { break }
+        }
+
+        guard let written = accepted else {
+            throw AdapterError.unexpectedResponse(lastFailure)
         }
 
         authState = .connected
-        let previous = (existing["latest_wake_time"] as? String).map { String($0.prefix(5)) } ?? "an existing schedule"
-        let note = schedules.count > 1
+        let previous = Self.wakeTime(from: existing["latest_wake_time"])?.hhmm ?? "an existing schedule"
+        var note = schedules.count > 1
             ? "Moved your chosen schedule of \(schedules.count), previously \(previous)."
             : "Updated the smart alarm schedule, previously \(previous)."
+        // Which shape it took, because the read format and the write format are not the same thing
+        // here and that took two rounds to find out.
+        note += " Accepted \(Self.describeValue(written["latest_wake_time"]))."
 
         return WriteReceipt(
             device: .whoop,
