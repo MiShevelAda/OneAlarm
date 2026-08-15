@@ -86,12 +86,14 @@ struct Notice: View {
 
     let kind: Kind
     let title: String?
-    let body: String
+    // NOT named `body`. A View already has `var body`, so a stored property of that
+    // name is an invalid redeclaration rather than an overload.
+    let message: String
 
-    init(_ kind: Kind = .neutral, title: String? = nil, _ body: String) {
+    init(_ kind: Kind = .neutral, title: String? = nil, _ message: String) {
         self.kind = kind
         self.title = title
-        self.body = body
+        self.message = message
     }
 
     private var tint: Color {
@@ -108,7 +110,7 @@ struct Notice: View {
             if let title {
                 Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
             }
-            Text(body).font(.system(size: 14)).foregroundStyle(kind == .neutral ? Theme.grey : tint.opacity(0.85))
+            Text(message).font(.system(size: 14)).foregroundStyle(kind == .neutral ? Theme.grey : tint.opacity(0.85))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(13)
