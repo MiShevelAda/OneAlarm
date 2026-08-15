@@ -65,34 +65,54 @@ at 07:25 is lying about the thing the app exists to tell you.
 |---|---|---|
 | iPhone | always exact | fires **at** the time |
 | Eight Sleep | Smart alarm off | fires **at** the time |
-| Eight Sleep | Smart alarm on | fires in the **30 minutes before**, on light sleep. Confirmed in their UI: *"Alarm will go off between 06:30-07:00"* for an 07:00 alarm |
+| Eight Sleep | Smart alarm on | fires in the **30 minutes before**, on light sleep. Their UI: *"Alarm will go off between 06:30-07:00"* for an 07:00 alarm |
 | Whoop | `EXACT_TIME` | fires **at** the time |
-| Whoop | `IN_THE_GREEN`, `EXACT_TIME_PEAK` | fires **before** the ceiling, window length unknown `[to confirm]` |
-| Whoop | `SLEEP_GOAL` | Whoop **derives** the time. Nothing to write. See below |
+| Whoop | `SLEEP_GOAL` | fires in the **60 minutes before**, once the chosen share of sleep need is met. Their UI: *"Alarm will vibrate between 08:25 - 09:25"* for an 09:25 wake time |
+| Whoop | `IN_THE_GREEN` | fires **before** the time, once recovery is green. Window presumed 60 as well `[to confirm]` |
 
-So a row shows `10:30` when the leg is exact, and `by 10:30` with a range when it is not. Whoop's
-window length has never been observed, so it renders as "can ring earlier" with no invented width
-until someone reads a real number off the Whoop app.
+So a row shows `10:30` when the leg is exact, and `by 10:30` with a range when it is not.
 
-**`SLEEP_GOAL` inverts the direction.** Whoop calculates the wake time from sleep need, so pushing a
-time into it argues with the feature. The right handling is to let Whoop be the **anchor**: read the
-time it computed and set the phone and the bed around it. That is the same mechanism as choosing
-which device is the main alarm, which Alex asked for separately. It needs a re-read before the alarm
-rather than at button-press, because the value changes nightly.
+> **Correction, 2026-08-16.** An earlier version of this file said `SLEEP_GOAL` derives the wake
+> time, that there was nothing to write, and that the fix was to invert the direction and let Whoop
+> anchor the other devices. **Wrong, and the screenshots disprove it.** The `SLEEP_GOAL` flow ends
+> on `SET YOUR WAKE TIME`. You set a time in that mode too; it is a ceiling, and Whoop wakes you
+> earlier once the goal is met. All three modes take a time and the mode only decides how early it
+> may fire, which is a much simpler model than the one I proposed. The anchor idea was solving a
+> problem that does not exist.
+
+**`sleep_goal` is not a vestigial empty string.** It is the `100% PEAK / 85% PERFORM / 70% GET BY`
+picker, and it only applies in `SLEEP_GOAL` mode. The adapter currently sends `""` unconditionally,
+so **choosing Sleep Goal and then pressing Set would wipe the percentage**. Must be carried through
+like `alarm_mode`, not hardcoded.
 
 ## What each service supports natively, which decides what we must emulate
 
 | | Recurring | One-off | Notes |
 |---|---|---|---|
-| iPhone (AlarmKit) | `.weekly` | yes | both native |
-| Eight Sleep | `repeat.weekDays` | yes, `Repeat: Never` | also carries per-alarm temperature and vibration, which we preserve untouched |
-| Whoop | `day_of_week_list` | **no** | a schedule is days-based with no one-shot form |
+| iPhone (AlarmKit) | `.weekly` | yes | both native, independent |
+| Eight Sleep | `repeat.weekDays` | yes, `Repeat: Never` | independent. Also carries per-alarm temperature and vibration, preserved untouched |
+| Whoop | `day_of_week_list` | yes, **but only with the schedule off** | mutually exclusive, see below |
 
-**Whoop has no one-off.** Faking one means editing the recurring schedule's days and restoring them
-afterwards, and a restore that fails leaves his real alarm wrong on days he never touched. So an
-override drives the iPhone and the bed, and **leaves Whoop on its routine**, saying so on screen.
-A wrist buzz five minutes early is the least consequential of the three legs to skip, and a silent
-half-applied override is the most dangerous thing in this document.
+**Whoop's one-off and its recurring schedule cannot coexist.** Its own dialog, verbatim:
+
+> *"Your schedule is currently on. Turn off your schedule to set a new alarm for tomorrow."*
+
+That is what `schedule_enabled` at the top of the list response means, and it is also the source of
+the *"alarm schedule is switched off"* failure this app hit on its first night.
+
+So applying an override to Whoop means: disable his schedule, set a one-night alarm, and re-enable
+the schedule afterwards. **Three writes where two can fail, and the failure is silent and lasting.**
+If the re-enable does not happen, his recurring alarm stays off, and he finds out by not waking up,
+on a morning he never touched the app.
+
+So the override drives the **iPhone and the bed**, and **leaves Whoop on its routine**, saying so on
+screen. That was already the conclusion when this was thought to be a missing feature; it is a
+stronger conclusion now that it is a present feature with a destructive edge. A wrist buzz at the
+routine time instead of the override time is the cheapest of the three legs to get wrong. A
+recurring alarm silently disabled is the most expensive thing this app could do.
+
+Revisit only with a way to guarantee the re-enable, which means persisting the intent and retrying
+until it is confirmed, not a `defer` block.
 
 ## Order of work
 
