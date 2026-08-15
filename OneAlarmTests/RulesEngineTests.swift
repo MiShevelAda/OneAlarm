@@ -23,6 +23,20 @@ final class RulesEngineTests: XCTestCase {
         return calendar.date(from: components)!
     }
 
+    /// An absolute instant, for asserting what a daylight saving transition actually produced
+    /// rather than only that something was produced.
+    private func utc(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int) -> Date {
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = TimeZone(identifier: "UTC")!
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = hour
+        components.minute = minute
+        return gregorian.date(from: components)!
+    }
+
     private func schedule(
         master: WallClockTime,
         days: Set<Locale.Weekday>,
@@ -148,9 +162,13 @@ final class RulesEngineTests: XCTestCase {
 
     // MARK: Daylight saving
 
-    /// Europe/Zurich springs forward on 29 March 2026, so 02:30 that morning does not exist. The
-    /// correct answer is the next real instant, not "no alarm".
-    func testSpringForwardStillProducesAnAlarm() {
+    /// Europe/Zurich springs forward on 29 March 2026: 02:00 CET becomes 03:00 CEST, so 02:30 that
+    /// morning does not exist at all.
+    ///
+    /// Asserting the exact instant matters here. A test that only checks "not nil, and later than
+    /// now" also passes if the engine silently skips to the *following* Sunday, which is an alarm a
+    /// week late and a far worse bug than no alarm.
+    func testSpringForwardResolvesToTheFirstRealInstant() {
         let schedule = schedule(
             master: WallClockTime(hour: 2, minute: 30),
             days: [.sunday],
@@ -161,14 +179,16 @@ final class RulesEngineTests: XCTestCase {
             schedule: schedule, calendar: calendar, now: date(2026, 3, 28, 12, 0)
         ).first
 
-        XCTAssertNotNil(target?.nextOccurrence)
-        XCTAssertGreaterThan(target!.nextOccurrence, date(2026, 3, 28, 12, 0))
+        // 03:00 CEST, the first instant that exists after the gap.
+        XCTAssertEqual(target?.nextOccurrence, utc(2026, 3, 29, 1, 0))
     }
 
-    /// The offset is in wall clock minutes, so the UTC gap between two legs is not constant across
-    /// a transition. Recording the behaviour rather than asserting a number, because what matters
-    /// is that both legs resolve and neither silently disappears.
-    func testFallBackResolvesBothLegs() {
+    /// Zurich falls back on 25 October 2026: 03:00 CEST becomes 02:00 CET.
+    ///
+    /// The point of this test is that a wall clock offset is not an elapsed time offset. A 70 minute
+    /// lead spans the repeated hour and becomes a **130 minute** real gap, and the summary line in
+    /// the UI reports that number to the user.
+    func testFallBackStretchesTheRealGap() {
         let schedule = schedule(
             master: WallClockTime(hour: 3, minute: 0),
             days: [.sunday],
@@ -182,8 +202,114 @@ final class RulesEngineTests: XCTestCase {
             schedule: schedule, calendar: calendar, now: date(2026, 10, 24, 12, 0)
         )
 
-        XCTAssertEqual(targets.count, 2)
-        XCTAssertEqual(targets.first(where: { $0.device == .eightSleep })?.localTime, WallClockTime(hour: 1, minute: 50))
+        let eightSleep = targets.first { $0.device == .eightSleep }
+        let iphone = targets.first { $0.device == .iphone }
+
+        XCTAssertEqual(eightSleep?.localTime, WallClockTime(hour: 1, minute: 50))
+        // 01:50 is still CEST, before the transition.
+        XCTAssertEqual(eightSleep?.nextOccurrence, utc(2026, 10, 24, 23, 50))
+        // 03:00 is CET, after it.
+        XCTAssertEqual(iphone?.nextOccurrence, utc(2026, 10, 25, 2, 0))
+        XCTAssertEqual(RulesEngine.leadMinutes(for: targets), 130)
+    }
+
+    /// A whole day of offset keeps the time and moves the day. This is the case a naive
+    /// `shifted / 1440` gets wrong, because integer division truncates toward zero and yields a
+    /// day shift of 0 for exactly -1440.
+    func testWholeDayOffsetsKeepTheTimeAndMoveTheDay() {
+        func target(offset: Int) -> ResolvedTarget? {
+            RulesEngine.resolve(
+                schedule: schedule(
+                    master: WallClockTime(hour: 0, minute: 0),
+                    days: [.monday],
+                    rules: [DeviceRule(device: .iphone, offsetMinutes: offset, isEnabled: true, weekdayOverrideIndices: nil)]
+                ),
+                calendar: calendar,
+                now: date(2026, 8, 17, 12, 0)
+            ).first
+        }
+
+        XCTAssertEqual(target(offset: -1440)?.localTime, WallClockTime(hour: 0, minute: 0))
+        XCTAssertEqual(target(offset: -1440)?.dayShift, -1)
+        XCTAssertEqual(target(offset: -1440)?.weekdays, [.sunday])
+
+        XCTAssertEqual(target(offset: 1440)?.localTime, WallClockTime(hour: 0, minute: 0))
+        XCTAssertEqual(target(offset: 1440)?.dayShift, 1)
+        XCTAssertEqual(target(offset: 1440)?.weekdays, [.tuesday])
+    }
+
+    func testOneMinuteBoundaries() {
+        func target(master: WallClockTime, offset: Int) -> ResolvedTarget? {
+            RulesEngine.resolve(
+                schedule: schedule(
+                    master: master,
+                    days: [.wednesday],
+                    rules: [DeviceRule(device: .iphone, offsetMinutes: offset, isEnabled: true, weekdayOverrideIndices: nil)]
+                ),
+                calendar: calendar,
+                now: date(2026, 8, 17, 12, 0)
+            ).first
+        }
+
+        let back = target(master: WallClockTime(hour: 0, minute: 0), offset: -1)
+        XCTAssertEqual(back?.localTime, WallClockTime(hour: 23, minute: 59))
+        XCTAssertEqual(back?.dayShift, -1)
+        XCTAssertEqual(back?.weekdays, [.tuesday])
+
+        let forward = target(master: WallClockTime(hour: 23, minute: 59), offset: 1)
+        XCTAssertEqual(forward?.localTime, WallClockTime(hour: 0, minute: 0))
+        XCTAssertEqual(forward?.dayShift, 1)
+        XCTAssertEqual(forward?.weekdays, [.thursday])
+    }
+
+    /// A set that straddles the wrap has to move as a whole, not partly.
+    func testWeekdaySetSpanningTheWrapShiftsTogether() {
+        let target = RulesEngine.resolve(
+            schedule: schedule(
+                master: WallClockTime(hour: 0, minute: 30),
+                days: [.sunday, .monday],
+                rules: [DeviceRule(device: .eightSleep, offsetMinutes: -60, isEnabled: true, weekdayOverrideIndices: nil)]
+            ),
+            calendar: calendar,
+            now: date(2026, 8, 17, 12, 0)
+        ).first
+
+        XCTAssertEqual(target?.localTime, WallClockTime(hour: 23, minute: 30))
+        XCTAssertEqual(target?.weekdays, [.saturday, .sunday])
+    }
+
+    // MARK: Boundary behaviour around "now"
+
+    /// Exactly at the alarm minute, the answer is tomorrow. An alarm firing for an instant that has
+    /// just arrived would fire immediately on every recompute.
+    func testAlarmAtExactlyNowRollsToTheNextDay() {
+        let now = date(2026, 8, 17, 7, 0)
+        let target = RulesEngine.resolve(
+            schedule: schedule(
+                master: WallClockTime(hour: 7, minute: 0),
+                days: Locale.Weekday.everyDay,
+                rules: [DeviceRule(device: .iphone, offsetMinutes: 0, isEnabled: true, weekdayOverrideIndices: nil)]
+            ),
+            calendar: calendar,
+            now: now
+        ).first
+
+        XCTAssertEqual(target?.nextOccurrence, date(2026, 8, 18, 7, 0))
+    }
+
+    func testAlarmOneMinuteAwayIsStillToday() {
+        let now = date(2026, 8, 17, 6, 59)
+        let target = RulesEngine.resolve(
+            schedule: schedule(
+                master: WallClockTime(hour: 7, minute: 0),
+                days: Locale.Weekday.everyDay,
+                rules: [DeviceRule(device: .iphone, offsetMinutes: 0, isEnabled: true, weekdayOverrideIndices: nil)]
+            ),
+            calendar: calendar,
+            now: now
+        ).first
+
+        XCTAssertEqual(target?.nextOccurrence, date(2026, 8, 17, 7, 0))
     }
 
     /// The offset string is recomputed for the instant the alarm fires, so a summer alarm and a

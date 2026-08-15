@@ -43,6 +43,16 @@ final class WeekdayTests: XCTestCase {
         XCTAssertEqual(Locale.Weekday.monday.shifted(by: 0), .monday)
     }
 
+    /// `from(calendarIndex:)` is fed `calendarIndex + days` directly, so it has to be correct well
+    /// outside the 1 to 7 range. Index 0 and index 8 are the ones a single modulo gets wrong.
+    func testIndexWrapsWellOutsideTheValidRange() {
+        XCTAssertEqual(Locale.Weekday.from(calendarIndex: 0), .saturday)
+        XCTAssertEqual(Locale.Weekday.from(calendarIndex: 8), .sunday)
+        XCTAssertEqual(Locale.Weekday.from(calendarIndex: -6), .sunday)
+        XCTAssertEqual(Locale.Weekday.from(calendarIndex: 15), .sunday)
+        XCTAssertEqual(Locale.Weekday.from(calendarIndex: -13), .sunday)
+    }
+
     func testWireNames() {
         XCTAssertEqual(Locale.Weekday.wednesday.whoopName, "WEDNESDAY")
         XCTAssertEqual(Locale.Weekday.wednesday.eightSleepKey, "wednesday")

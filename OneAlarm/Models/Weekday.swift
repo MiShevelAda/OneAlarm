@@ -80,9 +80,10 @@ extension Locale.Weekday {
     static let everyDay: Set<Locale.Weekday> = Set(displayOrder)
 }
 
-/// `Locale.Weekday` is not `Codable`, so a set of them cannot be persisted directly. These helpers
-/// convert to and from the calendar indices, which are stable across OS versions in a way that a
-/// raw enum ordering would not be.
+/// `Locale.Weekday` is `Codable` already, with raw values `"sun"` through `"sat"`, so this is a
+/// choice rather than a necessity. Persisting calendar indices keeps the stored form the same shape
+/// as the arithmetic the engine does on it, and avoids depending on a raw value spelling Foundation
+/// owns. Do not "simplify" this to direct encoding on the assumption it was a workaround.
 enum WeekdaySetCoding {
     static func encode(_ days: Set<Locale.Weekday>) -> [Int] {
         days.map(\.calendarIndex).sorted()

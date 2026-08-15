@@ -65,8 +65,16 @@ Now open OneAlarm from the home screen.
 3. Tap **Set all alarms**.
 4. The iPhone row should turn green.
 
-To check it actually works, set the time two minutes ahead, turn on Silent mode and a Focus, and
-wait. It should ring anyway. That is the whole point of AlarmKit.
+**This is the one test that matters, so do it before anything else.** Set the time two minutes
+ahead, turn on Silent mode, turn on a Focus, lock the phone, and wait. It should ring anyway. That
+is the whole point of AlarmKit and it is the only part of this app that no amount of code review
+here could confirm.
+
+If it does **not** ring, say so and say exactly what happened, because there is a known trap behind
+it. AlarmKit presents alarms through the same machinery as Live Activities, and an app that offers a
+countdown has to ship a separate widget target or the system quietly drops alarms instead of ringing
+them. This app deliberately has no countdown and no snooze, precisely so that target is not needed.
+If alarms turn out to need it anyway, that is a known and fixable shape of problem, not a mystery.
 
 ## Step 6, optional: connect Eight Sleep and Whoop
 

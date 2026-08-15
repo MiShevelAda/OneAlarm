@@ -253,7 +253,8 @@ actor EightSleepAdapter: DeviceAdapter {
         "nextTimestamp", "startTimestamp", "endTimestamp", "dismissedUntil", "snoozedUntil",
     ]
 
-    private static func mutate(_ alarm: [String: Any], to target: ResolvedTarget) -> [String: Any] {
+    // Internal rather than private so the test suite can assert that unknown fields survive.
+    static func mutate(_ alarm: [String: Any], to target: ResolvedTarget) -> [String: Any] {
         var payload = alarm
         for field in computedFields {
             payload.removeValue(forKey: field)

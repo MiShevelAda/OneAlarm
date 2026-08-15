@@ -136,7 +136,7 @@ actor WhoopAdapter: DeviceAdapter {
             "AuthFlow": "USER_PASSWORD_AUTH",
             "AuthParameters": ["USERNAME": email, "PASSWORD": password],
             "ClientId": "",
-        ])
+        ] as [String: Any])
 
         let response = try await http.send(
             "POST", url, headers: Self.authHeaders(target: "InitiateAuth"), body: body
@@ -183,7 +183,7 @@ actor WhoopAdapter: DeviceAdapter {
             ],
             "ClientId": "",
             "Session": challenge.session,
-        ])
+        ] as [String: Any])
 
         let response = try await http.send(
             "POST", url, headers: Self.authHeaders(target: "RespondToAuthChallenge"), body: body
@@ -264,7 +264,7 @@ actor WhoopAdapter: DeviceAdapter {
             "AuthFlow": "REFRESH_TOKEN_AUTH",
             "AuthParameters": ["REFRESH_TOKEN": refresh],
             "ClientId": "",
-        ])
+        ] as [String: Any])
 
         let response = try await http.send(
             "POST", url, headers: Self.authHeaders(target: "InitiateAuth"), body: body
@@ -377,7 +377,7 @@ actor WhoopAdapter: DeviceAdapter {
     /// source hedges where these fields sit on a GET, and it ships no captured alarm response to
     /// check against. If the two we depend on are not where we expect, the honest outcome is a
     /// refusal, not a write that silently resets the smart wake mode he chose.
-    private static func mutate(_ schedule: [String: Any], to target: ResolvedTarget) throws -> [String: Any] {
+    static func mutate(_ schedule: [String: Any], to target: ResolvedTarget) throws -> [String: Any] {
         guard schedule["latest_wake_time"] is String, schedule["alarm_mode"] is String else {
             throw AdapterError.unexpectedResponse(
                 "Whoop returned a schedule in an unexpected shape, so it was not changed."
