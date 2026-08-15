@@ -317,7 +317,7 @@ actor EightSleepAdapter: DeviceAdapter {
 
     /// The allowlist recurses, so the weekday keys inside `weekDays` have to be named too or the
     /// preview shows seven redactions instead of the schedule.
-    private static let previewKeys: Set<String> = ["time", "enabled", "repeat", "weekDays"]
+    private static let previewKeys: Set<String> = Set(["time", "enabled", "repeat", "weekDays"])
         .union(Locale.Weekday.displayOrder.map(\.eightSleepKey))
 
     func write(_ target: ResolvedTarget) async throws -> WriteReceipt {
