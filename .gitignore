@@ -1,0 +1,43 @@
+# Secrets. Nothing in this list may ever reach a commit.
+.env
+.env.*
+*.secret
+*.secrets
+secrets/
+credentials.json
+tokens.json
+*-token.json
+*.token
+*.pem
+*.p12
+*.mobileprovision
+*.certSigningRequest
+
+# Captured HTTP fixtures may contain bearer tokens, cookies or account ids.
+# Only redacted fixtures belong in git, and they go in fixtures/redacted/.
+fixtures/raw/
+*.har
+*.charles
+*.saz
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# CLI spike (Node or TS variant)
+node_modules/
+dist/
+
+# macOS
+.DS_Store
