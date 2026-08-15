@@ -114,13 +114,23 @@ struct EightSleepLinkView: View {
     @State private var choices: [RemoteAlarmChoice] = []
 
     var body: some View {
-        switch stage {
-        case .prerequisite: prerequisite
-        case .credentials: credentials
-        case .working: working
-        case .choose: picker
-        case .blocked: blocked
-        case .done: done
+        Group {
+            switch stage {
+            case .prerequisite: prerequisite
+            case .credentials: credentials
+            case .working: working
+            case .choose: picker
+            case .blocked: blocked
+            case .done: done
+            }
+        }
+        .task {
+            guard store.authStates[.eightSleep] == .connected else { return }
+            let found = (try? await store.eightSleep.availableAlarms()) ?? []
+            if !found.isEmpty {
+                choices = found
+                stage = .choose
+            }
         }
     }
 
@@ -321,13 +331,26 @@ struct WhoopLinkView: View {
     @State private var challenge: WhoopAdapter.Challenge?
 
     var body: some View {
-        switch stage {
-        case .warning: warning
-        case .credentials: credentials
-        case .code: code
-        case .choose: picker
-        case .blocked: blocked
-        case .done: done
+        Group {
+            switch stage {
+            case .warning: warning
+            case .credentials: credentials
+            case .code: code
+            case .choose: picker
+            case .blocked: blocked
+            case .done: done
+            }
+        }
+        // Re-opening an already linked device should land on the choice, not on a sign in screen
+        // for an account that is already signed in. The picker promises this is changeable later,
+        // so it has to actually be reachable.
+        .task {
+            guard store.authStates[.whoop] == .connected else { return }
+            let found = (try? await store.whoop.availableAlarms()) ?? []
+            if !found.isEmpty {
+                choices = found
+                stage = .choose
+            }
         }
     }
 
@@ -704,6 +727,7 @@ struct AlarmPickerScreen: View {
                 RemoteAlarmSelection.select(id, for: device)
                 onPick(choice)
             }
+            QuietButton(title: "Leave it as it is", action: onBack)
         }
         .onAppear {
             // Pre-select whatever was chosen before, so re-opening this is a confirmation rather
