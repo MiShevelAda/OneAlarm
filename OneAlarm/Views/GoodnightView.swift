@@ -11,10 +11,6 @@ struct GoodnightView: View {
     @Environment(ScheduleStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    private var confirmed: [ResolvedTarget] {
-        store.targets.filter { (store.status[$0.device] ?? .idle).isSettled }
-    }
-
     private var allConfirmed: Bool {
         !store.targets.isEmpty && store.targets.allSatisfy {
             if case .done = store.status[$0.device] ?? .idle { return true }

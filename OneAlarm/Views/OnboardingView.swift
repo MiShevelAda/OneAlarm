@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 @MainActor
 struct OnboardingView: View {
@@ -135,9 +136,9 @@ struct OnboardingView: View {
                 Text("Turning it back on").font(.system(size: 20, weight: .semibold))
 
                 VStack(spacing: 0) {
-                    step(1, "Open Settings")
-                    step(2, "Tap Apps, then OneAlarm")
-                    step(3, "Turn on Alarms")
+                    numberedStep(1, "Open Settings")
+                    numberedStep(2, "Tap Apps, then OneAlarm")
+                    numberedStep(3, "Turn on Alarms")
                 }
                 .padding(.vertical, 4)
                 .themeCard()
@@ -153,7 +154,7 @@ struct OnboardingView: View {
         }
     }
 
-    private func step(_ n: Int, _ text: String) -> some View {
+    private func numberedStep(_ n: Int, _ text: String) -> some View {
         HStack(spacing: 12) {
             Text("\(n)")
                 .font(Theme.numeral(13))
