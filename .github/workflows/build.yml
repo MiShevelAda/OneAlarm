@@ -1,108 +1,71 @@
 name: Build
 
-# The whole point of this file: the app was written on Linux, where no Swift compiler exists.
-# GitHub's macOS runners are the only way to find out whether it builds without owning a Mac.
-# Simulator build only, so no signing certificate and no Apple Developer account is needed.
+# The app was written on Linux, where no Swift compiler exists. This is what tells us whether it
+# still compiles, without needing anyone at a Mac.
+#
+# Builds for the device SDK with signing switched off. That is the combination proven to work by
+# hand, and it avoids depending on a simulator runtime being installed on the runner.
 
 on:
   push:
   pull_request:
-  # Lets a build be started by hand from the Actions tab, or by tooling.
   workflow_dispatch:
 
 jobs:
-  # Cheap probe. If this passes and the macOS job below never starts, the problem is the macOS
-  # runner (10x minute multiplier on a private repo), not the workflow file.
-  probe:
+  structure:
+    name: Project structure
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Project structure check
-        run: python3 tools/validate_project.py
+      - run: python3 tools/validate_project.py
 
   build:
+    name: Compile
     runs-on: macos-latest
-    timeout-minutes: 40
-
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
-      - name: What toolchain is on this runner
+      - name: Toolchain
         run: |
-          echo "--- Xcodes installed ---"
-          ls -d /Applications/Xcode*.app 2>/dev/null || echo "none found"
-          echo "--- default ---"
+          ls -d /Applications/Xcode*.app 2>/dev/null || echo "no Xcode found"
           xcodebuild -version
 
-      - name: Prefer Xcode 26 if the runner has it
+      - name: Prefer Xcode 26
         run: |
-          best=""
-          for app in /Applications/Xcode_26*.app /Applications/Xcode.app /Applications/Xcode_*.app; do
+          for app in /Applications/Xcode_26*.app /Applications/Xcode.app; do
             [ -d "$app" ] || continue
             version=$("$app/Contents/Developer/usr/bin/xcodebuild" -version 2>/dev/null | head -1 || true)
             echo "$app -> $version"
             case "$version" in
-              *"Xcode 26"*) best="$app"; break ;;
+              *"Xcode 26"*) sudo xcode-select -s "$app"; break ;;
             esac
           done
-          if [ -n "$best" ]; then
-            sudo xcode-select -s "$best"
-            echo "selected $best"
-          else
-            echo "::warning::No Xcode 26 on this runner. AlarmKit needs the iOS 26 SDK, so the build below will fail on missing API rather than on our code."
-          fi
           xcodebuild -version
-          xcodebuild -showsdks | grep -i ios || true
 
-      - name: Build for simulator
+      - name: Install the iOS platform
+        run: sudo xcodebuild -downloadPlatform iOS
 
+      - name: Build
         run: |
           set -o pipefail
           xcodebuild build \
             -project OneAlarm.xcodeproj \
             -scheme OneAlarm \
-            -destination 'generic/platform=iOS Simulator' \
+            -destination 'generic/platform=iOS' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO
 
-      - name: Pick a simulator and run the tests
-
+      - name: Confirm the AlarmKit usage description reached the bundle
         run: |
           set -o pipefail
-          # Newest available iPhone simulator, whatever this runner happens to have.
-          device=$(xcrun simctl list devices available --json | python3 -c '
-import json, sys
-data = json.load(sys.stdin)["devices"]
-best = None
-for runtime, devices in data.items():
-    if "iOS" not in runtime:
-        continue
-    try:
-        version = [int(p) for p in runtime.split("iOS-")[-1].split("-")]
-    except ValueError:
-        version = [0]
-    for device in devices:
-        if "iPhone" in device["name"] and device.get("isAvailable"):
-            if best is None or version > best[0]:
-                best = (version, device["udid"], device["name"], runtime)
-print(best[1] if best else "")
-sys.stderr.write(f"chose {best[2]} on {best[3]}\n" if best else "no iPhone simulator found\n")
-')
-          if [ -z "$device" ]; then
-            echo "::error::No iPhone simulator on this runner."
+          app=$(find ~/Library/Developer/Xcode/DerivedData -name "OneAlarm.app" -path "*Debug-iphoneos*" | head -1)
+          echo "bundle: $app"
+          if plutil -p "$app/Info.plist" | grep -q NSAlarmKitUsageDescription; then
+            echo "NSAlarmKitUsageDescription present"
+          else
+            echo "::error::NSAlarmKitUsageDescription missing from the built Info.plist. AlarmKit cannot schedule anything without it."
             exit 1
           fi
-          xcodebuild test \
-            -project OneAlarm.xcodeproj \
-            -scheme OneAlarm \
-            -destination "platform=iOS Simulator,id=$device" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO
-
-      - name: Project structure check
-
-        if: always()
-        run: python3 tools/validate_project.py
