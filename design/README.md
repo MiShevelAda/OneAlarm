@@ -29,23 +29,73 @@ and consumer. Whoop uppercases section titles, Eight Sleep uses sentence case. T
 Eight Sleep wins on **prose**, so headings and body are sentence case and readable at six in the
 morning. Whoop wins on **data**, so every label, time and state reads as an instrument.
 
+## The rule that keeps the two systems from fighting
+
+This is the important part, and it is not a matter of taste.
+
+**Eight Sleep's colour is continuous.** A position on a ramp. It answers "how far along?"
+**Whoop's colour is discrete.** Seven flat accents, each meaning exactly one thing. It answers
+"what kind of thing is this, and is it good?"
+
+On one screen they destroy each other. A colour halfway along a ramp is none of Whoop's meanings, so
+the semantics break. And seven flat accents turn a gradient into decoration, so the ramp stops
+reading as a measurement. The fix is to give each one job and never the other:
+
+> **The gradient encodes TIME. The flat accents encode STATE.**
+> There is exactly one gradient in the app, and it is the cascade.
+
+**Corollary, easy to walk into:** because the gradient means time, it may never also mean bed
+temperature, in an app that controls a heated bed. Temperature is shown as a number, never as a hue.
+If a temperature control is ever added, steal Eight Sleep's relative minus ten to plus ten scale
+rather than degrees. Nobody sets their bed to 31 degrees, they set it to plus three.
+
+**And never grade the user.** Whoop's evaluative red describes your recovery. Here, red describes a
+*device*. A red thing at six in the morning means the speaker is offline, never that you slept badly.
+An alarm clock that tells you off is an alarm clock people delete.
+
 ## Tokens
 
+State colours are Whoop's official values, taken from their public brand guideline, so they are
+known good on a dark ground.
+
 ```
---black    #000000   ground
---card     #0D0F12   card fill
---line     rgba(255,255,255,.09)
---grey     #8B9299   labels, both apps use a cool grey rather than a neutral one
---mint     #00E58F   on, and confirmed
---amber    #F0A63C   accepted but unconfirmed
---coral    #FF5A5A   failed
---optimal  #7FA8C9   Whoop's dashed target range blue
-cool  #6FA8DC → #0A2136
-mid   #4C6B8A → #10161F
-warm  #F0763C → #2E0E10
+--ground-top #101A2B  Whoop's method, Eight Sleep's hue: their app is not black
+--ground-bot #05070C  but a subtle vertical gradient. This one is shifted navy.
+--card       #0D1119
+--line       rgba(255,255,255,.08)
+--grey       #B8C0C3  Whoop text secondary, official
+--grey-dim   #7F898D  Whoop text tertiary, official
+
+--mint    #00F19F  Whoop teal: confirmed
+--amber   #FFDE00  Whoop medium recovery: accepted but unconfirmed
+--coral   #FF0026  Whoop low recovery: failed
+--optimal #7BA1BB  Whoop sleep blue: the target range marker
 ```
 
-Single theme on purpose. Both apps are black only, and this one is read in a dark bedroom.
+The cascade ramp is dawn, which is what Eight Sleep's gradient originally meant. Their first identity
+took it from dawn and sunset, before it ever meant temperature, so using it for time is returning it
+rather than appropriating it.
+
+```
+cool  #2E7FD4 → #0A1F38   the bed, doing thermal work
+mid   #6E74D8 → #16172E   periwinkle, the dawn transition
+warm  #F4643C → #2E0E10   the loud one
+```
+
+**The violet midpoint is load bearing.** A straight blue to orange ramp muddies through grey and
+reads as a weather map. Routing through periwinkle is what makes it Eight Sleep.
+
+## Typography
+
+Whoop's rule is two typefaces: one for words, a rigid engineering face for numbers, so data is
+distinguishable from language before you read it. Theirs are Proxima Nova and DINPro, both
+commercial.
+
+**`DIN Alternate` ships with iOS.** That is a genuinely correct DIN for the numerals, free, on
+device, no bundled font and no licence. Words use the system face. This is the single most useful
+practical finding in the whole research pass.
+
+Single theme on purpose. Both apps are dark only, and this one is read in a dark bedroom.
 
 ## Two rules the design has to carry, not just decorate
 

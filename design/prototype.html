@@ -13,34 +13,57 @@
    Also theirs: sentence case headings, uppercase only for micro labels, a
    floating pill tab bar, glassy translucent panels.
 
-   From Whoop: uppercase labels at wide tracking, huge bold numerals, thin
-   outlined pills, hatched bars for spans, dashed markers for a target range,
-   and mint green as the single state colour.
+   From Whoop: uppercase labels at wide tracking, thin outlined pills, hatched
+   bars for spans, dashed markers for a target range, and their official state
+   colours, which are documented in a public brand guideline. Also their two
+   typeface rule: a face for words and a rigid engineering face for numbers.
+   Theirs is DINPro; DIN Alternate ships with iOS and is the free equivalent.
 
-   Single theme on purpose. Both apps are black-only and an alarm app is used in
-   a dark room. Every colour is painted explicitly so the page holds on any host.
+   THE RULE THAT KEEPS THE TWO SYSTEMS FROM FIGHTING.
+   Eight Sleep's colour is continuous, a position on a ramp. Whoop's is discrete,
+   a category. On one screen they destroy each other: a colour halfway along a
+   ramp is none of Whoop's meanings, and seven flat accents turn a gradient into
+   decoration. So each gets one job and never the other. The gradient encodes
+   TIME. The flat accents encode STATE. There is exactly one gradient in the app.
+
+   Corollary worth not forgetting: because the gradient means time, it may never
+   also mean bed temperature, which is very easy to walk into given this app
+   controls a heated bed. Temperature is shown as a number, never as a hue.
+
+   Single theme on purpose. Both apps are dark only and this one is read in a
+   dark bedroom. Every colour is painted explicitly so the page holds anywhere.
    =========================================================================== */
 :root {
-  --black: #000000;
-  --card: #0D0F12;
-  --card-lift: #16191F;
-  --line: rgba(255,255,255,.09);
-  --line-strong: rgba(255,255,255,.22);
+  /* Ground: Whoop's method, Eight Sleep's hue. Whoop's app is not black, it is a
+     subtle vertical charcoal gradient. Eight Sleep is pure black but navy-leaning.
+     This takes Whoop's layered-surface approach and shifts it navy. */
+  --black: #05070C;
+  --ground-top: #101A2B;
+  --ground-bot: #05070C;
+  --card: #0D1119;
+  --card-lift: #161C28;
+  --line: rgba(255,255,255,.08);
+  --line-strong: rgba(255,255,255,.18);
 
   --white: #FFFFFF;
-  --grey: #8B9299;        /* cool grey, both apps use this for labels */
-  --grey-dim: #5A6067;
+  --grey: #B8C0C3;        /* Whoop text secondary, official */
+  --grey-dim: #7F898D;    /* Whoop text tertiary, official */
 
-  --mint: #00E58F;        /* Whoop, on and confirmed */
-  --coral: #FF5A5A;       /* Eight Sleep, incomplete and failed */
-  --amber: #F0A63C;       /* accepted but unconfirmed */
-  --optimal: #7FA8C9;     /* Whoop's dashed target range blue */
+  /* State colours are Whoop's official values, so they are known good on dark.
+     Discrete states only. These never appear on the cascade. */
+  --mint: #00F19F;        /* Whoop teal: positive, confirmed */
+  --amber: #FFDE00;       /* Whoop medium recovery: accepted but unconfirmed */
+  --coral: #FF0026;       /* Whoop low recovery: failed */
+  --optimal: #7BA1BB;     /* Whoop sleep blue, for the target range marker */
 
-  --cool-lit: #6FA8DC;    /* Eight Sleep cool gradient, light end */
-  --cool-deep: #0A2136;
-  --mid-lit: #4C6B8A;
-  --mid-deep: #10161F;
-  --warm-lit: #F0763C;    /* Eight Sleep warm gradient, bright end */
+  /* The cascade ramp. Dawn, which is what Eight Sleep's gradient originally meant
+     before it meant temperature. The violet midpoint is the important part: a
+     straight blue to orange ramp muddies through grey and reads as a weather map. */
+  --cool-lit: #2E7FD4;
+  --cool-deep: #0A1F38;
+  --mid-lit: #6E74D8;     /* periwinkle, the dawn transition */
+  --mid-deep: #16172E;
+  --warm-lit: #F4643C;
   --warm-deep: #2E0E10;
 }
 
@@ -60,7 +83,7 @@ html, body {
   position: relative;
   width: 100%; max-width: 26.9rem;
   height: 100vh; max-height: 58rem;
-  background: var(--black);
+  background: linear-gradient(to bottom, var(--ground-top) 0%, var(--ground-bot) 46%);
   overflow: hidden;
   display: flex; flex-direction: column;
 }
@@ -98,9 +121,13 @@ p.bright { color: var(--white); }
 small { font-size: .8rem; line-height: 1.45; color: var(--grey-dim); display: block; }
 
 /* Both apps lean on very large numerals. */
+/* Whoop's hard rule is two typefaces: one for words, a rigid engineering face for
+   numbers. Their number face is DINPro. DIN Alternate ships with iOS, so on the
+   phone this renders a real DIN with no bundled font and no licence. */
 .num {
+  font-family: "DIN Alternate", "DIN Condensed", ui-monospace, SFMono-Regular, monospace;
   font-variant-numeric: tabular-nums;
-  font-weight: 700; letter-spacing: -.035em;
+  font-weight: 700; letter-spacing: -.01em;
 }
 .num-xl { font-size: 3.3rem; line-height: 1; }
 .num-l  { font-size: 2rem; line-height: 1; }
@@ -133,7 +160,7 @@ small { font-size: .8rem; line-height: 1.45; color: var(--grey-dim); display: bl
 /* Eight Sleep's signature. The cascade rides this scale. */
 .grad { border-radius: 1.15rem; padding: 1.05rem 1.1rem; border: 1px solid var(--line); position: relative; overflow: hidden; }
 .grad.cool { background: linear-gradient(100deg, var(--cool-lit) -25%, var(--cool-deep) 62%, #05101B 100%); }
-.grad.mid  { background: linear-gradient(100deg, var(--mid-lit) -30%, var(--mid-deep) 60%, #080B10 100%); }
+.grad.mid  { background: linear-gradient(100deg, var(--mid-lit) -25%, var(--mid-deep) 62%, #07080F 100%); }
 .grad.warm { background: linear-gradient(100deg, var(--warm-deep) 0%, #7A2416 42%, var(--warm-lit) 118%); }
 .grad.flat { background: var(--card); }
 
@@ -155,7 +182,7 @@ small { font-size: .8rem; line-height: 1.45; color: var(--grey-dim); display: bl
 .btn-danger { background: transparent; color: var(--coral); border: 1.5px solid rgba(255,90,90,.45); }
 .btn:disabled { opacity: .35; }
 .btn + .btn { margin-top: .6rem; }
-.btnbar { flex: none; padding: 1rem 1.35rem 1.7rem; background: linear-gradient(to top, #000 62%, transparent); }
+.btnbar { flex: none; padding: 1rem 1.35rem 1.7rem; background: linear-gradient(to top, var(--ground-bot) 62%, transparent); }
 
 .chip {
   display: inline-flex; align-items: center; gap: .32rem;
@@ -164,7 +191,7 @@ small { font-size: .8rem; line-height: 1.45; color: var(--grey-dim); display: bl
   font-size: .76rem; color: var(--white); font-weight: 500;
 }
 .chip.dim { color: var(--grey); }
-.chip.alert { color: var(--coral); border-color: rgba(255,90,90,.3); background: rgba(255,90,90,.1); font-weight: 600; }
+.chip.alert { color: var(--coral); border-color: rgba(255,0,38,.3); background: rgba(255,0,38,.1); font-weight: 600; }
 .chips { display: flex; gap: .4rem; flex-wrap: wrap; }
 
 /* ---- Toggle ------------------------------------------------------------ */
@@ -208,7 +235,7 @@ small { font-size: .8rem; line-height: 1.45; color: var(--grey-dim); display: bl
 .state.bad { color: var(--coral); }
 .state.idle { color: var(--grey); }
 
-.check { width: 1.45rem; height: 1.45rem; border-radius: 50%; background: rgba(0,229,143,.15); color: var(--mint); display: grid; place-items: center; font-size: .8rem; flex: none; font-weight: 700; }
+.check { width: 1.45rem; height: 1.45rem; border-radius: 50%; background: rgba(0,241,159,.15); color: var(--mint); display: grid; place-items: center; font-size: .8rem; flex: none; font-weight: 700; }
 
 /* ---- Whoop devices ----------------------------------------------------- */
 /* Their hatched span bar and dashed target range, reused for the wake window. */
@@ -235,7 +262,7 @@ small { font-size: .8rem; line-height: 1.45; color: var(--grey-dim); display: bl
 .badge {
   font-size: .6rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
   padding: .16rem .42rem; border-radius: .25rem;
-  background: rgba(240,166,60,.16); color: var(--amber);
+  background: rgba(255,222,0,.14); color: var(--amber);
 }
 .rail { width: .2rem; border-radius: 999px; align-self: stretch; min-height: 3.4rem; }
 .rail.cool { background: linear-gradient(var(--cool-lit), var(--cool-deep)); }
@@ -263,9 +290,9 @@ small { font-size: .8rem; line-height: 1.45; color: var(--grey-dim); display: bl
 
 /* ---- Notices ----------------------------------------------------------- */
 .notice { border-radius: .8rem; padding: .8rem .9rem; font-size: .85rem; line-height: 1.45; border: 1px solid var(--line); background: var(--card); color: var(--grey); }
-.notice.warn { border-color: rgba(240,166,60,.34); background: rgba(240,166,60,.09); color: #EBC48A; }
-.notice.bad { border-color: rgba(255,90,90,.34); background: rgba(255,90,90,.08); color: #F4A3A3; }
-.notice.good { border-color: rgba(0,229,143,.3); background: rgba(0,229,143,.07); color: #86EDC4; }
+.notice.warn { border-color: rgba(255,222,0,.30); background: rgba(255,222,0,.07); color: #E8DC96; }
+.notice.bad { border-color: rgba(255,0,38,.34); background: rgba(255,0,38,.08); color: #FF9EA8; }
+.notice.good { border-color: rgba(0,241,159,.3); background: rgba(0,241,159,.07); color: #7FEFC8; }
 .notice b { color: #fff; font-weight: 600; }
 
 .spinner {
@@ -284,7 +311,7 @@ small { font-size: .8rem; line-height: 1.45; color: var(--grey-dim); display: bl
 /* ---- Tab bar (Eight Sleep's floating pill) ----------------------------- */
 .tabbar {
   flex: none; margin: 0 auto 1.15rem; display: flex; gap: .25rem;
-  background: rgba(28,30,35,.92); border: 1px solid var(--line);
+  background: rgba(22,28,40,.92); border: 1px solid var(--line);
   border-radius: 999px; padding: .3rem;
 }
 .tabbar button {
@@ -777,7 +804,7 @@ small { font-size: .8rem; line-height: 1.45; color: var(--grey-dim); display: bl
         <div class="grad mid"><div class="leg"><span class="rail mid"></span>
           <div><div class="num time">06:55</div><div style="font-weight:600;font-size:.93rem;margin-top:.18rem">Whoop</div>
           <div class="leg-meta"><span class="state warn"><span class="dot warn"></span>Accepted, not confirmed</span></div></div>
-          <span style="color:var(--amber);font-size:1.1rem">!</span></div></div>
+          <span style="color:var(--amber);font-size:1.1rem;font-weight:700">!</span></div></div>
 
         <div class="grad warm"><div class="leg"><span class="rail warm"></span>
           <div><div class="num time">07:00</div><div style="font-weight:600;font-size:.93rem;margin-top:.18rem">iPhone and Watch</div>
@@ -865,6 +892,40 @@ small { font-size: .8rem; line-height: 1.45; color: var(--grey-dim); display: bl
     <div class="btnbar"><button class="btn btn-quiet" onclick="go('s-cascade')">Back</button></div>
   </section>
 
+  <!-- ============ 11. GOODNIGHT ============ -->
+  <!-- Neither brand solves this. Whoop shows you the past. Eight Sleep acts silently
+       and tells you a story afterwards. This app has to promise a FUTURE and be
+       believed, at the moment the phone goes face down. That is when it earns trust
+       or does not, so it gets its own screen and the quietest treatment in the app. -->
+  <section class="screen" id="s-goodnight">
+    <div class="pad grow" style="display:flex;flex-direction:column;justify-content:center;text-align:center">
+      <p class="label" style="margin-bottom:2.2rem">Good night</p>
+      <h1 style="font-size:1.75rem;margin-bottom:2.4rem">Your morning is set</h1>
+
+      <div style="display:flex;gap:1rem;align-items:stretch;text-align:left;margin:0 auto;max-width:16rem">
+        <div style="width:.22rem;border-radius:999px;background:linear-gradient(var(--cool-lit),var(--mid-lit) 46%,var(--warm-lit))"></div>
+        <div style="display:flex;flex-direction:column;justify-content:space-between;gap:1.5rem;flex:1">
+          <div>
+            <div class="num num-m">06:50</div>
+            <p class="label" style="margin-top:.3rem">Bed starts warming</p>
+          </div>
+          <div>
+            <div class="num num-m">06:55</div>
+            <p class="label" style="margin-top:.3rem">Wrist buzzes</p>
+          </div>
+          <div>
+            <div class="num num-l" style="color:var(--warm-lit)">07:00</div>
+            <p class="label" style="margin-top:.3rem">Phone and watch, loud</p>
+          </div>
+        </div>
+      </div>
+
+      <p style="margin-top:2.6rem;font-size:.9rem">All three confirmed. Nothing left to do.</p>
+      <small style="margin-top:.4rem">Put the phone down.</small>
+    </div>
+    <div class="btnbar"><button class="btn btn-quiet" onclick="go('s-cascade')">Back to alarms</button></div>
+  </section>
+
 </div>
 </div>
 
@@ -896,6 +957,7 @@ small { font-size: .8rem; line-height: 1.45; color: var(--grey-dim); display: bl
     <button onclick="jump('s-results')">8 · Result, mixed states</button>
     <button onclick="jump('s-preview')">9 · Preview, what gets sent</button>
     <button onclick="jump('s-edge')">10 · Midnight and clock change</button>
+    <button onclick="jump('s-goodnight')">11 · Good night, the trust moment</button>
   </div>
 </div>
 
