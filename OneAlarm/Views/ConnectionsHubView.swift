@@ -1,0 +1,473 @@
+import SwiftUI
+
+/// The hub, reachable from onboarding and from the home screen, so it is not a wizard step.
+@MainActor
+struct ConnectionsHubView: View {
+    @Environment(ScheduleStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var linking: DeviceID?
+
+    var body: some View {
+        Screen(title: "Connections", onBack: { dismiss() }) {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Link your devices").font(.system(size: 26, weight: .bold)).tracking(-0.6)
+                    Text("Both are optional. The iPhone alarm already works.")
+                        .font(.system(size: 15)).foregroundStyle(Theme.grey)
+                }
+                .padding(.top, 4)
+
+                VStack(spacing: 0) {
+                    row(.iphone)
+                    Divider().overlay(Theme.line).padding(.leading, 62)
+                    row(.eightSleep)
+                    Divider().overlay(Theme.line).padding(.leading, 62)
+                    row(.whoop)
+                }
+                .themeCard()
+
+                Text("Passwords are kept in the iPhone Keychain, tied to this device. They are never backed up and never copied to another phone.")
+                    .font(.system(size: 13)).foregroundStyle(Theme.greyDim)
+            }
+            .padding(.bottom, 20)
+        } footer: {
+            SolidButton(title: "Done") { dismiss() }
+        }
+        .sheet(item: $linking) { device in
+            Group {
+                switch device {
+                case .eightSleep: EightSleepLinkView()
+                case .whoop: WhoopLinkView()
+                case .iphone: EmptyView()
+                }
+            }
+            .environment(store)
+        }
+    }
+
+    private func row(_ device: DeviceID) -> some View {
+        Button {
+            guard device != .iphone else { return }
+            linking = device
+        } label: {
+            HStack(spacing: 13) {
+                Image(systemName: device.symbolName)
+                    .font(.system(size: 17))
+                    .frame(width: 40, height: 40)
+                    .background(Theme.cardLift, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
+                    .foregroundStyle(Theme.Ramp.lit(for: device))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(device.displayName).font(.system(size: 15, weight: .semibold))
+                    Text(subtitle(for: device)).font(.system(size: 13)).foregroundStyle(Theme.grey)
+                }
+                Spacer(minLength: 8)
+                trailing(for: device)
+            }
+            .padding(.horizontal, 15).padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func subtitle(for device: DeviceID) -> String {
+        switch device {
+        case .iphone: return "No account needed"
+        case .eightSleep: return "Warms the bed before you wake"
+        case .whoop: return "Haptic wake window"
+        }
+    }
+
+    @ViewBuilder
+    private func trailing(for device: DeviceID) -> some View {
+        switch store.authStates[device] ?? .notConfigured {
+        case .connected:
+            StatePill(text: device == .iphone ? "Ready" : "Linked", color: Theme.State.confirmed)
+        case .needsReauth:
+            StatePill(text: "Attention", color: Theme.State.unconfirmed)
+        case .notConfigured:
+            if device == .iphone {
+                StatePill(text: "Not allowed", color: Theme.State.unconfirmed)
+            } else {
+                Text("Connect ›").font(.system(size: 14, weight: .medium)).foregroundStyle(Theme.grey)
+            }
+        }
+    }
+}
+
+// MARK: Eight Sleep
+
+@MainActor
+struct EightSleepLinkView: View {
+    @Environment(ScheduleStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    enum Stage { case prerequisite, credentials, working, done }
+
+    @State private var stage: Stage = .prerequisite
+    @State private var email = ""
+    @State private var password = ""
+    @State private var result = ""
+    @State private var failure: String?
+
+    var body: some View {
+        switch stage {
+        case .prerequisite: prerequisite
+        case .credentials: credentials
+        case .working: working
+        case .done: done
+        }
+    }
+
+    private var prerequisite: some View {
+        Screen(title: "Eight Sleep", onBack: { dismiss() }) {
+            VStack(alignment: .leading, spacing: 18) {
+                StepDots(total: 3, current: 0).frame(maxWidth: .infinity)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Before you start").themeLabel(.white)
+                    Text("You need one alarm in the Eight Sleep app")
+                        .font(.system(size: 21, weight: .semibold)).tracking(-0.4)
+                    Text("Any time. OneAlarm will move it.")
+                        .font(.system(size: 15)).foregroundStyle(.white.opacity(0.82))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(Theme.Ramp.card(for: .eightSleep),
+                            in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
+
+                Text("Why it works this way").font(.system(size: 19, weight: .semibold))
+                Text("OneAlarm changes the alarm you already have rather than creating a new one. That keeps your vibration, thermal and level settings exactly as you set them, because it never has to guess what they should be.")
+                    .font(.system(size: 15)).foregroundStyle(Theme.grey)
+
+                Notice("Open the Eight Sleep app, make sure one alarm exists, then come back.")
+            }
+        } footer: {
+            SolidButton(title: "I have an alarm set") { stage = .credentials }
+            QuietButton(title: "Not yet") { dismiss() }
+        }
+    }
+
+    private var credentials: some View {
+        Screen(title: "Eight Sleep", onBack: { stage = .prerequisite }) {
+            VStack(alignment: .leading, spacing: 14) {
+                StepDots(total: 3, current: 1).frame(maxWidth: .infinity)
+
+                Text("Sign in to Eight Sleep").font(.system(size: 26, weight: .bold)).tracking(-0.6)
+                Text("The same email and password you use in their app.")
+                    .font(.system(size: 15)).foregroundStyle(Theme.grey)
+
+                CredentialField(placeholder: "Email", text: $email, secure: false)
+                CredentialField(placeholder: "Password", text: $password, secure: true)
+
+                if let failure { Notice(.bad, failure) }
+
+                Notice(title: "Why a password and not a login button.",
+                       "Eight Sleep has no official way for other apps to connect, and issues nothing that can be refreshed. The password stays in this phone's Keychain and is sent only to Eight Sleep.")
+            }
+        } footer: {
+            SolidButton(title: "Connect", enabled: !email.isEmpty && !password.isEmpty) {
+                failure = nil
+                stage = .working
+                Task { await connect() }
+            }
+        }
+    }
+
+    private var working: some View {
+        Screen(title: "Eight Sleep") {
+            VStack(spacing: 18) {
+                StepDots(total: 3, current: 2)
+                VStack(spacing: 0) {
+                    progressRow("Signed in", done: true)
+                    progressRow("Looking for your alarm", done: false, detail: "Checking the subscription too")
+                }
+                .padding(.vertical, 4)
+                .themeCard()
+
+                Text("Signing in only proves the password. This checks the leg will actually work at six in the morning.")
+                    .font(.system(size: 14)).foregroundStyle(Theme.grey)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 10)
+        }
+    }
+
+    private var done: some View {
+        Screen(title: "Eight Sleep") {
+            VStack(spacing: 16) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 26, weight: .bold))
+                    .frame(width: 70, height: 70)
+                    .background(Theme.State.confirmed.opacity(0.14), in: Circle())
+                    .foregroundStyle(Theme.State.confirmed)
+                    .padding(.top, 40)
+
+                Text("Eight Sleep is linked").font(.system(size: 26, weight: .bold)).tracking(-0.6)
+                Text(result).font(.system(size: 15)).foregroundStyle(Theme.grey)
+                    .multilineTextAlignment(.center)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Left exactly as you set it").themeLabel(.white)
+                    Text("Your vibration, pattern and thermal settings are read from the server and sent back untouched.")
+                        .font(.system(size: 14)).foregroundStyle(.white.opacity(0.8))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(Theme.Ramp.card(for: .eightSleep),
+                            in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
+                .padding(.top, 8)
+            }
+        } footer: {
+            SolidButton(title: "Done") { dismiss() }
+        }
+    }
+
+    private func connect() async {
+        do {
+            try await store.eightSleep.signIn(email: email, password: password)
+            result = try await store.eightSleep.readiness()
+            password = ""
+            stage = .done
+        } catch {
+            failure = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
+            stage = .credentials
+        }
+        await store.refreshAuthStates()
+    }
+}
+
+// MARK: Whoop
+
+@MainActor
+struct WhoopLinkView: View {
+    @Environment(ScheduleStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    enum Stage { case warning, credentials, code, done }
+
+    @State private var stage: Stage = .warning
+    @State private var email = ""
+    @State private var password = ""
+    @State private var codeText = ""
+    @State private var prompt = ""
+    @State private var result = ""
+    @State private var failure: String?
+    @State private var busy = false
+
+    var body: some View {
+        switch stage {
+        case .warning: warning
+        case .credentials: credentials
+        case .code: code
+        case .done: done
+        }
+    }
+
+    /// This is a decision, not a step, so it gets a screen. Whoop's terms genuinely allow them to
+    /// act against the account, and that belongs before the password field rather than after.
+    private var warning: some View {
+        Screen(title: "Whoop", onBack: { dismiss() }) {
+            VStack(alignment: .leading, spacing: 16) {
+                StepDots(total: 4, current: 0).frame(maxWidth: .infinity)
+
+                Text("Read this before linking Whoop")
+                    .font(.system(size: 26, weight: .bold)).tracking(-0.6)
+                Text("This one is different from the other two, and you should decide with the facts.")
+                    .font(.system(size: 15)).foregroundStyle(Theme.grey)
+
+                VStack(spacing: 0) {
+                    caveat(Theme.State.failed, "Whoop offers no official way in",
+                           "OneAlarm uses the same private service their own app uses. Their terms let them act against an account doing this. Realistically that means your membership.")
+                    caveat(Theme.State.unconfirmed, "You will sign in again about monthly",
+                           "Their login expires roughly every thirty days and there is no way to warn you before it does.")
+                    caveat(Theme.State.unconfirmed, "Keep the Whoop app installed",
+                           "OneAlarm changes the alarm on Whoop's servers. Their app is what carries it to the band on your wrist.")
+                }
+                .padding(.vertical, 4)
+                .themeCard()
+
+                Notice("Your bed and your phone do not depend on this. Skipping Whoop costs you one nudge, nothing else.")
+            }
+        } footer: {
+            GhostButton(title: "I understand, link Whoop") { stage = .credentials }
+            QuietButton(title: "Skip Whoop") { dismiss() }
+        }
+    }
+
+    private func caveat(_ color: Color, _ title: String, _ body: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Circle().fill(color).frame(width: 7, height: 7).padding(.top, 6)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 14, weight: .semibold))
+                Text(body).font(.system(size: 13)).foregroundStyle(Theme.grey)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 15).padding(.vertical, 11)
+    }
+
+    private var credentials: some View {
+        Screen(title: "Whoop", onBack: { stage = .warning }) {
+            VStack(alignment: .leading, spacing: 14) {
+                StepDots(total: 4, current: 1).frame(maxWidth: .infinity)
+                Text("Sign in to Whoop").font(.system(size: 26, weight: .bold)).tracking(-0.6)
+                Text("Whoop will text you a code straight after.")
+                    .font(.system(size: 15)).foregroundStyle(Theme.grey)
+
+                CredentialField(placeholder: "Email", text: $email, secure: false)
+                CredentialField(placeholder: "Password", text: $password, secure: true)
+
+                if let failure { Notice(.bad, failure) }
+
+                Notice(title: "Your Whoop password is not kept.",
+                       "Once the code is confirmed, OneAlarm stores only the renewable token Whoop hands back, and forgets the password.")
+            }
+        } footer: {
+            SolidButton(title: "Send me a code", busy: busy,
+                        enabled: !email.isEmpty && !password.isEmpty) {
+                failure = nil
+                Task { await signIn() }
+            }
+        }
+    }
+
+    private var code: some View {
+        Screen(title: "Whoop", onBack: { stage = .credentials }) {
+            VStack(spacing: 16) {
+                StepDots(total: 4, current: 2)
+                Text("Enter the code Whoop texted you")
+                    .font(.system(size: 25, weight: .bold)).tracking(-0.6)
+                    .multilineTextAlignment(.center)
+                Text(prompt.isEmpty ? "It expires in about three minutes." : prompt)
+                    .font(.system(size: 15)).foregroundStyle(Theme.grey)
+                    .multilineTextAlignment(.center)
+
+                TextField("", text: $codeText)
+                    .keyboardType(.numberPad)
+                    .textContentType(.oneTimeCode)
+                    .multilineTextAlignment(.center)
+                    .font(Theme.numeral(30))
+                    .padding(.vertical, 14)
+                    .background(Theme.cardLift, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
+                    .padding(.top, 8)
+
+                if let failure { Notice(.bad, failure) }
+            }
+            .padding(.top, 8)
+        } footer: {
+            SolidButton(title: "Confirm", busy: busy, enabled: codeText.count >= 4) {
+                failure = nil
+                Task { await confirm() }
+            }
+        }
+    }
+
+    private var done: some View {
+        Screen(title: "Whoop") {
+            VStack(spacing: 16) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 26, weight: .bold))
+                    .frame(width: 70, height: 70)
+                    .background(Theme.State.confirmed.opacity(0.14), in: Circle())
+                    .foregroundStyle(Theme.State.confirmed)
+                    .padding(.top, 40)
+
+                Text("Whoop is linked").font(.system(size: 26, weight: .bold)).tracking(-0.6)
+                Text(result).font(.system(size: 15)).foregroundStyle(Theme.grey)
+                    .multilineTextAlignment(.center)
+
+                Notice(.warn, title: "Set a reminder for about a month from now.",
+                       "Whoop's login will expire and OneAlarm cannot warn you in advance.")
+                    .padding(.top, 8)
+            }
+        } footer: {
+            SolidButton(title: "Done") { dismiss() }
+        }
+    }
+
+    private func signIn() async {
+        busy = true
+        do {
+            // One attempt. Never a retry loop: repeated failures rate limit the auth endpoint.
+            switch try await store.whoop.signIn(email: email, password: password) {
+            case .signedIn:
+                result = try await store.whoop.readiness()
+                stage = .done
+            case .needsCode(let challenge):
+                prompt = challenge.prompt
+                stage = .code
+            }
+            password = ""
+        } catch {
+            failure = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
+        }
+        await store.refreshAuthStates()
+        busy = false
+    }
+
+    private func confirm() async {
+        busy = true
+        do {
+            try await store.whoop.submitCode(codeText)
+            result = try await store.whoop.readiness()
+            codeText = ""
+            stage = .done
+        } catch {
+            failure = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
+        }
+        await store.refreshAuthStates()
+        busy = false
+    }
+}
+
+// MARK: Shared
+
+@MainActor
+private struct CredentialField: View {
+    let placeholder: String
+    @Binding var text: String
+    let secure: Bool
+
+    var body: some View {
+        Group {
+            if secure {
+                SecureField(placeholder, text: $text).textContentType(.password)
+            } else {
+                TextField(placeholder, text: $text)
+                    .textContentType(.username)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+        }
+        .font(.system(size: 16))
+        .padding(15)
+        .background(Theme.cardLift, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
+    }
+}
+
+@MainActor
+private func progressRow(_ title: String, done: Bool, detail: String? = nil) -> some View {
+    HStack(spacing: 12) {
+        if done {
+            Image(systemName: "checkmark")
+                .font(.system(size: 11, weight: .bold))
+                .frame(width: 22, height: 22)
+                .background(Theme.State.confirmed.opacity(0.15), in: Circle())
+                .foregroundStyle(Theme.State.confirmed)
+        } else {
+            ProgressView().scaleEffect(0.7).frame(width: 22, height: 22).tint(Theme.grey)
+        }
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.system(size: 14, weight: .medium))
+            if let detail { Text(detail).font(.system(size: 12)).foregroundStyle(Theme.greyDim) }
+        }
+        Spacer()
+    }
+    .padding(.horizontal, 15).padding(.vertical, 11)
+}
