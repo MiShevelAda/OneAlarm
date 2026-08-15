@@ -231,33 +231,34 @@ final class WhoopMutationTests: XCTestCase {
         XCTAssertThrowsError(try WhoopAdapter.mutate(unreadable, to: target))
     }
 
-    /// The full body goes first because it assumes least: it is the server's own object with three
-    /// fields changed. Trimming is my judgement about what the server does not need, and judgement
-    /// is what has been wrong three times on this endpoint.
-    func testTheFullBodyIsTriedBeforeTheTrimmedOne() throws {
+    /// The domain body carries **only** the resource's own field names. Mixing them into the view
+    /// model is what happened the first time and it proved nothing: a body that is half screen
+    /// description and half resource has its own reason to be refused.
+    func testTheDomainBodyIsNotContaminatedByTheViewModel() throws {
+        let payload = WhoopAdapter.domainBody(serverSchedule, to: target)
+
+        XCTAssertEqual(payload["latest_wake_time"] as? String, "06:55:00")
+        XCTAssertEqual(payload["day_of_week_list"] as? [String], ["MONDAY", "WEDNESDAY"])
+        XCTAssertEqual(payload["enabled"] as? Bool, true)
+        XCTAssertEqual(payload["time_zone_offset"] as? String, "+0200")
+        // His choice, carried across rather than reset.
+        XCTAssertEqual(payload["alarm_mode"] as? String, "SLEEP_GOAL")
+
+        // Nothing the screen invented may appear here.
+        for key in ["scheduled_days", "alarm_on", "schedule_id", "alarm_mode_label_display",
+                    "days_scheduled_label_display"] {
+            XCTAssertNil(payload[key], "view model key \(key) leaked into the domain body")
+        }
+    }
+
+    func testTheDomainBodyIsTriedFirst() throws {
         let variants = try WhoopAdapter.variants(serverSchedule, to: target)
 
-        XCTAssertEqual(variants.map(\.0), ["full", "trimmed"])
-        XCTAssertEqual(variants[0].1["schedule_id"] as? String, "uuid-1")
-        XCTAssertNotNil(variants[0].1["alarm_mode_label_display"])
-        XCTAssertNil(variants[1].1["schedule_id"])
-        XCTAssertNil(variants[1].1["alarm_mode_label_display"])
+        XCTAssertEqual(variants.map(\.0), ["domain", "viewmodel"])
         // Both carry the change itself, or the second attempt would prove nothing.
         for (_, payload) in variants {
             XCTAssertEqual(payload["latest_wake_time"] as? String, "06:55:00")
         }
-    }
-
-    /// No second request when there is nothing to remove, since it would be the same body twice.
-    func testOnlyOneAttemptWhenTrimmingChangesNothing() throws {
-        let lean: [String: Any] = [
-            "alarm_on": true,
-            "scheduled_days": ["SUNDAY"],
-            "latest_wake_time": "7:45 am",
-            "alarm_mode": "SLEEP_GOAL",
-        ]
-
-        XCTAssertEqual(try WhoopAdapter.variants(lean, to: target).count, 1)
     }
 
     // MARK: Reading

@@ -481,19 +481,42 @@ actor WhoopAdapter: DeviceAdapter {
         return ordered.map(\.whoopName)
     }
 
-    /// The two body shapes worth trying, in the order that assumes least.
+    /// A body in the reference spec's field names, built from scratch rather than edited into the
+    /// view model.
     ///
-    /// First the server's own object with three fields changed and nothing removed. Then the same
-    /// with the identifier and the stale display strings taken out. Removing them was my judgement
-    /// call, not the server's instruction, and it is the judgement call most likely to be the
-    /// remaining 422: a read modify write that deletes fields is no longer a read modify write.
+    /// This is the correction to a wrong conclusion. When the GET came back with `scheduled_days`
+    /// and `alarm_on`, I declared the spec's `day_of_week_list`, `enabled`, `time_zone_offset` and
+    /// `sleep_goal` nonexistent. The envelope says otherwise: that GET returns
+    /// `delete_error_modal`, `schedule_button_component` and `should_show_overlay` alongside the
+    /// schedule, so it is a **rendered screen**, not the resource. Its `latest_wake_time` of
+    /// `"7:45 am"` is a display string, which is exactly why sending it back earned a parse error.
+    /// A view model and a domain object are allowed to disagree about names, and this pair does.
+    ///
+    /// The spec's names were never actually tried on their own: the first attempt set them **on
+    /// top of** the view model, so the body was half screen description and half resource. That is
+    /// its own reason for a 422 and it masked whether the names were right.
+    static func domainBody(_ schedule: [String: Any], to target: ResolvedTarget) -> [String: Any] {
+        var payload: [String: Any] = [:]
+        payload["latest_wake_time"] = target.localTime.hhmmss
+        payload["day_of_week_list"] = Locale.Weekday.displayOrder
+            .filter { target.weekdays.contains($0) }
+            .map(\.whoopName)
+        payload["enabled"] = true
+        payload["time_zone_offset"] = target.utcOffsetString
+        // Carried through from the view model, since these two are named the same on both sides and
+        // the mode is his choice rather than ours.
+        payload["alarm_mode"] = schedule["alarm_mode"] ?? "EXACT_TIME"
+        payload["sleep_goal"] = ""
+        return payload
+    }
+
+    /// The body shapes still worth a request, best hypothesis first.
+    ///
+    /// The view model echo, full and trimmed, has now been refused twice each. Sending it a third
+    /// time would cost a request and buy nothing, so it is down to one control rather than two.
     static func variants(_ schedule: [String: Any], to target: ResolvedTarget) throws -> [(String, [String: Any])] {
-        let echo = try Self.mutate(schedule, to: target)
-        let trimmed = Self.trimmed(echo)
-        // Identical when the schedule carried neither an id nor a label, so do not spend a request
-        // on the same body twice.
-        if trimmed.keys.count == echo.keys.count { return [("full", echo)] }
-        return [("full", echo), ("trimmed", trimmed)]
+        let trimmed = Self.trimmed(try Self.mutate(schedule, to: target))
+        return [("domain", Self.domainBody(schedule, to: target)), ("viewmodel", trimmed)]
     }
 
     /// What the server actually objected to, so the next fix is read rather than guessed.
