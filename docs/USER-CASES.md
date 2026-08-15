@@ -48,6 +48,30 @@ Three properties, and the third is the one that gets skipped:
    fires on a morning nobody chose. This is the failure mode that turns a convenience into an
    oversleep.
 
+## Three verbs, and they must never be confused with each other
+
+> *"So even if they would switch to use only one alarm, they still maybe want to have routines and
+> then maybe want to deviate from routines. So maybe to don't use the routine today, or maybe they
+> want to change the routine. So they used to wake up on Saturday, Sundays, they had a wake up alarm
+> for nine AM, but then they went out on Friday, and they want to wake up on Saturday instead of
+> nine AM. They want to sleep in until ten, but Sunday shouldn't be touched."*
+
+| Verb | Scope | Lasts | Sunday, in his example |
+|---|---|---|---|
+| **Change the routine** | every day the routine covers | until changed again | also moves to 10:00. Wrong here |
+| **Bend one date** | that date only | reverts by itself | stays 09:00. Correct |
+| **Skip one date** | that date only, no alarm at all | reverts by itself | stays 09:00 |
+
+**The override is keyed by a date, not by a weekday.** This is the distinction his example exists to
+make. A weekend routine covers Saturday and Sunday; he wants Saturday the 16th at 10:00 and Sunday
+untouched. Keyed by weekday, "change Saturday" would move every Saturday forever, which is the
+routine, not a deviation from it. Keyed by date, next Saturday is 09:00 again with no action.
+
+**Skip is a third verb, not an override to zero.** *"Don't use the routine today"* is a distinct
+intent: no alarm tomorrow, routine intact, back to normal the day after. It is what a day off looks
+like, and it needs to be one gesture from the main screen, because the alternative is disabling the
+routine and forgetting to re-enable it, which is the oversleep this whole document keeps circling.
+
 ## The case that changes the architecture
 
 > *"maybe she had this set on the whoop because she had an early travel"*
@@ -62,6 +86,16 @@ That is not hypothetical. **It already happened on the first night.** Turning on
 test rewrote his real Whoop schedule from Monday-to-Friday into every day, because the Whoop write
 replaces rather than merges. The app destroyed a setting its user had made, silently, and he found
 out by looking at the Whoop app for an unrelated reason.
+
+Alex on what the goal actually is:
+
+> *"It would be great that one alarm would be the sole author, but I think we need to also remember
+> that people will be using other apps."*
+
+So sole authorship is the **aim**, not the assumption. The app should be the place these alarms are
+set, and should behave as though it is, right up to the moment the evidence says otherwise. What it
+must never do is assume it was the last one to write and act on that assumption without checking.
+That is a cheap check: one read, which both legs already perform before every write.
 
 So the model has to change from **owner** to **participant**:
 
@@ -90,3 +124,8 @@ Questions the design must answer, and the current spec does not:
 5. On Whoop specifically, where a one night alarm requires disabling the recurring schedule, what is
    the safe sequence, and what happens if the app dies between the disable and the re-enable?
 6. What does "no alarm" look like as a chosen state rather than an unconfigured one?
+7. How are the three verbs offered without a menu? Changing the routine, bending one date and
+   skipping one date are different intents that all begin with the user looking at the same number
+   and wanting it to be different.
+8. A user moves between populations over time: day by day for a month, then routines, then back.
+   Nothing should have to be deleted or migrated for that to work.
