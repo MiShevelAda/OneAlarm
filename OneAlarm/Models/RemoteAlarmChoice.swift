@@ -17,6 +17,14 @@ struct RemoteAlarmChoice: Identifiable, Equatable, Sendable {
     let isEnabled: Bool
     /// Anything extra the service gives us, such as Whoop's wake mode.
     let detail: String?
+    /// The field names the service actually returned, shown only when parsing failed.
+    ///
+    /// Whoop's read shape is the least verified thing in this app: the reference work it was ported
+    /// from shipped no captured smart alarm response and its author hedged the shape in a comment.
+    /// When the parse comes back empty, guessing again is worse than showing what arrived.
+    var rawKeys: [String] = []
+
+    var parsedCleanly: Bool { time != nil }
 
     var timeLabel: String { time?.hhmm ?? "unknown time" }
 

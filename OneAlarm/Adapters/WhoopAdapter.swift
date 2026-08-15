@@ -303,7 +303,8 @@ actor WhoopAdapter: DeviceAdapter {
                 time: time,
                 weekdays: days,
                 isEnabled: (schedule["enabled"] as? Bool) ?? true,
-                detail: mode
+                detail: mode,
+                rawKeys: schedule.keys.sorted()
             )
         }
     }

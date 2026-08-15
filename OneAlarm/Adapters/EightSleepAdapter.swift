@@ -134,7 +134,8 @@ actor EightSleepAdapter: DeviceAdapter {
                 time: time,
                 weekdays: days,
                 isEnabled: (alarm["enabled"] as? Bool) ?? true,
-                detail: nil
+                detail: nil,
+                rawKeys: alarm.keys.sorted()
             )
         }
     }

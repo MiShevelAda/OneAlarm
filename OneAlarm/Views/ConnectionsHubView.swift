@@ -687,6 +687,14 @@ struct AlarmPickerScreen: View {
                     }
                 }
 
+                // Only when the parse failed. Nothing here is a credential: these are field names
+                // from an alarm schedule, and they are what turns a guess into a fix.
+                if let unparsed = choices.first(where: { !$0.parsedCleanly }) {
+                    Notice(.warn,
+                           title: "This account returned a shape OneAlarm did not recognise.",
+                           "Fields returned: " + unparsed.rawKeys.joined(separator: ", "))
+                }
+
                 Notice("You can change this later from Connections. Nothing else on the account is touched.")
             }
             .padding(.bottom, 20)
