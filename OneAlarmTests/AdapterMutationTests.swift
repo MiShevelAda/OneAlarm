@@ -122,18 +122,21 @@ final class WhoopMutationTests: XCTestCase {
         )
     }
 
-    /// The field names here are the ones a real Whoop account returned on 2026-08-15, read off the
-    /// diagnostic the picker shows when a parse comes back empty. They are not the ones the
-    /// reference spec named: `day_of_week_list`, `enabled`, `time_zone_offset` and `sleep_goal` do
-    /// not exist, and sending them earned a 422 on every write. Do not restore them from a document.
+    /// This is a real Whoop schedule, read off the diagnostic the picker showed on 2026-08-15. Two
+    /// things in it contradict the reference spec, and both cost a 422:
+    ///
+    /// The names. `day_of_week_list`, `enabled`, `time_zone_offset` and `sleep_goal` do not exist.
+    /// The format. The spec showed `"07:30:00"`; the account returns `"7:45 am"`.
+    ///
+    /// Do not restore either from a document. This fixture is the evidence.
     private var serverSchedule: [String: Any] {
         [
             "schedule_id": "uuid-1",
-            "alarm_on": false,
+            "alarm_on": true,
             "scheduled_days": ["SUNDAY"],
-            "latest_wake_time": "07:30:00",
-            "alarm_mode": "IN_THE_GREEN",
-            "alarm_mode_label_display": "In the green",
+            "latest_wake_time": "7:45 am",
+            "alarm_mode": "SLEEP_GOAL",
+            "alarm_mode_label_display": "Sleep goal",
             "days_scheduled_label_display": "Sun",
         ]
     }
@@ -141,9 +144,41 @@ final class WhoopMutationTests: XCTestCase {
     func testWakeTimeAndDaysAreReplaced() throws {
         let payload = try WhoopAdapter.mutate(serverSchedule, to: target)
 
-        XCTAssertEqual(payload["latest_wake_time"] as? String, "06:55:00")
+        XCTAssertEqual(payload["latest_wake_time"] as? String, "6:55 am")
         XCTAssertEqual(payload["scheduled_days"] as? [String], ["MONDAY", "WEDNESDAY"])
         XCTAssertEqual(payload["alarm_on"] as? Bool, true)
+    }
+
+    /// The one that was actually failing. A 12 hour value must not go back as a 24 hour one.
+    func testTheOutgoingTimeFormatMatchesTheIncomingOne() throws {
+        var padded = serverSchedule
+        padded["latest_wake_time"] = "07:45:00"
+        XCTAssertEqual(
+            try WhoopAdapter.mutate(padded, to: target)["latest_wake_time"] as? String,
+            "06:55:00"
+        )
+
+        var uppercase = serverSchedule
+        uppercase["latest_wake_time"] = "7:45AM"
+        XCTAssertEqual(
+            try WhoopAdapter.mutate(uppercase, to: target)["latest_wake_time"] as? String,
+            "6:55AM"
+        )
+
+        var afternoon = serverSchedule
+        afternoon["latest_wake_time"] = "1:15 pm"
+        let evening = ResolvedTarget(
+            device: .whoop,
+            localTime: WallClockTime(hour: 18, minute: 5),
+            weekdays: [.monday],
+            dayShift: 0,
+            nextOccurrence: Date(timeIntervalSince1970: 1_800_000_000),
+            utcOffsetSeconds: 7200
+        )
+        XCTAssertEqual(
+            try WhoopAdapter.mutate(afternoon, to: evening)["latest_wake_time"] as? String,
+            "6:05 pm"
+        )
     }
 
     /// This PUT replaces rather than merges, so the smart wake mode he chose in the Whoop app is
@@ -151,7 +186,15 @@ final class WhoopMutationTests: XCTestCase {
     func testSmartWakeModeSurvives() throws {
         let payload = try WhoopAdapter.mutate(serverSchedule, to: target)
 
-        XCTAssertEqual(payload["alarm_mode"] as? String, "IN_THE_GREEN")
+        XCTAssertEqual(payload["alarm_mode"] as? String, "SLEEP_GOAL")
+    }
+
+    /// JSON `true` and JSON `1` both arrive as `NSNumber` and both print as `1`, so a fixture cannot
+    /// be eyeballed to tell them apart. Whichever kind came in is the kind that goes back.
+    func testTheEnableFlagKeepsTheKindItArrivedAs() throws {
+        XCTAssertEqual(WhoopAdapter.encodeFlag(true, like: true) as? Bool, true)
+        XCTAssertEqual(WhoopAdapter.encodeFlag(true, like: 0) as? Int, 1)
+        XCTAssertEqual(WhoopAdapter.encodeFlag(true, like: nil) as? Bool, true)
     }
 
     func testIdentifiersAreNotEchoedIntoTheBody() throws {
@@ -198,6 +241,12 @@ final class WhoopMutationTests: XCTestCase {
         var missingWakeTime = serverSchedule
         missingWakeTime.removeValue(forKey: "latest_wake_time")
         XCTAssertThrowsError(try WhoopAdapter.mutate(missingWakeTime, to: target))
+
+        // Present but unreadable is the same refusal. A format we cannot parse is a format we
+        // cannot reproduce, and guessing one is what earned the 422 in the first place.
+        var unreadable = serverSchedule
+        unreadable["latest_wake_time"] = "quarter to eight"
+        XCTAssertThrowsError(try WhoopAdapter.mutate(unreadable, to: target))
     }
 
     // MARK: Reading
@@ -205,10 +254,32 @@ final class WhoopMutationTests: XCTestCase {
     func testWakeTimeIsParsedFromEitherShape() {
         XCTAssertEqual(WhoopAdapter.wakeTime(from: "07:30:00"), WallClockTime(hour: 7, minute: 30))
         XCTAssertEqual(WhoopAdapter.wakeTime(from: "07:30"), WallClockTime(hour: 7, minute: 30))
+        XCTAssertEqual(WhoopAdapter.wakeTime(from: "7:45 am"), WallClockTime(hour: 7, minute: 45))
+        XCTAssertEqual(WhoopAdapter.wakeTime(from: "7:45AM"), WallClockTime(hour: 7, minute: 45))
+        XCTAssertEqual(WhoopAdapter.wakeTime(from: "1:15 pm"), WallClockTime(hour: 13, minute: 15))
         XCTAssertEqual(WhoopAdapter.wakeTime(from: 450), WallClockTime(hour: 7, minute: 30))
         XCTAssertEqual(WhoopAdapter.wakeTime(from: 27_000), WallClockTime(hour: 7, minute: 30))
         XCTAssertNil(WhoopAdapter.wakeTime(from: "later"))
         XCTAssertNil(WhoopAdapter.wakeTime(from: nil))
+    }
+
+    /// Midnight and noon are where every naive 12 hour conversion breaks, and they are the two the
+    /// app is most likely to be asked for.
+    func testTheTwelveHourEdgesAreNotOffByTwelve() {
+        XCTAssertEqual(WhoopAdapter.wakeTime(from: "12:30 am"), WallClockTime(hour: 0, minute: 30))
+        XCTAssertEqual(WhoopAdapter.wakeTime(from: "12:30 pm"), WallClockTime(hour: 12, minute: 30))
+        // A bare 24 hour value carries no suffix and must be left exactly as it is.
+        XCTAssertEqual(WhoopAdapter.wakeTime(from: "13:30"), WallClockTime(hour: 13, minute: 30))
+
+        let sample = "7:45 am"
+        XCTAssertEqual(
+            WhoopAdapter.encodeWakeTime(WallClockTime(hour: 0, minute: 30), like: sample) as? String,
+            "12:30 am"
+        )
+        XCTAssertEqual(
+            WhoopAdapter.encodeWakeTime(WallClockTime(hour: 12, minute: 30), like: sample) as? String,
+            "12:30 pm"
+        )
     }
 
     func testDaysAreParsedFromEitherShape() {

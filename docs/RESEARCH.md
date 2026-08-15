@@ -340,23 +340,30 @@ The write, which is the whole point. It **replaces rather than merges**, so read
 
 ```http
 PUT https://api.prod.whoop.com/smart-alarm-bff/v1/schedule/{schedule_id}?apiVersion=7
-{"scheduled_days":["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"],
+{"scheduled_days":["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY"],
  "alarm_on":true,
- "latest_wake_time":"07:30:00",
- "alarm_mode":"IN_THE_GREEN"}
+ "latest_wake_time":"7:45 am",
+ "alarm_mode":"SLEEP_GOAL"}
 ```
 
 > **Corrected 2026-08-15 against a live account, and this is the only Whoop shape in this document
-> that was observed rather than ported.** What the reference project documented was
-> `sleep_goal`, `day_of_week_list`, `time_zone_offset` and `enabled`. Not one of those four exists.
-> Every write built from them returned **HTTP 422**. The real names, read off the schedule the
-> account returned, are `scheduled_days`, `alarm_on`, `latest_wake_time`, `alarm_mode`,
-> `schedule_id`, plus a set of server rendered `*_label_display` strings which describe the old time
-> and are stripped before the PUT. There is **no timezone field at all**, which is consistent with
-> Whoop storing a local wall clock and resolving the zone from the strap.
+> that was observed rather than ported.** The reference project documented `sleep_goal`,
+> `day_of_week_list`, `time_zone_offset` and `enabled`. Not one of those four exists. Every write
+> built from them returned **HTTP 422**. The real names, read off the schedule the account returned,
+> are `scheduled_days`, `alarm_on`, `latest_wake_time`, `alarm_mode`, `schedule_id`, plus a set of
+> server rendered `*_label_display` strings which describe the old time and are stripped before the
+> PUT. There is **no timezone field at all**, which is consistent with Whoop storing a local wall
+> clock and resolving the zone from the strap.
 >
-> The adapter now matches the type it was given rather than assuming one, because a spec wrong about
-> four names is not evidence about types either.
+> **The format was wrong too, and it was a second 422 on its own.** The reference showed
+> `"07:30:00"`. The account returns `"7:45 am"`: twelve hour, unpadded hour, lowercase suffix. Two
+> independent errors in one field is the reason the adapter no longer assumes anything about this
+> endpoint. It reads whatever arrives, records how it was punctuated, and writes it back in the same
+> shape, down to the space before the `am`.
+>
+> `alarm_mode` on this account is `SLEEP_GOAL`, which the reference did not list alongside
+> `IN_THE_GREEN`, `EXACT_TIME_PEAK` and `EXACT_TIME_OPTIMIZE_SLEEP`. It is carried through untouched
+> rather than validated against a list we now know to be incomplete.
 
 Semantics worth knowing before designing the UI:
 

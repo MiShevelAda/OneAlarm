@@ -382,12 +382,44 @@ actor WhoopAdapter: DeviceAdapter {
         return access
     }
 
+    /// How the string is punctuated, so a write can be sent back in the shape it arrived in.
+    ///
+    /// A wrong format in this field is indistinguishable from a wrong field name: both are a 422.
+    struct TimeFormat: Equatable {
+        var isTwelveHour = false
+        var uppercaseSuffix = false
+        var spaceBeforeSuffix = true
+        var hasSeconds = false
+        var padHour = true
+    }
+
     /// Tolerant of what Whoop might actually be sending, since the spec was wrong about the names
-    /// and is therefore not trustworthy about the types either.
+    /// and is therefore not trustworthy about the shape either.
+    ///
+    /// A real account returned `"7:45 am"`. The spec showed `"07:45:00"`. Both parse here, and
+    /// `format(of:)` records which one arrived so the write can match it.
     static func wakeTime(from value: Any?) -> WallClockTime? {
         if let text = value as? String {
-            let parts = text.split(separator: ":").compactMap { Int($0) }
-            if parts.count >= 2 { return WallClockTime(hour: parts[0], minute: parts[1]) }
+            let lower = text.lowercased()
+            let isPM = lower.contains("pm")
+            let isAM = lower.contains("am")
+            let digits = lower
+                .replacingOccurrences(of: "am", with: "")
+                .replacingOccurrences(of: "pm", with: "")
+                .trimmingCharacters(in: .whitespaces)
+
+            let parts = digits
+                .split(separator: ":")
+                .compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+
+            if parts.count >= 2 {
+                var hour = parts[0]
+                // Only apply the 12 hour rules when a suffix says to. A bare "13:30" must not be
+                // touched, and "12:30 am" is half past midnight, not half past noon.
+                if isPM, hour < 12 { hour += 12 }
+                if isAM, hour == 12 { hour = 0 }
+                return WallClockTime(hour: hour, minute: parts[1])
+            }
             // Could be an ISO instant rather than a wall clock.
             if let date = ISO8601DateFormatter.parseFlexible(text) {
                 let c = Calendar.current.dateComponents([.hour, .minute], from: date)
@@ -402,6 +434,67 @@ actor WhoopAdapter: DeviceAdapter {
             if raw < 86_400 { return WallClockTime(minutesSinceMidnight: raw / 60) }
         }
         return nil
+    }
+
+    static func format(of text: String) -> TimeFormat {
+        var format = TimeFormat()
+        let lower = text.lowercased()
+
+        if let range = lower.range(of: "am") ?? lower.range(of: "pm") {
+            format.isTwelveHour = true
+            format.uppercaseSuffix = text.contains("AM") || text.contains("PM")
+            let before = lower[lower.startIndex..<range.lowerBound]
+            format.spaceBeforeSuffix = before.last == " "
+        }
+
+        let digits = lower
+            .replacingOccurrences(of: "am", with: "")
+            .replacingOccurrences(of: "pm", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        format.hasSeconds = digits.filter { $0 == ":" }.count >= 2
+        format.padHour = digits.first == "0" || digits.split(separator: ":").first?.count == 2
+
+        return format
+    }
+
+    /// Rebuild the time in the format it arrived in.
+    static func encodeWakeTime(_ time: WallClockTime, like existing: Any?) -> Any {
+        guard let sample = existing as? String else {
+            // Numeric, so the units follow the same guess the reader made.
+            if let number = existing as? NSNumber, number.intValue >= 1440 {
+                return time.minutesSinceMidnight * 60
+            }
+            return time.minutesSinceMidnight
+        }
+
+        let format = Self.format(of: sample)
+        var hour = time.hour
+        var suffix = ""
+
+        if format.isTwelveHour {
+            hour = time.hour % 12 == 0 ? 12 : time.hour % 12
+            let word = time.hour < 12 ? "am" : "pm"
+            suffix = (format.spaceBeforeSuffix ? " " : "")
+                + (format.uppercaseSuffix ? word.uppercased() : word)
+        }
+
+        var body = format.padHour
+            ? String(format: "%02d:%02d", hour, time.minute)
+            : String(format: "%d:%02d", hour, time.minute)
+        if format.hasSeconds { body += ":00" }
+
+        return body + suffix
+    }
+
+    /// `true` as the same kind of value the server sent.
+    ///
+    /// JSON `true` and JSON `1` both arrive as `NSNumber` and both print as `1`, so the only way to
+    /// tell them apart is the CoreFoundation type. Sending the wrong one is another 422 candidate.
+    static func encodeFlag(_ flag: Bool, like existing: Any?) -> Any {
+        if let existing, CFGetTypeID(existing as AnyObject) != CFBooleanGetTypeID() {
+            return flag ? 1 : 0
+        }
+        return flag
     }
 
     static func days(from value: Any?) -> Set<Locale.Weekday> {
@@ -513,28 +606,28 @@ actor WhoopAdapter: DeviceAdapter {
     /// check against. If the two we depend on are not where we expect, the honest outcome is a
     /// refusal, not a write that silently resets the smart wake mode he chose.
     static func mutate(_ schedule: [String: Any], to target: ResolvedTarget) throws -> [String: Any] {
-        guard schedule["latest_wake_time"] != nil else {
+        // Reading it back is the gate, not merely finding the key. If we cannot parse the value we
+        // cannot reproduce its format either, and writing a format the server did not ask for is
+        // exactly the failure this whole function now exists to avoid.
+        guard let existing = schedule["latest_wake_time"], Self.wakeTime(from: existing) != nil else {
             throw AdapterError.unexpectedResponse(
-                "Whoop returned a schedule with no wake time, so it was not changed."
+                "Whoop returned a wake time OneAlarm could not read, so nothing was changed."
             )
         }
 
         var payload = schedule
 
-        // Match the type that arrived rather than assuming one. The field names here came from a
-        // real account, not from the reference spec, which named four fields Whoop has never heard
-        // of and got a 422 for every one.
-        if schedule["latest_wake_time"] is String {
-            payload["latest_wake_time"] = target.localTime.hhmmss
-        } else if schedule["latest_wake_time"] is NSNumber {
-            payload["latest_wake_time"] = target.localTime.minutesSinceMidnight
-        }
+        // Send back exactly the shape that arrived, down to the punctuation. The names here came
+        // from a real account, not from the reference spec, which named four fields Whoop has never
+        // heard of and got a 422 for every one. The same account returned "7:45 am" where the spec
+        // showed "07:45:00", so the format is no more trustworthy than the names were.
+        payload["latest_wake_time"] = Self.encodeWakeTime(target.localTime, like: existing)
 
         if schedule["scheduled_days"] != nil {
             payload["scheduled_days"] = Self.encodeDays(target.weekdays, like: schedule["scheduled_days"])
         }
-        if schedule["alarm_on"] != nil {
-            payload["alarm_on"] = true
+        if let flag = schedule["alarm_on"] {
+            payload["alarm_on"] = Self.encodeFlag(true, like: flag)
         }
 
         // Server rendered display strings. Sending stale ones back is at best noise and at worst
@@ -553,14 +646,17 @@ actor WhoopAdapter: DeviceAdapter {
             .filter { target.weekdays.contains($0) }
             .map(\.whoopName)
 
+        // A sketch, and it says so. The real body copies the format and the value types out of the
+        // schedule the server just returned, which this cannot see from here. The values are right,
+        // the punctuation may not be.
         var sketch: [String: Any] = [:]
-        sketch["latest_wake_time"] = target.localTime.hhmmss
+        sketch["latest_wake_time"] = target.localTime.hhmm
         sketch["scheduled_days"] = days
         sketch["alarm_on"] = true
 
         return WritePreview(
             device: .whoop,
-            summary: "Move the smart alarm ceiling to \(target.localTime.hhmm) local, keeping the wake mode you set in the Whoop app.",
+            summary: "Move the smart alarm ceiling to \(target.localTime.hhmm) local, keeping the wake mode you set in the Whoop app. The body is sent in whatever format the schedule came back in.",
             method: "PUT",
             url: "\(Self.host)/smart-alarm-bff/v1/schedule/{id}?apiVersion=7",
             body: HTTPClient.redactedPreview(
