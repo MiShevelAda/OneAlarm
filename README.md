@@ -18,19 +18,31 @@ wake time moves.
 | iPhone | T | The loud backstop that actually gets you up |
 | Apple Watch | T | Mirrors the iPhone alarm automatically, no integration work |
 
+## Getting started
+
+- **`BUILD.md`**: getting it onto your iPhone. Three routes, including one with no Mac at all.
+- **`CONNECT.md`**: connecting the iPhone, Eight Sleep and Whoop, and what to do in each app first.
+
 ## Status
 
-Pre-implementation. Phase 0 research and the Phase 1 plan are in `docs/`. Nothing is built yet.
+**Built. Never compiled.** A complete Xcode project: open it, set your Apple ID as the signing team,
+press play. It was written on a Linux machine with no Swift compiler and no Xcode, so no compiler
+has seen it yet. Expect a build error or two and send over the first one.
+
+The iPhone leg needs no credentials, no network and no accounts, so it works the moment it installs.
 
 - `docs/RESEARCH.md`: pinned versions, endpoint specs, citations
-- `docs/PLAN.md`: architecture, agent roster, sequencing, definition of done
-- `docs/STATUS.md`: running build progress, once Phase 2 starts
+- `docs/PLAN.md`: architecture, sequencing, definition of done
+- `docs/STATUS.md`: what works, what needs you, what was deliberately left out
 
-## This app cannot ship on the App Store
+## Where this can and cannot go
 
-Two of the three integrations talk to private, reverse-engineered APIs. Apple will reject that.
-The target is a personal developer build, signed with a personal Apple Developer account and
-installed on one device. Nothing here is designed for distribution, and it should not be.
+It uses no private Apple APIs. AlarmKit is a published Apple framework, so a personal build and
+TestFlight internal testing are both genuinely open routes, and `BUILD.md` covers them.
+
+What it does use is Whoop's and Eight Sleep's own internal web services, which is a question about
+their terms rather than Apple's technical rules. That is why this is a personal, single account
+build and why it should not be published to the public App Store.
 
 ## Ground rules for anyone working on this
 

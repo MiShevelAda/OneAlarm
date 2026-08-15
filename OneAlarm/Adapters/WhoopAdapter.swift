@@ -230,6 +230,31 @@ actor WhoopAdapter: DeviceAdapter {
         authState = .connected
     }
 
+    /// Same idea as the Eight Sleep check, and it matters more here. Whoop has three separate
+    /// enable switches and a schedule shape nobody has fully captured, so "signed in" is a long way
+    /// from "the strap will buzz". Finding that out now beats finding it out by oversleeping.
+    func readiness() async throws -> String {
+        let schedules = try await fetchSchedules()
+        guard let first = schedules.first else {
+            throw AdapterError.noAlarmToUpdate
+        }
+        // Fail here rather than at write time if the shape is not what the adapter can safely edit.
+        _ = try Self.mutate(first, to: ResolvedTarget(
+            device: .whoop,
+            localTime: WallClockTime(hour: 7, minute: 0),
+            weekdays: [.monday],
+            dayShift: 0,
+            nextOccurrence: Date(),
+            utcOffsetSeconds: TimeZone.current.secondsFromGMT()
+        ))
+
+        let time = (first["latest_wake_time"] as? String).map { String($0.prefix(5)) } ?? "an existing alarm"
+        let mode = (first["alarm_mode"] as? String) ?? "your chosen mode"
+        return schedules.count > 1
+            ? "Connected. Found \(schedules.count) schedules and will move the first, currently \(time) on \(mode)."
+            : "Connected. Found your smart alarm, currently \(time) on \(mode)."
+    }
+
     func signOut() {
         try? keychain.delete(.whoopEmail)
         try? keychain.delete(.whoopPassword)

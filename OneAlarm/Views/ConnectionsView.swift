@@ -105,7 +105,8 @@ struct ConnectionsView: View {
         do {
             try await store.eightSleep.signIn(email: eightSleepEmail, password: eightSleepPassword)
             eightSleepPassword = ""
-            message = "Eight Sleep connected."
+            // Signing in only proves the password. This proves the leg will actually work.
+            message = try await store.eightSleep.readiness()
         } catch {
             message = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
         }
@@ -178,7 +179,7 @@ struct ConnectionsView: View {
             whoopPassword = ""
             switch outcome {
             case .signedIn:
-                message = "Whoop connected."
+                message = try await store.whoop.readiness()
             case .needsCode(let challenge):
                 whoopNeedsCode = true
                 whoopCodePrompt = challenge.prompt
@@ -197,7 +198,7 @@ struct ConnectionsView: View {
             try await store.whoop.submitCode(whoopCode)
             whoopCode = ""
             whoopNeedsCode = false
-            message = "Whoop connected."
+            message = try await store.whoop.readiness()
         } catch {
             message = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
         }

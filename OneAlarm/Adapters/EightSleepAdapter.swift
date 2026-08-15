@@ -97,6 +97,22 @@ actor EightSleepAdapter: DeviceAdapter {
         }
     }
 
+    /// Answers "is this leg actually going to work at 6am", at connect time rather than at 6am.
+    ///
+    /// Signing in only proves the password is right. It does not prove the subscription is active,
+    /// and it does not prove there is an alarm to move. Both of those fail later, in the dark, when
+    /// nothing is watching. So they are checked here, while somebody is looking at the screen.
+    func readiness() async throws -> String {
+        let alarms = try await fetchAlarms()
+        guard let first = alarms.first else {
+            throw AdapterError.noAlarmToUpdate
+        }
+        let time = (first["time"] as? String).map { String($0.prefix(5)) } ?? "an existing alarm"
+        return alarms.count > 1
+            ? "Connected. Found \(alarms.count) alarms and will move the first, currently \(time)."
+            : "Connected. Found your alarm, currently \(time)."
+    }
+
     func signOut() {
         try? keychain.delete(.eightSleepEmail)
         try? keychain.delete(.eightSleepPassword)

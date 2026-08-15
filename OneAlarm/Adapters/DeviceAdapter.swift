@@ -32,7 +32,9 @@ enum AdapterError: LocalizedError, Equatable {
         case .rateLimited:
             return "Too many requests. Waiting before trying again."
         case .noAlarmToUpdate:
-            return "No existing alarm was found to update."
+            // Actionable on purpose. OneAlarm moves an alarm you already have rather than creating
+            // one, so "none found" is a thing you can fix in thirty seconds if the message says how.
+            return "No alarm found to move. Create one alarm in the device's own app first, then connect again."
         case .unexpectedResponse(let detail):
             return "Unexpected response. \(detail)"
         case .transport(let detail):
