@@ -1,0 +1,910 @@
+<title>OneAlarm Prototype</title>
+<style>
+/* ===========================================================================
+   OneAlarm, design language
+
+   Drawn from real screenshots of both apps rather than from memory.
+
+   From Eight Sleep: a pure black ground, and gradient cards as the signature
+   device. Their Nap card runs cool blue, Rapid Cooling runs warm orange. That
+   scale is not decoration, it is what the machine physically does, and it maps
+   exactly onto this product: the bed is working at T minus 10, the loud alarm
+   fires at T. So the cascade is rendered on a thermal gradient.
+   Also theirs: sentence case headings, uppercase only for micro labels, a
+   floating pill tab bar, glassy translucent panels.
+
+   From Whoop: uppercase labels at wide tracking, huge bold numerals, thin
+   outlined pills, hatched bars for spans, dashed markers for a target range,
+   and mint green as the single state colour.
+
+   Single theme on purpose. Both apps are black-only and an alarm app is used in
+   a dark room. Every colour is painted explicitly so the page holds on any host.
+   =========================================================================== */
+:root {
+  --black: #000000;
+  --card: #0D0F12;
+  --card-lift: #16191F;
+  --line: rgba(255,255,255,.09);
+  --line-strong: rgba(255,255,255,.22);
+
+  --white: #FFFFFF;
+  --grey: #8B9299;        /* cool grey, both apps use this for labels */
+  --grey-dim: #5A6067;
+
+  --mint: #00E58F;        /* Whoop, on and confirmed */
+  --coral: #FF5A5A;       /* Eight Sleep, incomplete and failed */
+  --amber: #F0A63C;       /* accepted but unconfirmed */
+  --optimal: #7FA8C9;     /* Whoop's dashed target range blue */
+
+  --cool-lit: #6FA8DC;    /* Eight Sleep cool gradient, light end */
+  --cool-deep: #0A2136;
+  --mid-lit: #4C6B8A;
+  --mid-deep: #10161F;
+  --warm-lit: #F0763C;    /* Eight Sleep warm gradient, bright end */
+  --warm-deep: #2E0E10;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: #08090B;
+  color: var(--white);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Phone frame ------------------------------------------------------- */
+.stage { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 0; }
+.phone {
+  position: relative;
+  width: 100%; max-width: 26.9rem;
+  height: 100vh; max-height: 58rem;
+  background: var(--black);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+@media (min-width: 30rem) {
+  .stage { padding: 1.5rem; }
+  .phone { border-radius: 2.6rem; border: 1px solid #23262C; box-shadow: 0 30px 80px rgba(0,0,0,.7); }
+}
+
+.statusbar {
+  flex: none; height: 3rem;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 1.6rem; font-size: .87rem; font-weight: 600;
+  letter-spacing: -.01em;
+}
+.statusbar .right { display: flex; gap: .35rem; align-items: center; font-size: .78rem; }
+
+.screen { flex: 1; overflow-y: auto; overflow-x: hidden; display: none; flex-direction: column; }
+.screen.on { display: flex; }
+.pad { padding: 0 1.35rem; }
+.grow { flex: 1; }
+
+/* ---- Type -------------------------------------------------------------- */
+/* Whoop's most identifiable move: uppercase, wide tracking, small, grey. */
+.label {
+  font-size: .69rem; font-weight: 600; letter-spacing: .15em;
+  text-transform: uppercase; color: var(--grey); margin: 0;
+}
+.label.on-white { color: var(--white); }
+
+/* Eight Sleep headings are sentence case and large. */
+h1 { font-size: 2.05rem; font-weight: 700; letter-spacing: -.028em; line-height: 1.12; margin: 0 0 .7rem; text-wrap: balance; }
+h2 { font-size: 1.32rem; font-weight: 600; letter-spacing: -.02em; margin: 0 0 .55rem; }
+p  { font-size: 1rem; line-height: 1.5; color: var(--grey); margin: 0 0 1rem; }
+p.bright { color: var(--white); }
+small { font-size: .8rem; line-height: 1.45; color: var(--grey-dim); display: block; }
+
+/* Both apps lean on very large numerals. */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700; letter-spacing: -.035em;
+}
+.num-xl { font-size: 3.3rem; line-height: 1; }
+.num-l  { font-size: 2rem; line-height: 1; }
+.num-m  { font-size: 1.45rem; line-height: 1; }
+
+.centre { text-align: center; }
+
+/* ---- Screen header ----------------------------------------------------- */
+.topbar {
+  flex: none; display: grid; grid-template-columns: 2.5rem 1fr 2.5rem;
+  align-items: center; padding: .3rem 1.35rem 1.1rem;
+}
+.topbar .label { text-align: center; letter-spacing: .16em; color: var(--white); }
+.icon-btn {
+  width: 2.2rem; height: 2.2rem; border-radius: 50%;
+  border: 0; background: transparent; color: var(--white);
+  font-size: 1.15rem; cursor: pointer; display: grid; place-items: center;
+  font-family: inherit;
+}
+.icon-btn.ring { border: 1px solid var(--line-strong); font-size: .9rem; }
+
+/* ---- Cards ------------------------------------------------------------- */
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 1.15rem; padding: 1.05rem 1.1rem;
+}
+.card + .card { margin-top: .75rem; }
+.card-flush { padding: 0; overflow: hidden; }
+
+/* Eight Sleep's signature. The cascade rides this scale. */
+.grad { border-radius: 1.15rem; padding: 1.05rem 1.1rem; border: 1px solid var(--line); position: relative; overflow: hidden; }
+.grad.cool { background: linear-gradient(100deg, var(--cool-lit) -25%, var(--cool-deep) 62%, #05101B 100%); }
+.grad.mid  { background: linear-gradient(100deg, var(--mid-lit) -30%, var(--mid-deep) 60%, #080B10 100%); }
+.grad.warm { background: linear-gradient(100deg, var(--warm-deep) 0%, #7A2416 42%, var(--warm-lit) 118%); }
+.grad.flat { background: var(--card); }
+
+/* ---- Buttons ----------------------------------------------------------- */
+.btn {
+  display: block; width: 100%; text-align: center; cursor: pointer;
+  font-family: inherit; font-size: .95rem; font-weight: 600;
+  padding: 1.02rem 1rem; border-radius: 999px; border: 0;
+  letter-spacing: -.01em;
+}
+.btn-solid { background: var(--white); color: #000; }        /* Eight Sleep */
+.btn-ghost {                                                  /* Whoop */
+  background: transparent; color: var(--white);
+  border: 1.5px solid var(--white);
+  text-transform: uppercase; letter-spacing: .13em;
+  font-size: .78rem; font-weight: 700;
+}
+.btn-quiet { background: rgba(255,255,255,.09); color: var(--white); }
+.btn-danger { background: transparent; color: var(--coral); border: 1.5px solid rgba(255,90,90,.45); }
+.btn:disabled { opacity: .35; }
+.btn + .btn { margin-top: .6rem; }
+.btnbar { flex: none; padding: 1rem 1.35rem 1.7rem; background: linear-gradient(to top, #000 62%, transparent); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: .32rem;
+  padding: .36rem .68rem; border-radius: 999px;
+  border: 1px solid var(--line); background: rgba(255,255,255,.04);
+  font-size: .76rem; color: var(--white); font-weight: 500;
+}
+.chip.dim { color: var(--grey); }
+.chip.alert { color: var(--coral); border-color: rgba(255,90,90,.3); background: rgba(255,90,90,.1); font-weight: 600; }
+.chips { display: flex; gap: .4rem; flex-wrap: wrap; }
+
+/* ---- Toggle ------------------------------------------------------------ */
+.sw {
+  width: 3.1rem; height: 1.85rem; border-radius: 999px; border: 0;
+  background: rgba(255,255,255,.17); position: relative; cursor: pointer; flex: none;
+  transition: background .18s;
+}
+.sw::after {
+  content: ""; position: absolute; top: .19rem; left: .19rem;
+  width: 1.47rem; height: 1.47rem; border-radius: 50%; background: #fff;
+  transition: transform .18s;
+}
+.sw[aria-pressed="true"] { background: var(--mint); }
+.sw[aria-pressed="true"]::after { transform: translateX(1.25rem); }
+
+/* ---- Rows -------------------------------------------------------------- */
+.row {
+  display: flex; align-items: center; gap: .85rem;
+  padding: 1rem 1.1rem; border-bottom: 1px solid var(--line);
+}
+.row:last-child { border-bottom: 0; }
+.row .body { flex: 1; min-width: 0; }
+.row .name { font-size: .98rem; font-weight: 600; letter-spacing: -.01em; }
+.row .sub { font-size: .8rem; color: var(--grey); margin-top: .1rem; }
+.tile {
+  width: 2.5rem; height: 2.5rem; border-radius: .62rem; flex: none;
+  display: grid; place-items: center; font-size: 1.15rem;
+  background: var(--card-lift); border: 1px solid var(--line);
+}
+
+/* ---- Status ------------------------------------------------------------ */
+.dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; display: inline-block; }
+.dot.ok { background: var(--mint); }
+.dot.warn { background: var(--amber); }
+.dot.bad { background: var(--coral); }
+.dot.idle { background: var(--grey-dim); }
+.state { display: flex; align-items: center; gap: .42rem; font-size: .78rem; font-weight: 600; }
+.state.ok { color: var(--mint); }
+.state.warn { color: var(--amber); }
+.state.bad { color: var(--coral); }
+.state.idle { color: var(--grey); }
+
+.check { width: 1.45rem; height: 1.45rem; border-radius: 50%; background: rgba(0,229,143,.15); color: var(--mint); display: grid; place-items: center; font-size: .8rem; flex: none; font-weight: 700; }
+
+/* ---- Whoop devices ----------------------------------------------------- */
+/* Their hatched span bar and dashed target range, reused for the wake window. */
+.hatch {
+  height: 1.5rem; border-radius: .18rem;
+  background: repeating-linear-gradient(-45deg, rgba(255,255,255,.19) 0 .18rem, transparent .18rem .42rem);
+  border-left: 2px solid #fff; border-right: 2px solid #fff;
+  position: relative;
+}
+.hatch-pill {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  background: #000; border: 1.5px solid #fff; border-radius: 999px;
+  padding: .16rem .62rem; font-size: .78rem; font-weight: 700;
+}
+.dashed-range { border-top: 1px dashed var(--optimal); color: var(--optimal); font-size: .68rem;
+  letter-spacing: .13em; text-transform: uppercase; font-weight: 600; text-align: center; padding-top: .3rem; }
+
+/* ---- Cascade ----------------------------------------------------------- */
+.cascade { display: flex; flex-direction: column; gap: .6rem; }
+.leg { display: grid; grid-template-columns: auto 1fr auto; gap: .9rem; align-items: center; }
+.leg .time { font-size: 1.9rem; }
+.leg.off { opacity: .38; }
+.leg-meta { display: flex; align-items: center; gap: .5rem; margin-top: .3rem; flex-wrap: wrap; }
+.badge {
+  font-size: .6rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  padding: .16rem .42rem; border-radius: .25rem;
+  background: rgba(240,166,60,.16); color: var(--amber);
+}
+.rail { width: .2rem; border-radius: 999px; align-self: stretch; min-height: 3.4rem; }
+.rail.cool { background: linear-gradient(var(--cool-lit), var(--cool-deep)); }
+.rail.mid  { background: linear-gradient(var(--mid-lit), var(--mid-deep)); }
+.rail.warm { background: linear-gradient(var(--warm-lit), var(--warm-deep)); }
+
+/* ---- Inputs ------------------------------------------------------------ */
+.field { margin-bottom: .7rem; }
+.field input {
+  width: 100%; font-family: inherit; font-size: 1rem; color: #fff;
+  background: var(--card-lift); border: 1px solid var(--line);
+  border-radius: .72rem; padding: .95rem 1rem;
+}
+.field input::placeholder { color: var(--grey-dim); }
+.code {
+  display: flex; gap: .5rem; justify-content: center; margin: 1.4rem 0;
+}
+.code span {
+  width: 2.85rem; height: 3.5rem; border-radius: .6rem;
+  background: var(--card-lift); border: 1px solid var(--line);
+  display: grid; place-items: center; font-size: 1.5rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.code span.filled { border-color: var(--white); }
+
+/* ---- Notices ----------------------------------------------------------- */
+.notice { border-radius: .8rem; padding: .8rem .9rem; font-size: .85rem; line-height: 1.45; border: 1px solid var(--line); background: var(--card); color: var(--grey); }
+.notice.warn { border-color: rgba(240,166,60,.34); background: rgba(240,166,60,.09); color: #EBC48A; }
+.notice.bad { border-color: rgba(255,90,90,.34); background: rgba(255,90,90,.08); color: #F4A3A3; }
+.notice.good { border-color: rgba(0,229,143,.3); background: rgba(0,229,143,.07); color: #86EDC4; }
+.notice b { color: #fff; font-weight: 600; }
+
+.spinner {
+  width: 1.05rem; height: 1.05rem; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.22); border-top-color: #fff;
+  animation: spin .8s linear infinite; flex: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } * { transition: none !important; } }
+
+/* ---- Progress dots (link flows) ---------------------------------------- */
+.steps { display: flex; gap: .3rem; justify-content: center; padding-bottom: 1rem; }
+.steps i { width: 1.35rem; height: .16rem; border-radius: 999px; background: rgba(255,255,255,.18); }
+.steps i.on { background: #fff; }
+
+/* ---- Tab bar (Eight Sleep's floating pill) ----------------------------- */
+.tabbar {
+  flex: none; margin: 0 auto 1.15rem; display: flex; gap: .25rem;
+  background: rgba(28,30,35,.92); border: 1px solid var(--line);
+  border-radius: 999px; padding: .3rem;
+}
+.tabbar button {
+  border: 0; background: transparent; color: var(--grey);
+  padding: .6rem 1.5rem; border-radius: 999px; font-size: 1rem; cursor: pointer; font-family: inherit;
+}
+.tabbar button.on { background: rgba(255,255,255,.11); color: #fff; }
+
+/* ---- Screen index ------------------------------------------------------ */
+.indexbtn {
+  position: fixed; right: .8rem; bottom: .8rem; z-index: 50;
+  background: #fff; color: #000; border: 0; border-radius: 999px;
+  padding: .6rem 1rem; font-size: .78rem; font-weight: 700; cursor: pointer;
+  font-family: inherit; letter-spacing: .04em;
+}
+.sheet {
+  position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.86);
+  display: none; overflow-y: auto; padding: 2rem 1.2rem 6rem;
+}
+.sheet.on { display: block; }
+.sheet h2 { color: #fff; }
+.sheet .grp { margin-bottom: 1.3rem; }
+.sheet button {
+  display: block; width: 100%; text-align: left; margin-bottom: .3rem;
+  background: var(--card); border: 1px solid var(--line); color: #fff;
+  border-radius: .55rem; padding: .62rem .8rem; font-size: .87rem; cursor: pointer; font-family: inherit;
+}
+:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+</style>
+
+<div class="stage">
+<div class="phone">
+  <div class="statusbar">
+    <span>6:12</span>
+    <span class="right">▁▃▅ 5G <span style="border:1px solid rgba(255,255,255,.5);border-radius:.2rem;padding:0 .22rem;font-size:.66rem">87</span></span>
+  </div>
+
+  <!-- ============ 1. WELCOME ============ -->
+  <section class="screen on" id="s-welcome">
+    <div class="pad grow" style="display:flex;flex-direction:column;justify-content:center;padding-bottom:2rem">
+      <p class="label" style="margin-bottom:1.1rem">OneAlarm</p>
+      <h1>You set the same alarm three times. Stop.</h1>
+      <p>One wake time. Your bed, your band and your phone all follow it. Move it once and everything
+      recomputes.</p>
+
+      <div class="card" style="margin-top:1.4rem">
+        <div class="row" style="padding:.55rem 0">
+          <span class="rail cool" style="min-height:2.1rem"></span>
+          <div class="body"><div class="name">Eight Sleep</div><div class="sub">Ten minutes early, so the bed has time</div></div>
+        </div>
+        <div class="row" style="padding:.55rem 0">
+          <span class="rail mid" style="min-height:2.1rem"></span>
+          <div class="body"><div class="name">Whoop</div><div class="sub">Five minutes early, a haptic nudge</div></div>
+        </div>
+        <div class="row" style="padding:.55rem 0">
+          <span class="rail warm" style="min-height:2.1rem"></span>
+          <div class="body"><div class="name">iPhone and Watch</div><div class="sub">On the minute, and loud</div></div>
+        </div>
+      </div>
+      <small style="margin-top:1.1rem">No account. Nothing to sign up for. Your passwords stay on this phone.</small>
+    </div>
+    <div class="btnbar">
+      <button class="btn btn-solid" onclick="go('s-permission')">Get started</button>
+    </div>
+  </section>
+
+  <!-- ============ 2. PERMISSION ============ -->
+  <section class="screen" id="s-permission">
+    <div class="topbar"><span></span><p class="label">Step 1 of 2</p><span></span></div>
+    <div class="pad grow">
+      <div class="centre" style="padding:1.5rem 0 2rem">
+        <div style="width:5rem;height:5rem;border-radius:50%;border:1.5px solid var(--line-strong);display:grid;place-items:center;margin:0 auto 1.6rem;font-size:1.9rem">⏰</div>
+        <h1 style="font-size:1.75rem">The one that actually wakes you</h1>
+        <p>iOS will ask permission next. OneAlarm needs it to set a real system alarm, which is the
+        only kind that rings through Silent mode and a Focus.</p>
+      </div>
+      <div class="card">
+        <div class="row" style="padding:.7rem 0"><span class="check">✓</span><div class="body"><div class="name" style="font-size:.9rem">Rings on Silent and through Focus</div></div></div>
+        <div class="row" style="padding:.7rem 0"><span class="check">✓</span><div class="body"><div class="name" style="font-size:.9rem">Shows on the Lock Screen and Dynamic Island</div></div></div>
+        <div class="row" style="padding:.7rem 0"><span class="check">✓</span><div class="body"><div class="name" style="font-size:.9rem">Lands on your Apple Watch automatically</div></div></div>
+        <div class="row" style="padding:.7rem 0"><span class="check">✓</span><div class="body"><div class="name" style="font-size:.9rem">Works with no accounts connected at all</div></div></div>
+      </div>
+    </div>
+    <div class="btnbar">
+      <button class="btn btn-solid" onclick="go('s-hub')">Allow alarms</button>
+      <button class="btn btn-quiet" onclick="go('s-permission-denied')">Show me the denied state</button>
+    </div>
+  </section>
+
+  <!-- ============ 2b. PERMISSION DENIED ============ -->
+  <section class="screen" id="s-permission-denied">
+    <div class="topbar"><button class="icon-btn" onclick="go('s-permission')">‹</button><p class="label">Alarm permission</p><span></span></div>
+    <div class="pad grow">
+      <div class="notice bad" style="margin-bottom:1.3rem">
+        <b>Alarms are turned off for OneAlarm.</b><br>Without this the app can still show you the plan, but nothing will ring.
+      </div>
+      <h2>Turning it back on</h2>
+      <div class="card">
+        <div class="row" style="padding:.72rem 0"><span class="tile" style="font-size:.85rem">1</span><div class="body"><div class="name" style="font-size:.9rem">Open Settings</div></div></div>
+        <div class="row" style="padding:.72rem 0"><span class="tile" style="font-size:.85rem">2</span><div class="body"><div class="name" style="font-size:.9rem">Tap Apps, then OneAlarm</div></div></div>
+        <div class="row" style="padding:.72rem 0"><span class="tile" style="font-size:.85rem">3</span><div class="body"><div class="name" style="font-size:.9rem">Turn on Alarms</div></div></div>
+      </div>
+    </div>
+    <div class="btnbar">
+      <button class="btn btn-solid" onclick="go('s-hub')">Open Settings</button>
+      <button class="btn btn-quiet" onclick="go('s-hub')">Later</button>
+    </div>
+  </section>
+
+  <!-- ============ 3. CONNECT HUB ============ -->
+  <section class="screen" id="s-hub">
+    <div class="topbar"><button class="icon-btn" onclick="go('s-cascade')">✕</button><p class="label">Connections</p><span></span></div>
+    <div class="pad grow">
+      <h1 style="font-size:1.6rem">Link your devices</h1>
+      <p>Both are optional. The iPhone alarm already works.</p>
+
+      <div class="card card-flush" style="margin-top:1.2rem">
+        <div class="row">
+          <span class="tile">📱</span>
+          <div class="body"><div class="name">iPhone and Watch</div><div class="sub">No account needed</div></div>
+          <span class="state ok"><span class="dot ok"></span>Ready</span>
+        </div>
+        <div class="row" onclick="go('s-es-prereq')" style="cursor:pointer">
+          <span class="tile">🛏️</span>
+          <div class="body"><div class="name">Eight Sleep</div><div class="sub">Warms the bed before you wake</div></div>
+          <span class="state idle">Connect ›</span>
+        </div>
+        <div class="row" onclick="go('s-whoop-warning')" style="cursor:pointer">
+          <span class="tile">⌚</span>
+          <div class="body"><div class="name">Whoop</div><div class="sub">Haptic wake window</div></div>
+          <span class="state idle">Connect ›</span>
+        </div>
+      </div>
+
+      <p class="label" style="margin:1.6rem 0 .6rem">Once connected</p>
+      <div class="card card-flush">
+        <div class="row">
+          <span class="tile">🛏️</span>
+          <div class="body"><div class="name">Eight Sleep</div><div class="sub">Alarm found, currently 07:00</div></div>
+          <span class="state ok"><span class="dot ok"></span>Linked</span>
+        </div>
+        <div class="row">
+          <span class="tile">⌚</span>
+          <div class="body"><div class="name">Whoop</div><div class="sub">Sign in again to keep it working</div></div>
+          <span class="state warn"><span class="dot warn"></span>Attention</span>
+        </div>
+      </div>
+      <small style="margin-top:.9rem">Passwords are kept in the iPhone Keychain, tied to this device. They are never backed up and never copied to another phone.</small>
+    </div>
+    <div class="btnbar"><button class="btn btn-solid" onclick="go('s-cascade')">Done</button></div>
+  </section>
+
+  <!-- ============ 4. EIGHT SLEEP: PREREQUISITE ============ -->
+  <section class="screen" id="s-es-prereq">
+    <div class="topbar"><button class="icon-btn" onclick="go('s-hub')">‹</button><p class="label">Eight Sleep</p><span></span></div>
+    <div class="steps"><i class="on"></i><i></i><i></i></div>
+    <div class="pad grow">
+      <div class="grad cool" style="margin-bottom:1.3rem">
+        <p class="label on-white" style="margin-bottom:.5rem">Before you start</p>
+        <h2 style="margin-bottom:.35rem">You need one alarm in the Eight Sleep app</h2>
+        <p style="color:rgba(255,255,255,.82);margin:0">Any time. OneAlarm will move it.</p>
+      </div>
+      <h2>Why it works this way</h2>
+      <p>OneAlarm changes the alarm you already have rather than creating a new one. That keeps your
+      vibration, thermal and level settings exactly as you set them, because it never has to guess
+      what they should be.</p>
+      <div class="notice">Open the Eight Sleep app, make sure one alarm exists, then come back.</div>
+    </div>
+    <div class="btnbar">
+      <button class="btn btn-solid" onclick="go('s-es-cred')">I have an alarm set</button>
+      <button class="btn btn-quiet" onclick="go('s-hub')">Not yet</button>
+    </div>
+  </section>
+
+  <!-- ============ 4b. EIGHT SLEEP: CREDENTIALS ============ -->
+  <section class="screen" id="s-es-cred">
+    <div class="topbar"><button class="icon-btn" onclick="go('s-es-prereq')">‹</button><p class="label">Eight Sleep</p><span></span></div>
+    <div class="steps"><i class="on"></i><i class="on"></i><i></i></div>
+    <div class="pad grow">
+      <h1 style="font-size:1.6rem">Sign in to Eight Sleep</h1>
+      <p>The same email and password you use in their app.</p>
+      <div class="field" style="margin-top:1.2rem"><input type="email" placeholder="Email" value="alexej@example.com"></div>
+      <div class="field"><input type="password" placeholder="Password" value="••••••••••••"></div>
+      <div class="notice" style="margin-top:.6rem">
+        <b>Why a password and not a login button.</b> Eight Sleep has no official way for other apps
+        to connect, and issues nothing that can be refreshed. The password stays in this phone's
+        Keychain and is sent only to Eight Sleep.
+      </div>
+    </div>
+    <div class="btnbar">
+      <button class="btn btn-solid" onclick="go('s-es-working')">Connect</button>
+    </div>
+  </section>
+
+  <!-- ============ 4c. EIGHT SLEEP: WORKING ============ -->
+  <section class="screen" id="s-es-working">
+    <div class="topbar"><span></span><p class="label">Eight Sleep</p><span></span></div>
+    <div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i></div>
+    <div class="pad grow">
+      <div class="card" style="margin-top:1rem">
+        <div class="row" style="padding:.85rem 0"><span class="check">✓</span><div class="body"><div class="name" style="font-size:.92rem">Signed in</div></div></div>
+        <div class="row" style="padding:.85rem 0"><span class="spinner"></span><div class="body"><div class="name" style="font-size:.92rem">Looking for your alarm</div><div class="sub">Checking the subscription too</div></div></div>
+      </div>
+      <p style="margin-top:1.3rem;font-size:.88rem">Signing in only proves the password. This checks the leg will actually work at six in the morning.</p>
+    </div>
+    <div class="btnbar">
+      <button class="btn btn-solid" onclick="go('s-es-ok')">→ Success</button>
+      <button class="btn btn-quiet" onclick="go('s-es-fail')">→ Failure states</button>
+    </div>
+  </section>
+
+  <!-- ============ 4d. EIGHT SLEEP: SUCCESS ============ -->
+  <section class="screen" id="s-es-ok">
+    <div class="topbar"><span></span><p class="label">Eight Sleep</p><span></span></div>
+    <div class="pad grow centre" style="display:flex;flex-direction:column;justify-content:center">
+      <div style="width:4.4rem;height:4.4rem;border-radius:50%;background:rgba(0,229,143,.14);color:var(--mint);display:grid;place-items:center;font-size:1.8rem;margin:0 auto 1.4rem">✓</div>
+      <h1 style="font-size:1.6rem">Eight Sleep is linked</h1>
+      <p>Found your alarm, currently set to 07:00. OneAlarm will move that one.</p>
+      <div class="grad cool" style="text-align:left;margin-top:.8rem">
+        <p class="label on-white" style="margin-bottom:.55rem">Left exactly as you set it</p>
+        <div class="chips">
+          <span class="chip">Vibration 50</span>
+          <span class="chip">Pattern rise</span>
+          <span class="chip">Thermal −10</span>
+        </div>
+      </div>
+    </div>
+    <div class="btnbar"><button class="btn btn-solid" onclick="go('s-whoop-warning')">Next, link Whoop</button>
+      <button class="btn btn-quiet" onclick="go('s-cascade')">Skip for now</button></div>
+  </section>
+
+  <!-- ============ 4e. EIGHT SLEEP: FAILURES ============ -->
+  <section class="screen" id="s-es-fail">
+    <div class="topbar"><button class="icon-btn" onclick="go('s-es-working')">‹</button><p class="label">Failure states</p><span></span></div>
+    <div class="pad grow">
+      <p style="font-size:.85rem">Each one says what happened, whose fault it is, and what to do. None of them says "something went wrong".</p>
+
+      <p class="label" style="margin:1.2rem 0 .5rem">Subscription inactive</p>
+      <div class="notice bad"><b>Your password worked. Eight Sleep's alarms need an active subscription.</b><br>
+      Nothing in OneAlarm can change this. Your other devices will still be set.</div>
+
+      <p class="label" style="margin:1.2rem 0 .5rem">No alarm to move</p>
+      <div class="notice warn"><b>No alarm found in your Eight Sleep account.</b><br>
+      Open the Eight Sleep app, create one alarm at any time, then connect again.</div>
+
+      <p class="label" style="margin:1.2rem 0 .5rem">Wrong password</p>
+      <div class="notice bad"><b>Eight Sleep did not accept that email and password.</b><br>
+      Your previously saved password was not overwritten, so a typo here cannot lock you out.</div>
+
+      <p class="label" style="margin:1.2rem 0 .5rem">Rate limited</p>
+      <div class="notice warn"><b>Too many attempts. Wait about a minute.</b><br>
+      OneAlarm will not retry on its own, because repeated failed sign ins are how accounts get locked.</div>
+    </div>
+    <div class="btnbar"><button class="btn btn-quiet" onclick="go('s-es-working')">Back</button></div>
+  </section>
+
+  <!-- ============ 5. WHOOP: THE WARNING ============ -->
+  <section class="screen" id="s-whoop-warning">
+    <div class="topbar"><button class="icon-btn" onclick="go('s-hub')">‹</button><p class="label">Whoop</p><span></span></div>
+    <div class="steps"><i class="on"></i><i></i><i></i><i></i></div>
+    <div class="pad grow">
+      <h1 style="font-size:1.6rem">Read this before linking Whoop</h1>
+      <p>This one is different from the other two, and you should decide with the facts.</p>
+
+      <div class="card" style="margin-top:1.1rem">
+        <div class="row" style="padding:.8rem 0;align-items:flex-start">
+          <span class="dot bad" style="margin-top:.42rem"></span>
+          <div class="body"><div class="name" style="font-size:.92rem">Whoop offers no official way in</div>
+          <div class="sub">OneAlarm uses the same private service their own app uses. Their terms let them act against an account doing this. Realistically that means your membership.</div></div>
+        </div>
+        <div class="row" style="padding:.8rem 0;align-items:flex-start">
+          <span class="dot warn" style="margin-top:.42rem"></span>
+          <div class="body"><div class="name" style="font-size:.92rem">You will sign in again about monthly</div>
+          <div class="sub">Their login expires roughly every thirty days and there is no way to warn you before it does.</div></div>
+        </div>
+        <div class="row" style="padding:.8rem 0;align-items:flex-start">
+          <span class="dot warn" style="margin-top:.42rem"></span>
+          <div class="body"><div class="name" style="font-size:.92rem">Keep the Whoop app installed</div>
+          <div class="sub">OneAlarm changes the alarm on Whoop's servers. Their app is what carries it to the band on your wrist.</div></div>
+        </div>
+      </div>
+      <div class="notice" style="margin-top:1rem">Your bed and your phone do not depend on this. Skipping Whoop costs you one nudge, nothing else.</div>
+    </div>
+    <div class="btnbar">
+      <button class="btn btn-ghost" onclick="go('s-whoop-cred')">I understand, link Whoop</button>
+      <button class="btn btn-quiet" onclick="go('s-cascade')">Skip Whoop</button>
+    </div>
+  </section>
+
+  <!-- ============ 5b. WHOOP: CREDENTIALS ============ -->
+  <section class="screen" id="s-whoop-cred">
+    <div class="topbar"><button class="icon-btn" onclick="go('s-whoop-warning')">‹</button><p class="label">Whoop</p><span></span></div>
+    <div class="steps"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+    <div class="pad grow">
+      <h1 style="font-size:1.6rem">Sign in to Whoop</h1>
+      <p>Whoop will text you a code straight after.</p>
+      <div class="field" style="margin-top:1.2rem"><input type="email" placeholder="Email" value="alexej@example.com"></div>
+      <div class="field"><input type="password" placeholder="Password" value="••••••••••••"></div>
+      <div class="notice">Your Whoop password is <b>not</b> kept. Once the code is confirmed, OneAlarm stores only the
+      renewable token Whoop hands back, and forgets the password.</div>
+    </div>
+    <div class="btnbar"><button class="btn btn-solid" onclick="go('s-whoop-code')">Send me a code</button></div>
+  </section>
+
+  <!-- ============ 5c. WHOOP: CODE ============ -->
+  <section class="screen" id="s-whoop-code">
+    <div class="topbar"><button class="icon-btn" onclick="go('s-whoop-cred')">‹</button><p class="label">Whoop</p><span></span></div>
+    <div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+    <div class="pad grow centre">
+      <h1 style="font-size:1.6rem;margin-top:1rem">Enter the code Whoop texted you</h1>
+      <p>Six digits, to the number on your Whoop account. It expires in about three minutes.</p>
+      <div class="code">
+        <span class="filled">4</span><span class="filled">1</span><span class="filled">9</span>
+        <span class="filled">2</span><span></span><span></span>
+      </div>
+      <button class="btn btn-quiet" style="max-width:12rem;margin:0 auto" onclick="go('s-whoop-cred')">Send it again</button>
+    </div>
+    <div class="btnbar">
+      <button class="btn btn-solid" onclick="go('s-whoop-ok')">Confirm</button>
+      <button class="btn btn-quiet" onclick="go('s-whoop-fail')">→ Failure states</button>
+    </div>
+  </section>
+
+  <!-- ============ 5d. WHOOP: SUCCESS ============ -->
+  <section class="screen" id="s-whoop-ok">
+    <div class="topbar"><span></span><p class="label">Whoop</p><span></span></div>
+    <div class="pad grow centre" style="display:flex;flex-direction:column;justify-content:center">
+      <div style="width:4.4rem;height:4.4rem;border-radius:50%;background:rgba(0,229,143,.14);color:var(--mint);display:grid;place-items:center;font-size:1.8rem;margin:0 auto 1.4rem">✓</div>
+      <h1 style="font-size:1.6rem">Whoop is linked</h1>
+      <p>Found your smart alarm, currently 07:30, waking you in the green.</p>
+      <div class="grad mid" style="text-align:left;margin-top:.6rem">
+        <p class="label on-white" style="margin-bottom:.5rem">Your wake mode is untouched</p>
+        <div class="chips"><span class="chip">In the green</span><span class="chip">Mon to Fri</span></div>
+      </div>
+      <div class="notice" style="text-align:left;margin-top:.9rem">Set a reminder for about a month from now. Whoop's login will expire and OneAlarm cannot warn you in advance.</div>
+    </div>
+    <div class="btnbar"><button class="btn btn-solid" onclick="go('s-cascade')">Done</button></div>
+  </section>
+
+  <!-- ============ 5e. WHOOP: FAILURES ============ -->
+  <section class="screen" id="s-whoop-fail">
+    <div class="topbar"><button class="icon-btn" onclick="go('s-whoop-code')">‹</button><p class="label">Failure states</p><span></span></div>
+    <div class="pad grow">
+      <p class="label" style="margin:.4rem 0 .5rem">Code wrong or expired</p>
+      <div class="notice bad"><b>That code was not accepted.</b><br>Codes expire after about three minutes. Ask for a new one.</div>
+
+      <p class="label" style="margin:1.2rem 0 .5rem">Schedule switched off</p>
+      <div class="notice warn"><b>Your Whoop alarm schedule is switched off.</b><br>
+      Turn it on in the Whoop app. OneAlarm can move the time, but it will not switch the whole alarm
+      on for you, because that is a change you did not ask for.</div>
+
+      <p class="label" style="margin:1.2rem 0 .5rem">No smart alarm</p>
+      <div class="notice warn"><b>No smart alarm found.</b><br>Create one in the Whoop app, then connect again.</div>
+
+      <p class="label" style="margin:1.2rem 0 .5rem">Login expired, about monthly</p>
+      <div class="notice warn"><b>Whoop needs you to sign in again.</b><br>
+      Your bed and your phone are unaffected and are still being set.</div>
+
+      <p class="label" style="margin:1.2rem 0 .5rem">Unreadable schedule</p>
+      <div class="notice bad"><b>Whoop returned a schedule OneAlarm did not recognise, so nothing was changed.</b><br>
+      Refusing is deliberate. A partial write here would silently reset the wake mode you chose.</div>
+    </div>
+    <div class="btnbar"><button class="btn btn-quiet" onclick="go('s-whoop-code')">Back</button></div>
+  </section>
+
+  <!-- ============ 6. CASCADE, HOME ============ -->
+  <section class="screen" id="s-cascade">
+    <div class="topbar">
+      <span></span>
+      <p class="label">OneAlarm</p>
+      <button class="icon-btn ring" onclick="go('s-hub')">⚙</button>
+    </div>
+    <div class="pad grow">
+
+      <!-- Master time. Whoop's big-numeral treatment. -->
+      <div class="centre" style="padding:.4rem 0 1.4rem">
+        <p class="label" style="margin-bottom:.6rem">Wake at</p>
+        <div class="num num-xl">07:00</div>
+        <div class="chips" style="justify-content:center;margin-top:.9rem">
+          <span class="chip">Mon</span><span class="chip">Tue</span><span class="chip">Wed</span>
+          <span class="chip">Thu</span><span class="chip">Fri</span>
+          <span class="chip dim">Sat</span><span class="chip dim">Sun</span>
+        </div>
+      </div>
+
+      <!-- Whoop's hatched span and dashed target range, reused for the wake window. -->
+      <div style="margin-bottom:1.5rem">
+        <div style="display:flex;justify-content:space-between;margin-bottom:.5rem">
+          <div><div class="num num-m">06:50</div><p class="label" style="margin-top:.28rem">First move</p></div>
+          <div style="text-align:right"><div class="num num-m">07:00</div><p class="label" style="margin-top:.28rem">Fully awake</p></div>
+        </div>
+        <div class="hatch"><span class="hatch-pill num">10 min</span></div>
+        <div class="dashed-range" style="margin-top:.55rem">Wake window</div>
+      </div>
+
+      <p class="label" style="margin-bottom:.65rem">The descent</p>
+      <div class="cascade">
+        <div class="grad cool">
+          <div class="leg">
+            <span class="rail cool"></span>
+            <div>
+              <div class="num time">06:50</div>
+              <div style="font-weight:600;font-size:.93rem;margin-top:.18rem">Eight Sleep</div>
+              <div class="leg-meta">
+                <span class="state ok"><span class="dot ok"></span>Set and confirmed</span>
+              </div>
+            </div>
+            <button class="sw" aria-pressed="true" aria-label="Eight Sleep on"></button>
+          </div>
+        </div>
+
+        <div class="grad mid">
+          <div class="leg">
+            <span class="rail mid"></span>
+            <div>
+              <div class="num time">06:55</div>
+              <div style="font-weight:600;font-size:.93rem;margin-top:.18rem">Whoop</div>
+              <div class="leg-meta">
+                <span class="state warn"><span class="dot warn"></span>Sign in again</span>
+              </div>
+            </div>
+            <button class="sw" aria-pressed="true" aria-label="Whoop on"></button>
+          </div>
+        </div>
+
+        <div class="grad warm">
+          <div class="leg">
+            <span class="rail warm"></span>
+            <div>
+              <div class="num time">07:00</div>
+              <div style="font-weight:600;font-size:.93rem;margin-top:.18rem">iPhone and Watch</div>
+              <div class="leg-meta">
+                <span class="state ok"><span class="dot ok"></span>Set and confirmed</span>
+                <span class="badge">Always rings</span>
+              </div>
+            </div>
+            <button class="sw" aria-pressed="true" aria-label="iPhone on"></button>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-quiet" style="margin-top:.9rem;font-size:.82rem;padding:.7rem" onclick="go('s-preview')">See exactly what gets sent</button>
+      <small style="margin-top:1rem;text-align:center">Last set 22:14. Nothing has changed since.</small>
+    </div>
+
+    <div class="btnbar" style="padding-bottom:.6rem">
+      <button class="btn btn-solid" onclick="go('s-applying')">Set all alarms</button>
+    </div>
+    <div class="tabbar">
+      <button class="on">◐</button><button onclick="go('s-results')">◑</button><button onclick="go('s-hub')">⚙</button>
+    </div>
+  </section>
+
+  <!-- ============ 7. APPLYING ============ -->
+  <section class="screen" id="s-applying">
+    <div class="topbar"><span></span><p class="label">Setting alarms</p><span></span></div>
+    <div class="pad grow">
+      <p style="font-size:.87rem">Each device is written independently. One failing does not stop the others.</p>
+      <div class="cascade" style="margin-top:1rem">
+        <div class="grad cool"><div class="leg"><span class="rail cool"></span>
+          <div><div class="num time">06:50</div><div style="font-weight:600;font-size:.93rem;margin-top:.18rem">Eight Sleep</div>
+          <div class="leg-meta"><span class="state ok"><span class="dot ok"></span>Set and confirmed</span></div></div>
+          <span class="check">✓</span></div></div>
+
+        <div class="grad mid"><div class="leg"><span class="rail mid"></span>
+          <div><div class="num time">06:55</div><div style="font-weight:600;font-size:.93rem;margin-top:.18rem">Whoop</div>
+          <div class="leg-meta"><span class="state idle">Checking it landed</span></div></div>
+          <span class="spinner"></span></div></div>
+
+        <div class="grad warm"><div class="leg"><span class="rail warm"></span>
+          <div><div class="num time">07:00</div><div style="font-weight:600;font-size:.93rem;margin-top:.18rem">iPhone and Watch</div>
+          <div class="leg-meta"><span class="state idle">Writing</span></div></div>
+          <span class="spinner"></span></div></div>
+      </div>
+      <div class="notice" style="margin-top:1.2rem">Writing is one step. Reading it back to confirm it landed on the right minute is another. Both have to pass before a device turns green.</div>
+    </div>
+    <div class="btnbar"><button class="btn btn-solid" onclick="go('s-results')">Continue</button></div>
+  </section>
+
+  <!-- ============ 8. RESULTS, MIXED ============ -->
+  <section class="screen" id="s-results">
+    <div class="topbar"><button class="icon-btn" onclick="go('s-cascade')">‹</button><p class="label">Result</p><span></span></div>
+    <div class="pad grow">
+      <div class="cascade">
+        <div class="grad cool"><div class="leg"><span class="rail cool"></span>
+          <div><div class="num time">06:50</div><div style="font-weight:600;font-size:.93rem;margin-top:.18rem">Eight Sleep</div>
+          <div class="leg-meta"><span class="state ok"><span class="dot ok"></span>Set for 06:50</span></div></div>
+          <span class="check">✓</span></div></div>
+
+        <div class="grad mid"><div class="leg"><span class="rail mid"></span>
+          <div><div class="num time">06:55</div><div style="font-weight:600;font-size:.93rem;margin-top:.18rem">Whoop</div>
+          <div class="leg-meta"><span class="state warn"><span class="dot warn"></span>Accepted, not confirmed</span></div></div>
+          <span style="color:var(--amber);font-size:1.1rem">!</span></div></div>
+
+        <div class="grad warm"><div class="leg"><span class="rail warm"></span>
+          <div><div class="num time">07:00</div><div style="font-weight:600;font-size:.93rem;margin-top:.18rem">iPhone and Watch</div>
+          <div class="leg-meta"><span class="state ok"><span class="dot ok"></span>Set for 07:00</span></div></div>
+          <span class="check">✓</span></div></div>
+      </div>
+
+      <p class="label" style="margin:1.5rem 0 .6rem">What amber means</p>
+      <div class="notice warn"><b>Whoop took the change but did not report the time back.</b><br>
+      The alarm is very likely set. OneAlarm will not colour it green because it could not read the
+      answer, and claiming a confirmation it does not have is how an app loses your trust at 06:00.</div>
+
+      <p class="label" style="margin:1.5rem 0 .6rem">The other amber case</p>
+      <div class="notice warn"><b>Accepted, but it reads back as 08:50 rather than 07:50.</b><br>
+      Almost always a timezone stored on their side that does not match yours. Worth opening their app.</div>
+
+      <p class="label" style="margin:1.5rem 0 .6rem">If everything fails</p>
+      <div class="notice good"><b>Your iPhone alarm is set and will ring.</b><br>
+      It needs no account, no network and no subscription. That is the point of it.</div>
+    </div>
+    <div class="btnbar"><button class="btn btn-solid" onclick="go('s-cascade')">Back to alarms</button></div>
+  </section>
+
+  <!-- ============ 9. PREVIEW ============ -->
+  <section class="screen" id="s-preview">
+    <div class="topbar"><button class="icon-btn" onclick="go('s-cascade')">✕</button><p class="label">Preview</p><span></span></div>
+    <div class="pad grow">
+      <div class="notice good" style="margin-bottom:1.2rem"><b>Nothing has been sent.</b> This is built by the same code that builds the real request.</div>
+
+      <p class="label" style="margin-bottom:.55rem">Eight Sleep · 06:50</p>
+      <div class="card" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.7rem;line-height:1.6;color:var(--grey);overflow-x:auto">
+        <div style="color:var(--optimal)">PUT app-api.8slp.net/v1/users/{id}/alarms/{alarmId}</div>
+        <div style="margin-top:.5rem">{ "time": <span style="color:var(--cool-lit)">"06:50:00"</span>,<br>
+        &nbsp;&nbsp;"enabled": <span style="color:var(--mint)">true</span>,<br>
+        &nbsp;&nbsp;"repeat": { "weekDays": { "monday": <span style="color:var(--mint)">true</span>, … } } }</div>
+        <div style="margin-top:.6rem;color:var(--grey-dim)">Vibration and thermal are read from the server and sent back untouched.</div>
+      </div>
+
+      <p class="label" style="margin:1.3rem 0 .55rem">Whoop · 06:55</p>
+      <div class="card" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.7rem;line-height:1.6;color:var(--grey);overflow-x:auto">
+        <div style="color:var(--optimal)">PUT api.prod.whoop.com/smart-alarm-bff/v1/schedule/{id}</div>
+        <div style="margin-top:.5rem">{ "latest_wake_time": <span style="color:var(--cool-lit)">"06:55:00"</span>,<br>
+        &nbsp;&nbsp;"day_of_week_list": [<span style="color:var(--cool-lit)">"MONDAY"</span>, …],<br>
+        &nbsp;&nbsp;"time_zone_offset": <span style="color:var(--cool-lit)">"+0200"</span> }</div>
+      </div>
+
+      <p class="label" style="margin:1.3rem 0 .55rem">iPhone · 07:00</p>
+      <div class="card" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.7rem;line-height:1.6;color:var(--grey)">
+        <div style="color:var(--optimal)">On the phone. No network.</div>
+        <div style="margin-top:.5rem">.relative(time: 07:00, repeats: .weekly([…]))</div>
+      </div>
+
+      <p class="label" style="margin:1.3rem 0 .55rem">What can never be sent</p>
+      <div class="notice">Each connection is limited to a short list of allowed addresses. Changing the bed
+      temperature, running the pump, moving the frame and deleting anything are all refused before
+      they leave the phone, including by mistake.</div>
+    </div>
+    <div class="btnbar"><button class="btn btn-solid" onclick="go('s-cascade')">Close</button></div>
+  </section>
+
+  <!-- ============ 10. MIDNIGHT AND DST EDGE ============ -->
+  <section class="screen" id="s-edge">
+    <div class="topbar"><button class="icon-btn" onclick="go('s-cascade')">‹</button><p class="label">Edge cases</p><span></span></div>
+    <div class="pad grow">
+      <p style="font-size:.87rem">Two cases that are wrong by hours rather than obviously broken, so the design has to make them visible.</p>
+
+      <p class="label" style="margin:1.3rem 0 .6rem">An offset crossing midnight</p>
+      <div class="grad cool" style="margin-bottom:.7rem">
+        <div class="leg"><span class="rail cool"></span>
+          <div><div class="num time">23:55</div>
+          <div style="font-weight:600;font-size:.93rem;margin-top:.18rem">Eight Sleep</div>
+          <div class="leg-meta"><span class="badge">Night before</span></div></div>
+          <button class="sw" aria-pressed="true" aria-label="on"></button></div>
+      </div>
+      <div class="notice warn">Waking at 00:05 means the bed starts at <b>23:55 the previous evening</b>. Its days shift back by one so the bed warms on the right night.</div>
+
+      <p class="label" style="margin:1.5rem 0 .6rem">A clock change between devices</p>
+      <div class="notice warn">These alarms straddle a daylight saving change and carry different UTC offsets. The
+      real gap between first and last is <b>130 minutes</b>, not the 70 you set.</div>
+
+      <p class="label" style="margin:1.5rem 0 .6rem">The iPhone leg switched off</p>
+      <div class="notice bad"><b>Your iPhone alarm is off.</b> It is the only one that rings with no account,
+      no network and no subscription. Everything else is a nudge.</div>
+    </div>
+    <div class="btnbar"><button class="btn btn-quiet" onclick="go('s-cascade')">Back</button></div>
+  </section>
+
+</div>
+</div>
+
+<button class="indexbtn" onclick="document.getElementById('sheet').classList.toggle('on')">Screens</button>
+<div class="sheet" id="sheet">
+  <h2>OneAlarm, every screen</h2>
+  <p style="font-size:.85rem">Nine screens, thirty odd states. Tap any one.</p>
+  <div class="grp"><p class="label">First run</p>
+    <button onclick="jump('s-welcome')">1 · Welcome</button>
+    <button onclick="jump('s-permission')">2 · Alarm permission</button>
+    <button onclick="jump('s-permission-denied')">2b · Permission denied</button>
+  </div>
+  <div class="grp"><p class="label">Linking</p>
+    <button onclick="jump('s-hub')">3 · Connections hub, all states</button>
+    <button onclick="jump('s-es-prereq')">4 · Eight Sleep, prerequisite</button>
+    <button onclick="jump('s-es-cred')">4b · Eight Sleep, sign in</button>
+    <button onclick="jump('s-es-working')">4c · Eight Sleep, working</button>
+    <button onclick="jump('s-es-ok')">4d · Eight Sleep, linked</button>
+    <button onclick="jump('s-es-fail')">4e · Eight Sleep, four failures</button>
+    <button onclick="jump('s-whoop-warning')">5 · Whoop, the honest warning</button>
+    <button onclick="jump('s-whoop-cred')">5b · Whoop, sign in</button>
+    <button onclick="jump('s-whoop-code')">5c · Whoop, texted code</button>
+    <button onclick="jump('s-whoop-ok')">5d · Whoop, linked</button>
+    <button onclick="jump('s-whoop-fail')">5e · Whoop, five failures</button>
+  </div>
+  <div class="grp"><p class="label">Daily use</p>
+    <button onclick="jump('s-cascade')">6 · The cascade, home</button>
+    <button onclick="jump('s-applying')">7 · Applying, per device</button>
+    <button onclick="jump('s-results')">8 · Result, mixed states</button>
+    <button onclick="jump('s-preview')">9 · Preview, what gets sent</button>
+    <button onclick="jump('s-edge')">10 · Midnight and clock change</button>
+  </div>
+</div>
+
+<script>
+  function go(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
+    const el = document.getElementById(id);
+    el.classList.add('on');
+    el.scrollTop = 0;
+  }
+  function jump(id) { go(id); document.getElementById('sheet').classList.remove('on'); }
+</script>
