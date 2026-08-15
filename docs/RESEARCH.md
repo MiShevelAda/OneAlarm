@@ -340,30 +340,61 @@ The write, which is the whole point. It **replaces rather than merges**, so read
 
 ```http
 PUT https://api.prod.whoop.com/smart-alarm-bff/v1/schedule/{schedule_id}?apiVersion=7
-{"scheduled_days":["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY"],
- "alarm_on":true,
- "latest_wake_time":"7:45 am",
- "alarm_mode":"SLEEP_GOAL"}
+{"sleep_goal":"",
+ "day_of_week_list":["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY"],
+ "time_zone_offset":"+0200",
+ "enabled":true,
+ "latest_wake_time":"07:45:00",
+ "alarm_mode":"IN_THE_GREEN"}
 ```
 
-> **Corrected 2026-08-15 against a live account, and this is the only Whoop shape in this document
-> that was observed rather than ported.** The reference project documented `sleep_goal`,
-> `day_of_week_list`, `time_zone_offset` and `enabled`. Not one of those four exists. Every write
-> built from them returned **HTTP 422**. The real names, read off the schedule the account returned,
-> are `scheduled_days`, `alarm_on`, `latest_wake_time`, `alarm_mode`, `schedule_id`, plus a set of
-> server rendered `*_label_display` strings which describe the old time and are stripped before the
-> PUT. There is **no timezone field at all**, which is consistent with Whoop storing a local wall
-> clock and resolving the zone from the strap.
+> **Confirmed working against a live account, 2026-08-16, 02:00.** Six keys, exactly as above,
+> nothing echoed from the read. The Whoop app shows the new time afterwards.
 >
-> **The format was wrong too, and it was a second 422 on its own.** The reference showed
-> `"07:30:00"`. The account returns `"7:45 am"`: twelve hour, unpadded hour, lowercase suffix. Two
-> independent errors in one field is the reason the adapter no longer assumes anything about this
-> endpoint. It reads whatever arrives, records how it was punctuated, and writes it back in the same
-> shape, down to the space before the `am`.
+> **This body was in this document all along and I spent five hours declaring it fiction.** The
+> record of how, because the mistake is more instructive than the fix:
 >
-> `alarm_mode` on this account is `SLEEP_GOAL`, which the reference did not list alongside
-> `IN_THE_GREEN`, `EXACT_TIME_PEAK` and `EXACT_TIME_OPTIMIZE_SLEEP`. It is carried through untouched
-> rather than validated against a list we now know to be incomplete.
+> `GET /smart-alarm-bff/v1/schedule/all` came back with `scheduled_days`, `alarm_on` and
+> `latest_wake_time: "7:45 am"`, so I concluded `day_of_week_list`, `enabled`, `time_zone_offset`
+> and `sleep_goal` did not exist and wrote that into this file as a finding. **They do exist. That
+> GET is not the schedule.** Its top level carries `delete_error_modal`,
+> `deleting_in_progress_modal`, `schedule_button_component`, `schedule_disabled_text` and
+> `should_show_overlay`: it is a rendered description of Whoop's alarm *screen*. `bff` means
+> backend for frontend and this one means it literally. A view model's field names are not the
+> resource's, its `latest_wake_time` is a **label**, and I disproved a specification using evidence
+> that could never have contained it.
+>
+> Three further errors followed from that one, each of which felt like progress:
+>
+> 1. **Mirroring the read format on the write.** Sending `"1:00 pm"` back is sending a rendered
+>    string as data. The right format was `"07:30:00"` from the start.
+> 2. **Treating one 400 as proof.** `"1:00 pm"` gave 400, `"07:55:00"` gave 422, and I concluded
+>    the endpoint parses one and not the other. Those two requests differed in **three** ways:
+>    format, clock value, and the fact that 13:00 is an implausible wake ceiling. One observation
+>    with three variables moved is not evidence, and it went into two doc comments as settled.
+> 3. **Concluding the body was exonerated.** After two 422s I said the body could not be the
+>    problem. Both attempts were the same shape, and the six-field body had been written but never
+>    run. The experiment that would have settled it had not happened.
+>
+> The general lesson, which is worth more than the endpoint: **a wrong model of what an endpoint
+> returns will keep generating hypotheses that each explain the last failure**, and each will feel
+> like a discovery. What broke the loop was dumping the response and reading it, not reasoning
+> harder. That worked twice tonight and nothing else worked at all.
+
+**Read format and write format are different objects, and this is the durable fact.**
+
+| | `GET /schedule/all` | `PUT /schedule/{id}` |
+|---|---|---|
+| what it is | the list screen, rendered | the resource |
+| days | `scheduled_days` | `day_of_week_list` |
+| enabled | `alarm_on`, as `1` | `enabled`, as `true` |
+| wake time | `latest_wake_time`, `"7:45 am"` | `latest_wake_time`, `"07:45:00"` |
+| timezone | absent | `time_zone_offset`, `"+0200"` |
+| also present | six `*_label_display` strings, `schedule_id`, modals, button components | nothing else |
+
+**`GET /smart-alarm-bff/v1/schedule/components/populated/{schedule_id}?apiVersion=7`** renders the
+**edit** screen for one schedule: `repeat_days`, `wake_mode`, `wake_time`, `sleep_goal`. That is the
+place to look first next time, and it is a read.
 
 Semantics worth knowing before designing the UI:
 
@@ -372,11 +403,20 @@ Semantics worth knowing before designing the UI:
   before it: `IN_THE_GREEN`, `EXACT_TIME_PEAK`, `EXACT_TIME_OPTIMIZE_SLEEP`.
 - The `lower_time_bound` and `upper_time_bound` pair in global preferences is **ignored by the
   server whenever an explicit schedule exists**. Do not set wake time through it.
-- There are **at least two independent enable levels**: per-schedule `alarm_on` and a master
-  `PUT /smart-alarm-service/v1/alarm-schedule/enable|disable`. The reference also named a global
-  `schedule_enabled`, which was not on the live schedule and is now doubtful along with the rest of
-  that field list. The observed symptom is real either way: the app said *"alarm schedule is
-  switched off"* while a schedule existed.
+- `alarm_mode` on a live account also takes `SLEEP_GOAL` and `EXACT_TIME`, which the reference did
+  not list. **`SLEEP_GOAL` means Whoop derives the wake time from sleep need**, so a fixed
+  `latest_wake_time` is arguing with the feature rather than using it. The right handling is to
+  reverse the direction and let Whoop be the anchor the other devices follow. Not built yet.
+- There are **three independent enable levels**: per-schedule `enabled` on the resource,
+  `schedule_enabled` at the top of the list screen, and a master
+  `PUT /smart-alarm-service/v1/alarm-schedule/enable|disable`. All three are real; the second one
+  produced the *"alarm schedule is switched off"* message while a schedule existed.
+- 🔴 **A successful write may not reach the strap.** `PUT /smart-alarm-service/v1/strap-status`
+  with `{"strap_driven_alarm_time": "<ISO instant>"}` is what pushes the time into strap firmware,
+  and the Whoop app sends it on a delay after a schedule edit. **We do not send it**, and it is
+  outside the allowlist. So the app showing the new time and the wrist buzzing at the new time are
+  still two different claims, and only the first is verified. If the strap buzzes late, this is
+  why.
 
 One irony in our favour: a native Swift app naturally produces the iOS TLS and HTTP/2 fingerprint
 that totem explicitly says it cannot fake from Node. Our port is less detectable than the thing we
