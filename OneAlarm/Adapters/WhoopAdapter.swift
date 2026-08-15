@@ -648,22 +648,23 @@ actor WhoopAdapter: DeviceAdapter {
             .filter { target.weekdays.contains($0) }
             .map(\.whoopName)
 
-        // A sketch, and it says so. The real body copies the format and the value types out of the
-        // schedule the server just returned, which this cannot see from here. The values are right,
-        // the punctuation may not be.
+        // A sketch, and it says so. The real body is the schedule the server returned with these
+        // three fields replaced, so it also carries `alarm_mode` and, in the untrimmed attempt, the
+        // identifier and the display strings. None of that is visible from here.
         var sketch: [String: Any] = [:]
-        sketch["latest_wake_time"] = target.localTime.hhmm
+        sketch["latest_wake_time"] = target.localTime.hhmmss
         sketch["scheduled_days"] = days
         sketch["alarm_on"] = true
+        sketch["alarm_mode"] = "(kept from your account)"
 
         return WritePreview(
             device: .whoop,
-            summary: "Move the smart alarm ceiling to \(target.localTime.hhmm) local, keeping the wake mode you set in the Whoop app. The body is sent in whatever format the schedule came back in.",
+            summary: "Move the smart alarm ceiling to \(target.localTime.hhmm) local, keeping the wake mode you set in the Whoop app. Whoop's own wake mode decides how far before that ceiling the strap actually buzzes, so this is a latest time rather than a time.",
             method: "PUT",
             url: "\(Self.host)/smart-alarm-bff/v1/schedule/{id}?apiVersion=7",
             body: HTTPClient.redactedPreview(
                 sketch,
-                showing: ["latest_wake_time", "scheduled_days", "alarm_on"]
+                showing: ["latest_wake_time", "scheduled_days", "alarm_on", "alarm_mode"]
             ),
             reconstructed: true
         )

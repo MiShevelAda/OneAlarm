@@ -417,12 +417,21 @@ final class PreviewTests: XCTestCase {
         XCTAssertFalse(body.contains("<redacted>"))
     }
 
-    func testWhoopPreviewShowsTheOffsetItWouldSend() throws {
-        let body = try XCTUnwrap(WhoopAdapter().preview(target).body)
+    /// A reconstruction, and it has to say so. The real body is the account's schedule with three
+    /// fields replaced, so it carries `alarm_mode` and, on the first attempt, the identifier and the
+    /// display strings too. There is no timezone in it at all: that field was a fiction of the
+    /// reference spec.
+    func testWhoopPreviewIsMarkedAsAReconstruction() throws {
+        let preview = WhoopAdapter().preview(target)
+        let body = try XCTUnwrap(preview.body)
 
+        XCTAssertTrue(preview.reconstructed)
         XCTAssertTrue(body.contains("06:50:00"))
         XCTAssertTrue(body.contains("MONDAY"))
-        XCTAssertTrue(body.contains("+0200"))
+        XCTAssertFalse(body.contains("+0200"))
+        // Named on screen even though its value cannot be known from here, because it is the field
+        // most likely to be the reason a write is refused.
+        XCTAssertTrue(body.contains("alarm_mode"))
     }
 
     func testAlarmKitPreviewSendsNothingRemote() {
