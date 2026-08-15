@@ -249,15 +249,38 @@ final class WhoopMutationTests: XCTestCase {
                     "days_scheduled_label_display"] {
             XCTAssertNil(payload[key], "view model key \(key) leaked into the domain body")
         }
+        // Six keys exactly, as captured. An extra one is an unknown field on a schema that has
+        // rejected everything so far.
+        XCTAssertEqual(payload.keys.count, 6)
     }
 
-    func testTheDomainBodyIsTriedFirst() throws {
-        let variants = try WhoopAdapter.variants(serverSchedule, to: target)
+    func testTheModeRetryUsesTheOnlyValueEverAccepted() throws {
+        let labels = try WhoopAdapter.variants(serverSchedule, to: target).map(\.0)
 
-        XCTAssertEqual(variants.map(\.0), ["domain", "viewmodel"])
-        // Both carry the change itself, or the second attempt would prove nothing.
-        for (_, payload) in variants {
-            XCTAssertEqual(payload["latest_wake_time"] as? String, "06:55:00")
+        XCTAssertEqual(labels, ["domain", "domain/IN_THE_GREEN", "viewmodel"])
+
+        var alreadyGreen = serverSchedule
+        alreadyGreen["alarm_mode"] = "IN_THE_GREEN"
+        // No point sending the same body twice.
+        XCTAssertEqual(try WhoopAdapter.variants(alreadyGreen, to: target).map(\.0),
+                       ["domain", "viewmodel"])
+    }
+
+    /// The envelope already returns `alarm_on` as `1` rather than `true`, so a boolean-only read of
+    /// the master switch would pass on a number and report a green write against a disabled alarm.
+    func testTheMasterSwitchIsReadWhicheverWayItIsSpelled() {
+        for off in [false, 0, "false", "0", "off"] as [Any] {
+            XCTAssertTrue(WhoopAdapter.isFalse(off), "\(off) should read as off")
+        }
+        for on in [true, 1, "true", "ENABLED"] as [Any] {
+            XCTAssertFalse(WhoopAdapter.isFalse(on), "\(on) should not read as off")
+        }
+    }
+
+    func testEveryAttemptCarriesTheChangeItself() throws {
+        for (label, payload) in try WhoopAdapter.variants(serverSchedule, to: target) {
+            // Otherwise a later attempt proves nothing about the shape it was testing.
+            XCTAssertEqual(payload["latest_wake_time"] as? String, "06:55:00", label)
         }
     }
 

@@ -27,6 +27,30 @@ struct HTTPClient {
         self.session = session
     }
 
+    /// Refuses every redirect.
+    ///
+    /// `URLSession` follows 3xx automatically and, on a 301, 302 or 303, **demotes the method to
+    /// GET and drops the body**. A PUT redirected by a trailing slash, a host rewrite or a version
+    /// normalisation therefore arrives as a bodyless GET, and the status you read back belongs to a
+    /// request you never made. That failure looks identical no matter what you put in the body,
+    /// which is exactly the symptom the Whoop write has shown for six rounds.
+    ///
+    /// It is also the right default on an allowlisted client: a redirect is the one way an
+    /// allowlisted request can end up at a URL the allowlist never saw.
+    private final class RedirectBlocker: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+        func urlSession(
+            _ session: URLSession,
+            task: URLSessionTask,
+            willPerformHTTPRedirection response: HTTPURLResponse,
+            newRequest request: URLRequest,
+            completionHandler: @escaping (URLRequest?) -> Void
+        ) {
+            completionHandler(nil)
+        }
+    }
+
+    private static let redirectBlocker = RedirectBlocker()
+
     struct Response {
         let status: Int
         let data: Data
@@ -44,9 +68,21 @@ struct HTTPClient {
         /// An allowlist rather than a strip list, for the same reason `redactedPreview` is: a
         /// response header added later is invisible by default rather than exposed by default, and
         /// `set-cookie` on this API is bearer equivalent.
+        /// Where the request actually ended up, when that is not where it was sent.
+        ///
+        /// Path only, never the query, since these paths embed no account id but a query might.
+        var redirectedTo: String?
+
         var diagnosticHeaders: String {
+            // Widened after six identical failures. The first group says what went wrong, the
+            // second says which stack is saying it, and an empty 422 means different things from
+            // nginx, from Envoy and from a Spring controller returning a bodyless status. `etag`
+            // decides whether a precondition is even in play. `set-cookie` stays out: on this API
+            // it is bearer equivalent.
             let wanted = ["x-amzn-errortype", "x-amz-apigw-id", "x-error", "x-error-message",
-                          "warning", "content-type", "content-length", "allow", "www-authenticate"]
+                          "warning", "content-type", "content-length", "allow", "www-authenticate",
+                          "server", "via", "etag", "x-amzn-requestid", "apigw-requestid",
+                          "x-envoy-upstream-service-time", "x-cache"]
             let found = wanted.compactMap { key in
                 headers[key].map { "\(key): \($0)" }
             }
@@ -90,7 +126,7 @@ struct HTTPClient {
         Self.log.debug("\(method, privacy: .public) \(url.path, privacy: .private(mask: .hash))")
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request, delegate: Self.redirectBlocker)
             let http = response as? HTTPURLResponse
             let status = http?.statusCode ?? 0
             Self.log.debug("-> \(status, privacy: .public)")
@@ -101,7 +137,15 @@ struct HTTPClient {
                     headers[key.lowercased()] = value
                 }
             }
-            return Response(status: status, data: data, headers: headers)
+
+            // Redirects are refused rather than followed, so this should always be nil. Reported
+            // anyway: a landing URL that differs from the one we sent means the status belongs to a
+            // request we did not make, and that failure is invisible in every other symptom.
+            var landed: String?
+            if let final = http?.url, final != url {
+                landed = final.path
+            }
+            return Response(status: status, data: data, headers: headers, redirectedTo: landed)
         } catch {
             throw AdapterError.transport(error.localizedDescription)
         }

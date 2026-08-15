@@ -29,6 +29,10 @@ actor WhoopAdapter: DeviceAdapter {
     private let http = HTTPClient(allowedPatterns: [
         #"^POST https://api\.prod\.whoop\.com/auth-service/v3/whoop/$"#,
         #"^GET https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/all\?apiVersion=7$"#,
+        // The edit screen for one schedule. A read, and the only place the write contract is stated
+        // by the server rather than inferred by us: it returns repeat_days, wake_mode, wake_time
+        // and sleep_goal, which is the vocabulary the PUT is validated against.
+        #"^GET https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/components/populated/[^/?]+\?apiVersion=7$"#,
         #"^PUT https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/[^/?]+\?apiVersion=7$"#,
     ])
 
@@ -95,9 +99,34 @@ actor WhoopAdapter: DeviceAdapter {
             "user-agent": "iOS",
             "x-whoop-device-platform": "iOS",
             "x-whoop-time-zone": timeZone,
+            "x-whoop-bundle-name": "com.whoop.iphone",
+            "x-whoop-clock-format": "TWELVE_HOUR",
+            "accept-language": "en",
             "accept": "*/*",
             "content-type": "application/json",
         ]
+    }
+
+    /// The edit screen for one schedule, as top level key names.
+    ///
+    /// A read, and the only description of the write contract that comes from the server rather
+    /// than from us. `schedule/all` renders the list; this renders the form, so its fields are the
+    /// ones a save is built from. Failure here is reported rather than thrown: this runs while
+    /// explaining a different failure and must not replace it with its own.
+    private func editScreenKeys(for id: String) async -> String {
+        guard
+            let token = try? await currentToken(),
+            let url = URL(string: "\(Self.host)/smart-alarm-bff/v1/schedule/components/populated/\(id)?apiVersion=7"),
+            let response = try? await http.send(
+                "GET", url,
+                headers: Self.dataHeaders(token: token, timeZone: TimeZone.current.identifier)
+            )
+        else {
+            return "unreadable"
+        }
+        guard response.isSuccess else { return "HTTP \(response.status)" }
+        guard let object = try? HTTPClient.dictionary(response.data) else { return "not an object" }
+        return object.keys.sorted().joined(separator: " ")
     }
 
     /// Only a refresh token counts as connected.
@@ -428,11 +457,14 @@ actor WhoopAdapter: DeviceAdapter {
     /// The canonical `"HH:mm:ss"`, whatever the read looked like.
     ///
     /// Deliberately **not** a mirror of the incoming format, which is what this was before. The
-    /// account returns `"7:45 am"`, and sending that straight back produced a **400**: the server
-    /// could not parse its own display string. `"07:55:00"` produced a **422** instead, which is a
-    /// value understood and then rejected on other grounds. A parse failure and a validation
-    /// failure are different answers, and together they say the read format and the write format
-    /// are simply not the same thing on this endpoint.
+    /// reason is the captured request that returned 200, which used `"07:30:00"`.
+    ///
+    /// It is **not** the 400 we got for `"1:00 pm"`, though an earlier version of this comment said
+    /// so with some confidence. Those two requests differed in three ways at once: the format, the
+    /// clock value, and the fact that 13:00 is an implausible wake ceiling. "400 because 13:00 is
+    /// out of range" fits that pair exactly as well as "400 because the string would not parse".
+    /// One observation with three variables moved is not evidence for either, and it was written
+    /// into two doc comments as though it were settled.
     static func encodeWakeTime(_ time: WallClockTime, like existing: Any?) -> Any {
         guard existing is String else {
             // Numeric, so the units follow the same reading the parser made.
@@ -495,28 +527,48 @@ actor WhoopAdapter: DeviceAdapter {
     /// The spec's names were never actually tried on their own: the first attempt set them **on
     /// top of** the view model, so the body was half screen description and half resource. That is
     /// its own reason for a 422 and it masked whether the names were right.
-    static func domainBody(_ schedule: [String: Any], to target: ResolvedTarget) -> [String: Any] {
-        var payload: [String: Any] = [:]
-        payload["latest_wake_time"] = target.localTime.hhmmss
-        payload["day_of_week_list"] = Locale.Weekday.displayOrder
-            .filter { target.weekdays.contains($0) }
-            .map(\.whoopName)
-        payload["enabled"] = true
-        payload["time_zone_offset"] = target.utcOffsetString
-        // Carried through from the view model, since these two are named the same on both sides and
-        // the mode is his choice rather than ours.
-        payload["alarm_mode"] = schedule["alarm_mode"] ?? "EXACT_TIME"
-        payload["sleep_goal"] = ""
-        return payload
+    static func domainBody(
+        _ schedule: [String: Any],
+        to target: ResolvedTarget,
+        mode: String? = nil
+    ) -> [String: Any] {
+        [
+            "latest_wake_time": target.localTime.hhmmss,
+            "day_of_week_list": Locale.Weekday.displayOrder
+                .filter { target.weekdays.contains($0) }
+                .map(\.whoopName),
+            "enabled": true,
+            "time_zone_offset": target.utcOffsetString,
+            "alarm_mode": mode ?? (schedule["alarm_mode"] as? String) ?? Self.observedMode,
+            // Empty string in the captured request, so an empty string here. Not a placeholder.
+            "sleep_goal": "",
+        ]
     }
+
+    /// The only `alarm_mode` ever observed to be accepted on a write.
+    ///
+    /// The view model reports the mode the app is displaying, which is not necessarily a value the
+    /// write enum accepts: `SLEEP_GOAL` and `EXACT_TIME` are recent, and the captured 200 used this.
+    static let observedMode = "IN_THE_GREEN"
 
     /// The body shapes still worth a request, best hypothesis first.
     ///
-    /// The view model echo, full and trimmed, has now been refused twice each. Sending it a third
-    /// time would cost a request and buy nothing, so it is down to one control rather than two.
+    /// The view model echo, full and trimmed, has been refused twice each, so it is retained as a
+    /// single control rather than two. The domain body has never actually run: it was written after
+    /// the last attempt, so every 422 so far belongs to the echo.
     static func variants(_ schedule: [String: Any], to target: ResolvedTarget) throws -> [(String, [String: Any])] {
-        let trimmed = Self.trimmed(try Self.mutate(schedule, to: target))
-        return [("domain", Self.domainBody(schedule, to: target)), ("viewmodel", trimmed)]
+        var shapes: [(String, [String: Any])] = [
+            ("domain", Self.domainBody(schedule, to: target)),
+        ]
+        // A rejected enum is a parse failure, so a mode the write does not know would fail the whole
+        // body for a reason that has nothing to do with the rest of it. One retry on the value that
+        // is known to have worked, and only when it differs from what we just sent.
+        if (schedule["alarm_mode"] as? String) != Self.observedMode {
+            shapes.append(("domain/\(Self.observedMode)",
+                           Self.domainBody(schedule, to: target, mode: Self.observedMode)))
+        }
+        shapes.append(("viewmodel", Self.trimmed(try Self.mutate(schedule, to: target))))
+        return shapes
     }
 
     /// What the server actually objected to, so the next fix is read rather than guessed.
@@ -531,6 +583,20 @@ actor WhoopAdapter: DeviceAdapter {
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespaces)
         return text.count > 200 ? String(text.prefix(200)) + "..." : text
+    }
+
+    /// Whether a JSON value means off, whichever of the three ways this API spells it.
+    ///
+    /// Unknown shapes are **not** false. A guard that refuses on anything it does not recognise
+    /// would block every write the moment Whoop returned something new, and this one guards an
+    /// alarm.
+    static func isFalse(_ value: Any) -> Bool {
+        if let flag = value as? Bool { return flag == false }
+        if let number = value as? NSNumber { return number.intValue == 0 }
+        if let text = value as? String {
+            return ["false", "0", "no", "off"].contains(text.lowercased())
+        }
+        return false
     }
 
     /// A value with its type, because `"7:45 am"` and `7:45 am` are different bugs.
@@ -602,7 +668,11 @@ actor WhoopAdapter: DeviceAdapter {
     /// master switch is on `smart-alarm-service`, which is outside the allowlist on purpose, so if
     /// that is off it has to be turned on in the Whoop app.
     private static func assertMasterSwitchOn(_ envelope: [String: Any]) throws {
-        if let enabled = envelope["schedule_enabled"] as? Bool, enabled == false {
+        // Not `as? Bool`. This envelope already returns alarm_on as 1 rather than true, so a
+        // boolean-only read of schedule_enabled would silently pass on a number or a string and
+        // report a green write against a disabled alarm, which is the exact failure this guard is
+        // here to prevent. Absent stays permissive; present and false is a refusal.
+        if let raw = envelope["schedule_enabled"], Self.isFalse(raw) {
             throw AdapterError.unexpectedResponse(
                 "Whoop's alarm schedule is switched off. Turn it on in the Whoop app first."
             )
@@ -634,10 +704,9 @@ actor WhoopAdapter: DeviceAdapter {
 
         var payload = schedule
 
-        // 24 hour, and this one is evidence rather than preference. Sending the account's own
-        // "1:00 pm" back earned a 400, which is a parse failure. Sending "13:00:00" earned a 422,
-        // which is a value the server understood and then refused. The endpoint reads a display
-        // string on the way out and a canonical one on the way in.
+        // 24 hour. The captured request that returned 200 used "07:30:00", which is the reason,
+        // rather than the 400 we got for "1:00 pm": see `encodeWakeTime` for why that comparison
+        // proves less than I claimed.
         payload["latest_wake_time"] = Self.encodeWakeTime(target.localTime, like: existing)
 
         if schedule["scheduled_days"] != nil {
@@ -735,7 +804,6 @@ actor WhoopAdapter: DeviceAdapter {
         // comes back per round.
         var accepted: (String, [String: Any])?
         var outcomes: [String] = []
-        var serverSaid = ""
 
         for (label, payload) in try Self.variants(existing, to: target) {
             let response = try await http.send(
@@ -750,24 +818,31 @@ actor WhoopAdapter: DeviceAdapter {
                 break
             }
 
-            outcomes.append("\(label) \(payload.keys.count) fields: \(response.status)")
+            // Per attempt, not collapsed into one. Two attempts that fail differently is the most
+            // informative thing this can report, and a single shared string hid it: whichever
+            // attempt spoke first silenced the other.
+            var line = "\(label) \(payload.keys.count) fields: \(response.status)"
             let said = Self.serverMessage(response.data)
-            if said != "nothing" { serverSaid = said }
+            if said != "nothing" { line += " (\(said))" }
             let fromHeaders = response.diagnosticHeaders
-            if serverSaid.isEmpty, !fromHeaders.isEmpty { serverSaid = fromHeaders }
+            if said == "nothing", !fromHeaders.isEmpty { line += " [\(fromHeaders)]" }
+            if let redirected = response.redirectedTo { line += " REDIRECTED to \(redirected)" }
+            outcomes.append(line)
 
             // Only a complaint about the body is worth a second shape. Anything else, stop.
             guard response.status == 400 || response.status == 422 else { break }
         }
 
         guard let (shape, written) = accepted else {
+            // A read, and the one description of the write contract that comes from the server.
+            // Worth a request precisely because every guess so far has come from us.
+            let editScreen = await editScreenKeys(for: id)
             throw AdapterError.unexpectedResponse(
                 "Rejected updating the alarm. "
-                    + outcomes.joined(separator: ", ")
-                    + ". Sent \"\(target.localTime.hhmmss)\", mode "
+                    + outcomes.joined(separator: " | ")
+                    + ". Sent \"\(target.localTime.hhmmss)\", account mode "
                     + Self.describeValue(existing["alarm_mode"])
-                    + ". Envelope: " + envelope.keys.sorted().joined(separator: " ")
-                    + (serverSaid.isEmpty ? ". Nothing from Whoop." : ". Whoop said: \(serverSaid)")
+                    + ". Edit screen: " + editScreen
             )
         }
 
