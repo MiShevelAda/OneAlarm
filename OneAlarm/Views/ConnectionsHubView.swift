@@ -104,19 +104,21 @@ struct EightSleepLinkView: View {
     @Environment(ScheduleStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    enum Stage { case prerequisite, credentials, working, done }
+    enum Stage { case prerequisite, credentials, working, choose, done }
 
     @State private var stage: Stage = .prerequisite
     @State private var email = ""
     @State private var password = ""
     @State private var result = ""
     @State private var failure: String?
+    @State private var choices: [RemoteAlarmChoice] = []
 
     var body: some View {
         switch stage {
         case .prerequisite: prerequisite
         case .credentials: credentials
         case .working: working
+        case .choose: picker
         case .done: done
         }
     }
@@ -225,12 +227,37 @@ struct EightSleepLinkView: View {
         }
     }
 
+    /// Shown when the account holds more than one alarm.
+    private var picker: some View {
+        AlarmPickerScreen(device: .eightSleep, choices: choices) { _ in
+            stage = .working
+            Task { await finish() }
+        } onBack: {
+            dismiss()
+        }
+    }
+
     private func connect() async {
         do {
             try await store.eightSleep.signIn(email: email, password: password)
-            result = try await store.eightSleep.readiness()
             password = ""
+            await finish()
+        } catch {
+            failure = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
+            stage = .credentials
+        }
+        await store.refreshAuthStates()
+    }
+
+    /// Signing in only proves the password. This proves the leg will actually work, and asks which
+    /// alarm to move when the answer is genuinely ambiguous.
+    private func finish() async {
+        do {
+            result = try await store.eightSleep.readiness()
             stage = .done
+        } catch AdapterError.alarmChoiceNeeded {
+            choices = (try? await store.eightSleep.availableAlarms()) ?? []
+            stage = choices.isEmpty ? .credentials : .choose
         } catch {
             failure = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
             stage = .credentials
@@ -246,7 +273,7 @@ struct WhoopLinkView: View {
     @Environment(ScheduleStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    enum Stage { case warning, credentials, code, done }
+    enum Stage { case warning, credentials, code, choose, done }
 
     @State private var stage: Stage = .warning
     @State private var email = ""
@@ -256,12 +283,14 @@ struct WhoopLinkView: View {
     @State private var result = ""
     @State private var failure: String?
     @State private var busy = false
+    @State private var choices: [RemoteAlarmChoice] = []
 
     var body: some View {
         switch stage {
         case .warning: warning
         case .credentials: credentials
         case .code: code
+        case .choose: picker
         case .done: done
         }
     }
@@ -395,8 +424,7 @@ struct WhoopLinkView: View {
             // One attempt. Never a retry loop: repeated failures rate limit the auth endpoint.
             switch try await store.whoop.signIn(email: email, password: password) {
             case .signedIn:
-                result = try await store.whoop.readiness()
-                stage = .done
+                await finish()
             case .needsCode(let challenge):
                 prompt = challenge.prompt
                 stage = .code
@@ -409,13 +437,33 @@ struct WhoopLinkView: View {
         busy = false
     }
 
+    private var picker: some View {
+        AlarmPickerScreen(device: .whoop, choices: choices) { _ in
+            Task { await finish() }
+        } onBack: {
+            dismiss()
+        }
+    }
+
+    private func finish() async {
+        do {
+            result = try await store.whoop.readiness()
+            stage = .done
+        } catch AdapterError.alarmChoiceNeeded {
+            choices = (try? await store.whoop.availableAlarms()) ?? []
+            stage = choices.isEmpty ? .credentials : .choose
+        } catch {
+            failure = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
+        }
+        await store.refreshAuthStates()
+    }
+
     private func confirm() async {
         busy = true
         do {
             try await store.whoop.submitCode(codeText)
-            result = try await store.whoop.readiness()
             codeText = ""
-            stage = .done
+            await finish()
         } catch {
             failure = (error as? AdapterError)?.errorDescription ?? error.localizedDescription
         }
@@ -470,4 +518,100 @@ private func progressRow(_ title: String, done: Bool, detail: String? = nil) -> 
         Spacer()
     }
     .padding(.horizontal, 15).padding(.vertical, 11)
+}
+
+// MARK: Alarm picker
+
+/// Shown when an account holds more than one alarm.
+///
+/// Neither service labels an alarm with a device or a room, so these are identified by time and
+/// days, which is the only honest thing the data supports. The choice is remembered, and if the
+/// chosen alarm later disappears the app asks again rather than quietly moving a different one.
+@MainActor
+struct AlarmPickerScreen: View {
+    let device: DeviceID
+    let choices: [RemoteAlarmChoice]
+    let onPick: (RemoteAlarmChoice) -> Void
+    let onBack: () -> Void
+
+    @State private var selected: String? = nil
+
+    var body: some View {
+        Screen(title: device.displayName, onBack: onBack) {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Which alarm should OneAlarm move?")
+                        .font(.system(size: 25, weight: .bold)).tracking(-0.6)
+                    Text("This account has \(choices.count). OneAlarm changes one of them and leaves the rest alone.")
+                        .font(.system(size: 15)).foregroundStyle(Theme.grey)
+                }
+                .padding(.top, 4)
+
+                VStack(spacing: 9) {
+                    ForEach(choices) { choice in
+                        Button {
+                            selected = choice.id
+                        } label: {
+                            HStack(spacing: 14) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Theme.Ramp.rail(for: device))
+                                    .frame(width: 3)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(choice.timeLabel).font(Theme.numeral(28))
+                                    Text(choice.daysLabel)
+                                        .font(.system(size: 13)).foregroundStyle(Theme.grey)
+                                    if let detail = choice.detail, !detail.isEmpty {
+                                        Text(detail)
+                                            .font(.system(size: 12)).foregroundStyle(Theme.greyDim)
+                                    }
+                                    if !choice.isEnabled {
+                                        Text("Currently off")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundStyle(Theme.State.unconfirmed)
+                                    }
+                                }
+
+                                Spacer(minLength: 8)
+
+                                Image(systemName: selected == choice.id ? "largecircle.fill.circle" : "circle")
+                                    .font(.system(size: 21))
+                                    .foregroundStyle(selected == choice.id ? Theme.State.confirmed : Theme.greyDim)
+                            }
+                            .padding(15)
+                            .frame(minHeight: 76)
+                            .background(
+                                selected == choice.id
+                                    ? AnyShapeStyle(Theme.Ramp.card(for: device))
+                                    : AnyShapeStyle(Theme.card),
+                                in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
+                                    .strokeBorder(
+                                        selected == choice.id ? Theme.State.confirmed.opacity(0.5) : Theme.line,
+                                        lineWidth: 1
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                Notice("You can change this later from Connections. Nothing else on the account is touched.")
+            }
+            .padding(.bottom, 20)
+        } footer: {
+            SolidButton(title: "Use this alarm", enabled: selected != nil) {
+                guard let id = selected, let choice = choices.first(where: { $0.id == id }) else { return }
+                RemoteAlarmSelection.select(id, for: device)
+                onPick(choice)
+            }
+        }
+        .onAppear {
+            // Pre-select whatever was chosen before, so re-opening this is a confirmation rather
+            // than a fresh decision.
+            selected = RemoteAlarmSelection.selected(for: device)
+        }
+    }
 }

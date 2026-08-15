@@ -103,14 +103,40 @@ actor EightSleepAdapter: DeviceAdapter {
     /// and it does not prove there is an alarm to move. Both of those fail later, in the dark, when
     /// nothing is watching. So they are checked here, while somebody is looking at the screen.
     func readiness() async throws -> String {
-        let alarms = try await fetchAlarms()
-        guard let first = alarms.first else {
-            throw AdapterError.noAlarmToUpdate
+        let choices = try await availableAlarms()
+        guard let chosen = RemoteAlarmSelection.resolve(choices, for: .eightSleep) else {
+            if choices.isEmpty { throw AdapterError.noAlarmToUpdate }
+            throw AdapterError.alarmChoiceNeeded(count: choices.count)
         }
-        let time = (first["time"] as? String).map { String($0.prefix(5)) } ?? "an existing alarm"
-        return alarms.count > 1
-            ? "Connected. Found \(alarms.count) alarms and will move the first, currently \(time)."
-            : "Connected. Found your alarm, currently \(time)."
+        return "Connected. Will move the alarm at \(chosen.summary)."
+    }
+
+    /// Every alarm on the account, described well enough to pick from.
+    ///
+    /// The API is keyed on the user rather than the device, so this returns alarms across every Pod
+    /// on the account. Eight Sleep does not put a device or room name on an alarm, so time and days
+    /// are the only honest way to tell them apart.
+    func availableAlarms() async throws -> [RemoteAlarmChoice] {
+        try await fetchAlarms().compactMap { alarm in
+            guard let id = alarm["id"] as? String else { return nil }
+            let parts = (alarm["time"] as? String)?.split(separator: ":").compactMap { Int($0) } ?? []
+            let time = parts.count >= 2 ? WallClockTime(hour: parts[0], minute: parts[1]) : nil
+
+            var days: Set<Locale.Weekday> = []
+            if let week = (alarm["repeat"] as? [String: Any])?["weekDays"] as? [String: Any] {
+                for day in Locale.Weekday.displayOrder where (week[day.eightSleepKey] as? Bool) == true {
+                    days.insert(day)
+                }
+            }
+
+            return RemoteAlarmChoice(
+                id: id,
+                time: time,
+                weekdays: days,
+                isEnabled: (alarm["enabled"] as? Bool) ?? true,
+                detail: nil
+            )
+        }
     }
 
     func signOut() {
@@ -322,7 +348,25 @@ actor EightSleepAdapter: DeviceAdapter {
 
     func write(_ target: ResolvedTarget) async throws -> WriteReceipt {
         let alarms = try await fetchAlarms()
-        guard let existing = alarms.first, let alarmID = existing["id"] as? String else {
+
+        // Never guess when the account holds more than one. Moving the wrong alarm is silent and
+        // only discovered by not waking up.
+        let chosenID: String?
+        if let id = RemoteAlarmSelection.selected(for: .eightSleep),
+           alarms.contains(where: { ($0["id"] as? String) == id }) {
+            chosenID = id
+        } else if alarms.count == 1 {
+            chosenID = alarms.first?["id"] as? String
+        } else if alarms.count > 1 {
+            throw AdapterError.alarmChoiceNeeded(count: alarms.count)
+        } else {
+            chosenID = nil
+        }
+
+        guard
+            let alarmID = chosenID,
+            let existing = alarms.first(where: { ($0["id"] as? String) == alarmID })
+        else {
             // Creating one is possible, but the create payload is exactly where the field name
             // contradiction lives. Better to tell the user to make one alarm in the Eight Sleep app
             // once than to guess at a payload and silently set the wrong thing.

@@ -18,6 +18,8 @@ enum AdapterError: LocalizedError, Equatable {
     case subscriptionRequired
     case rateLimited
     case noAlarmToUpdate
+    /// Several alarms exist and none has been chosen. Not a failure, a question.
+    case alarmChoiceNeeded(count: Int)
     case unexpectedResponse(String)
     case transport(String)
 
@@ -35,6 +37,8 @@ enum AdapterError: LocalizedError, Equatable {
             // Actionable on purpose. OneAlarm moves an alarm you already have rather than creating
             // one, so "none found" is a thing you can fix in thirty seconds if the message says how.
             return "No alarm found to move. Create one alarm in the device's own app first, then connect again."
+        case .alarmChoiceNeeded(let count):
+            return "This account has \(count) alarms. Choose which one OneAlarm should move."
         case .unexpectedResponse(let detail):
             return "Unexpected response. \(detail)"
         case .transport(let detail):

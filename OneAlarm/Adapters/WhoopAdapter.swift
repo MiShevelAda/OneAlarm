@@ -234,12 +234,19 @@ actor WhoopAdapter: DeviceAdapter {
     /// enable switches and a schedule shape nobody has fully captured, so "signed in" is a long way
     /// from "the strap will buzz". Finding that out now beats finding it out by oversleeping.
     func readiness() async throws -> String {
+        let choices = try await availableAlarms()
+        guard let chosen = RemoteAlarmSelection.resolve(choices, for: .whoop) else {
+            if choices.isEmpty { throw AdapterError.noAlarmToUpdate }
+            throw AdapterError.alarmChoiceNeeded(count: choices.count)
+        }
+
         let schedules = try await fetchSchedules()
-        guard let first = schedules.first else {
+        guard let selected = schedules.first(where: { Self.scheduleID($0) == chosen.id }) else {
             throw AdapterError.noAlarmToUpdate
         }
+
         // Fail here rather than at write time if the shape is not what the adapter can safely edit.
-        _ = try Self.mutate(first, to: ResolvedTarget(
+        _ = try Self.mutate(selected, to: ResolvedTarget(
             device: .whoop,
             localTime: WallClockTime(hour: 7, minute: 0),
             weekdays: [.monday],
@@ -248,11 +255,32 @@ actor WhoopAdapter: DeviceAdapter {
             utcOffsetSeconds: TimeZone.current.secondsFromGMT()
         ))
 
-        let time = (first["latest_wake_time"] as? String).map { String($0.prefix(5)) } ?? "an existing alarm"
-        let mode = (first["alarm_mode"] as? String) ?? "your chosen mode"
-        return schedules.count > 1
-            ? "Connected. Found \(schedules.count) schedules and will move the first, currently \(time) on \(mode)."
-            : "Connected. Found your smart alarm, currently \(time) on \(mode)."
+        return "Connected. Will move the smart alarm at \(chosen.summary)."
+    }
+
+    /// Every smart alarm schedule on the account, described well enough to pick from.
+    func availableAlarms() async throws -> [RemoteAlarmChoice] {
+        try await fetchSchedules().compactMap { schedule in
+            guard let id = Self.scheduleID(schedule) else { return nil }
+            let parts = (schedule["latest_wake_time"] as? String)?
+                .split(separator: ":").compactMap { Int($0) } ?? []
+            let time = parts.count >= 2 ? WallClockTime(hour: parts[0], minute: parts[1]) : nil
+
+            let names = Set((schedule["day_of_week_list"] as? [String]) ?? [])
+            let days = Set(Locale.Weekday.displayOrder.filter { names.contains($0.whoopName) })
+
+            let mode = (schedule["alarm_mode"] as? String)?
+                .replacingOccurrences(of: "_", with: " ")
+                .lowercased()
+
+            return RemoteAlarmChoice(
+                id: id,
+                time: time,
+                weekdays: days,
+                isEnabled: (schedule["enabled"] as? Bool) ?? true,
+                detail: mode
+            )
+        }
     }
 
     func signOut() {
@@ -447,9 +475,24 @@ actor WhoopAdapter: DeviceAdapter {
 
     func write(_ target: ResolvedTarget) async throws -> WriteReceipt {
         let schedules = try await fetchSchedules()
+
+        // Never guess when the account holds more than one. Moving the wrong alarm is silent and
+        // only discovered by not waking up.
+        let chosenID: String?
+        if let saved = RemoteAlarmSelection.selected(for: .whoop),
+           schedules.contains(where: { Self.scheduleID($0) == saved }) {
+            chosenID = saved
+        } else if schedules.count == 1 {
+            chosenID = Self.scheduleID(schedules[0])
+        } else if schedules.count > 1 {
+            throw AdapterError.alarmChoiceNeeded(count: schedules.count)
+        } else {
+            chosenID = nil
+        }
+
         guard
-            let existing = schedules.first,
-            let id = Self.scheduleID(existing)
+            let id = chosenID,
+            let existing = schedules.first(where: { Self.scheduleID($0) == id })
         else {
             // Creating a schedule was never captured by the reference work, so we do not invent a
             // payload for it. Making one alarm once in the Whoop app is a smaller ask than a
@@ -475,9 +518,9 @@ actor WhoopAdapter: DeviceAdapter {
         }
 
         authState = .connected
-        let previous = (existing["latest_wake_time"] as? String) ?? "an existing schedule"
+        let previous = (existing["latest_wake_time"] as? String).map { String($0.prefix(5)) } ?? "an existing schedule"
         let note = schedules.count > 1
-            ? "Moved the first of \(schedules.count) schedules, previously \(previous)."
+            ? "Moved your chosen schedule of \(schedules.count), previously \(previous)."
             : "Updated the smart alarm schedule, previously \(previous)."
 
         return WriteReceipt(
