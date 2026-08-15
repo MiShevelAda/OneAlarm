@@ -20,16 +20,24 @@ actor WhoopAdapter: DeviceAdapter {
     private static let authPath = "/auth-service/v3/whoop/"
 
     private let keychain: KeychainStore
+    /// Verb included, so an allowlisted path cannot be reached with a different method. In
+    /// particular `DELETE .../schedule/{id}` would destroy the schedule and is not expressible.
+    ///
+    /// Note the host prefix too: `smart-alarm-service` is a different prefix from the allowlisted
+    /// `smart-alarm-bff`, which puts the master enable/disable and the `smartalarm/wbl` telemetry
+    /// endpoint out of reach. That separation is deliberate and worth not undoing.
     private let http = HTTPClient(allowedPatterns: [
-        #"^https://api\.prod\.whoop\.com/auth-service/v3/whoop/$"#,
-        #"^https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/all\?apiVersion=7$"#,
-        #"^https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/[^/?]+\?apiVersion=7$"#,
+        #"^POST https://api\.prod\.whoop\.com/auth-service/v3/whoop/$"#,
+        #"^GET https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/all\?apiVersion=7$"#,
+        #"^PUT https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/[^/?]+\?apiVersion=7$"#,
     ])
 
     private(set) var authState: AuthState = .notConfigured
 
     private var accessToken: String?
     private var tokenExpiry: Date?
+    private var retryNotBefore: Date?
+    private var currentBackoff: TimeInterval = 0
     /// Set while an SMS or TOTP challenge is outstanding.
     private(set) var pendingChallenge: Challenge?
 
@@ -92,21 +100,32 @@ actor WhoopAdapter: DeviceAdapter {
         ]
     }
 
+    /// Only a refresh token counts as connected.
+    ///
+    /// An email and password do not, because sign in can stop at an MFA challenge: abandon the
+    /// sheet at the code prompt and the credentials are on disk while no token exists, so the UI
+    /// would read "Connected" and every write would throw `notConfigured`.
     func refreshAuthState() async {
-        let configured = keychain.has(.whoopRefreshToken)
-            || (keychain.has(.whoopEmail) && keychain.has(.whoopPassword))
-        if !configured {
+        switch keychain.presence(.whoopRefreshToken) {
+        case .absent:
             authState = .notConfigured
-        } else if case .needsReauth = authState {
-            // Leave it flagged until the user acts.
-        } else {
-            authState = .connected
+        case .unknownDeviceLocked:
+            break
+        case .present:
+            if case .needsReauth = authState {
+                // Leave it flagged until the user acts.
+            } else {
+                authState = .connected
+            }
         }
     }
 
     /// One attempt only. Never wrap this in a retry loop: repeated failures hit
     /// `TooManyRequestsException` on the auth endpoint and risk locking the account out.
     func signIn(email: String, password: String) async throws -> SignInOutcome {
+        if let notBefore = retryNotBefore, Date() < notBefore {
+            throw AdapterError.rateLimited
+        }
         guard let url = URL(string: Self.host + Self.authPath) else {
             throw AdapterError.transport("Bad auth URL.")
         }
@@ -123,23 +142,28 @@ actor WhoopAdapter: DeviceAdapter {
             "POST", url, headers: Self.authHeaders(target: "InitiateAuth"), body: body
         )
 
-        if response.status == 429 { throw AdapterError.rateLimited }
+        if response.status == 429 {
+            backOff()
+            throw AdapterError.rateLimited
+        }
         guard response.isSuccess else {
             authState = .needsReauth("Whoop rejected the email or password.")
             throw AdapterError.authenticationFailed("HTTP \(response.status)")
         }
 
+        retryNotBefore = nil
+        currentBackoff = 0
         let json = try HTTPClient.dictionary(response.data)
 
         if let challengeName = json["ChallengeName"] as? String, let session = json["Session"] as? String {
-            try keychain.save(email, for: .whoopEmail)
-            try keychain.save(password, for: .whoopPassword)
+            // Nothing is persisted until the challenge is answered. An unconfirmed credential on
+            // disk is a credential that makes the app claim a connection it does not have.
             let challenge = Challenge(name: challengeName, session: session, username: email)
             pendingChallenge = challenge
             return .needsCode(challenge)
         }
 
-        try store(authResult: json, email: email, password: password)
+        try store(authResult: json, email: email)
         return .signedIn
     }
 
@@ -171,11 +195,19 @@ actor WhoopAdapter: DeviceAdapter {
         }
 
         let json = try HTTPClient.dictionary(response.data)
-        try store(authResult: json, email: challenge.username, password: nil)
+
+        // Cognito can answer one challenge with another. Without this the user is told the response
+        // carried no access token and left with no way forward.
+        if let next = json["ChallengeName"] as? String, let session = json["Session"] as? String {
+            pendingChallenge = Challenge(name: next, session: session, username: challenge.username)
+            throw AdapterError.authenticationFailed("Whoop asked for a second code.")
+        }
+
+        try store(authResult: json, email: challenge.username)
         pendingChallenge = nil
     }
 
-    private func store(authResult json: [String: Any], email: String, password: String?) throws {
+    private func store(authResult json: [String: Any], email: String) throws {
         guard
             let result = json["AuthenticationResult"] as? [String: Any],
             let access = result["AccessToken"] as? String
@@ -184,9 +216,9 @@ actor WhoopAdapter: DeviceAdapter {
         }
 
         try keychain.save(email, for: .whoopEmail)
-        if let password {
-            try keychain.save(password, for: .whoopPassword)
-        }
+        // The password is deliberately not stored. Re-auth is refresh token only, and an MFA
+        // challenge means a saved password could not produce a silent sign in anyway, so keeping
+        // one would be a second live account credential held indefinitely for no function.
         if let refresh = result["RefreshToken"] as? String {
             // Written before the response is treated as successful, so a crash here cannot leave a
             // rotated token unsaved and the account locked out.
@@ -213,8 +245,15 @@ actor WhoopAdapter: DeviceAdapter {
             return token
         }
 
+        // A credential the server has already rejected is never sent again on its own.
+        if case .needsReauth = authState {
+            throw AdapterError.notConfigured
+        }
+        if let notBefore = retryNotBefore, Date() < notBefore {
+            throw AdapterError.rateLimited
+        }
+
         guard let refresh = try? keychain.readString(.whoopRefreshToken) else {
-            authState = .notConfigured
             throw AdapterError.notConfigured
         }
         guard let url = URL(string: Self.host + Self.authPath) else {
@@ -231,10 +270,17 @@ actor WhoopAdapter: DeviceAdapter {
             "POST", url, headers: Self.authHeaders(target: "InitiateAuth"), body: body
         )
 
+        // A throttle must never be diagnosed as an expired token. Doing so tells the user to sign
+        // in again, which routes them straight into a password grant while the auth endpoint is
+        // already rate limiting, which is the one thing this API must not be asked to do.
+        if response.status == 429 {
+            backOff()
+            throw AdapterError.rateLimited
+        }
         guard response.isSuccess else {
             // The refresh token is an opaque blob whose expiry cannot be read locally, so this is
             // the only way we find out it has aged out. Roughly thirty days, and then a fresh sign
-            // in with the SMS code is required.
+            // in with the code is required.
             authState = .needsReauth("Whoop needs you to sign in again with a fresh code.")
             throw AdapterError.authenticationFailed("Refresh token expired.")
         }
@@ -247,15 +293,31 @@ actor WhoopAdapter: DeviceAdapter {
             throw AdapterError.unexpectedResponse("Refresh returned no access token.")
         }
 
+        // Cognito is not configured to rotate on this flow today, so no new refresh token comes
+        // back. Saving one if it ever does costs nothing and avoids silently keeping a dead token.
+        if let rotated = result["RefreshToken"] as? String {
+            try keychain.save(rotated, for: .whoopRefreshToken)
+        }
+
         accessToken = access
         tokenExpiry = Date().addingTimeInterval((result["ExpiresIn"] as? Double) ?? 86_400)
         authState = .connected
+        retryNotBefore = nil
+        currentBackoff = 0
         return access
+    }
+
+    private func backOff() {
+        let next = min((currentBackoff == 0 ? 60 : currentBackoff * 2), 900)
+        currentBackoff = next
+        retryNotBefore = Date().addingTimeInterval(next)
     }
 
     // MARK: Schedule
 
-    private func fetchSchedules() async throws -> [[String: Any]] {
+    /// The whole `schedule/all` payload, since the master enable flag lives beside the list rather
+    /// than inside it.
+    private func fetchScheduleEnvelope() async throws -> [String: Any] {
         let token = try await currentToken()
         guard let url = URL(string: "\(Self.host)/smart-alarm-bff/v1/schedule/all?apiVersion=7") else {
             throw AdapterError.transport("Bad schedule URL.")
@@ -266,7 +328,10 @@ actor WhoopAdapter: DeviceAdapter {
             headers: Self.dataHeaders(token: token, timeZone: TimeZone.current.identifier)
         )
 
-        if response.status == 429 { throw AdapterError.rateLimited }
+        if response.status == 429 {
+            backOff()
+            throw AdapterError.rateLimited
+        }
         if response.status == 401 {
             accessToken = nil
             throw AdapterError.authenticationFailed("Token was rejected.")
@@ -275,8 +340,28 @@ actor WhoopAdapter: DeviceAdapter {
             throw AdapterError.unexpectedResponse("HTTP \(response.status) reading the alarm schedule.")
         }
 
-        let json = try HTTPClient.dictionary(response.data)
-        return (json["alarm_schedule_list"] as? [[String: Any]]) ?? []
+        return try HTTPClient.dictionary(response.data)
+    }
+
+    private func fetchSchedules() async throws -> [[String: Any]] {
+        let envelope = try await fetchScheduleEnvelope()
+        try Self.assertMasterSwitchOn(envelope)
+        return (envelope["alarm_schedule_list"] as? [[String: Any]]) ?? []
+    }
+
+    /// Whoop has three independent enable levels: the per schedule `enabled` we write, a global
+    /// `schedule_enabled`, and a master switch on a different service we deliberately cannot reach.
+    ///
+    /// Writing only the first is enough to get a 200 and a green tick while the strap stays silent,
+    /// so the global flag is checked and the write refused rather than reported as a success. The
+    /// master switch is on `smart-alarm-service`, which is outside the allowlist on purpose, so if
+    /// that is off it has to be turned on in the Whoop app.
+    private static func assertMasterSwitchOn(_ envelope: [String: Any]) throws {
+        if let enabled = envelope["schedule_enabled"] as? Bool, enabled == false {
+            throw AdapterError.unexpectedResponse(
+                "Whoop's alarm schedule is switched off. Turn it on in the Whoop app first."
+            )
+        }
     }
 
     /// The reference implementation reads either key because it was unsure which the API returns,
@@ -285,7 +370,19 @@ actor WhoopAdapter: DeviceAdapter {
         (schedule["schedule_id"] as? String) ?? (schedule["id"] as? String)
     }
 
-    private static func mutate(_ schedule: [String: Any], to target: ResolvedTarget) -> [String: Any] {
+    /// Throws rather than sending a partial replace.
+    ///
+    /// This PUT replaces rather than merges, so anything absent from the payload is lost. The read
+    /// shape here is the least verified part of the whole Whoop leg: the reference project's own
+    /// source hedges where these fields sit on a GET, and it ships no captured alarm response to
+    /// check against. If the two we depend on are not where we expect, the honest outcome is a
+    /// refusal, not a write that silently resets the smart wake mode he chose.
+    private static func mutate(_ schedule: [String: Any], to target: ResolvedTarget) throws -> [String: Any] {
+        guard schedule["latest_wake_time"] is String, schedule["alarm_mode"] is String else {
+            throw AdapterError.unexpectedResponse(
+                "Whoop returned a schedule in an unexpected shape, so it was not changed."
+            )
+        }
         var payload = schedule
         payload["latest_wake_time"] = target.localTime.hhmmss
         payload["day_of_week_list"] = Locale.Weekday.displayOrder
@@ -316,7 +413,10 @@ actor WhoopAdapter: DeviceAdapter {
             summary: "Move the smart alarm ceiling to \(target.localTime.hhmm) local, keeping the wake mode you set in the Whoop app.",
             method: "PUT",
             url: "\(Self.host)/smart-alarm-bff/v1/schedule/{id}?apiVersion=7",
-            body: HTTPClient.redactedPreview(sketch)
+            body: HTTPClient.redactedPreview(
+                sketch,
+                showing: ["latest_wake_time", "day_of_week_list", "enabled", "time_zone_offset"]
+            )
         )
     }
 
@@ -337,7 +437,7 @@ actor WhoopAdapter: DeviceAdapter {
             throw AdapterError.transport("Bad schedule update URL.")
         }
 
-        let body = try HTTPClient.json(Self.mutate(existing, to: target))
+        let body = try HTTPClient.json(try Self.mutate(existing, to: target))
         let response = try await http.send(
             "PUT", url,
             headers: Self.dataHeaders(token: token, timeZone: TimeZone.current.identifier),
@@ -350,11 +450,16 @@ actor WhoopAdapter: DeviceAdapter {
         }
 
         authState = .connected
+        let previous = (existing["latest_wake_time"] as? String) ?? "an existing schedule"
+        let note = schedules.count > 1
+            ? "Moved the first of \(schedules.count) schedules, previously \(previous)."
+            : "Updated the smart alarm schedule, previously \(previous)."
+
         return WriteReceipt(
             device: .whoop,
             succeededAt: Date(),
             remoteID: id,
-            note: "Updated the smart alarm schedule."
+            note: note
         )
     }
 
@@ -374,12 +479,34 @@ actor WhoopAdapter: DeviceAdapter {
             return .unavailable(reason: "Whoop returned an unreadable wake time.")
         }
 
+        // Both halves have to be checked. Comparing wall clock alone would pass even if the server
+        // rewrote or ignored the offset, which is precisely the failure that wakes him an hour out,
+        // so the echoed offset is reconstructed into a real instant and compared against the one we
+        // intended.
         let echoed = WallClockTime(hour: parts[0], minute: parts[1])
-        guard echoed == target.localTime else {
-            return .unavailable(
-                reason: "Whoop reads back \(echoed.hhmm) instead of \(target.localTime.hhmm)."
-            )
+        let echoedOffset = (updated["time_zone_offset"] as? String) ?? target.utcOffsetString
+
+        guard echoed == target.localTime, echoedOffset == target.utcOffsetString else {
+            let actual = Self.instant(matching: echoed, offset: echoedOffset, near: target.nextOccurrence)
+            return .mismatch(expected: target.nextOccurrence, actual: actual ?? target.nextOccurrence)
         }
         return .confirmed(at: target.nextOccurrence)
+    }
+
+    /// Rebuild an absolute instant from a wall clock and a `"+0100"` style offset, on the same day
+    /// as the target, so a mismatch can be reported as a real time rather than a shrug.
+    private static func instant(matching time: WallClockTime, offset: String, near reference: Date) -> Date? {
+        guard offset.count == 5, let magnitude = Int(offset.dropFirst()) else { return nil }
+        let seconds = (magnitude / 100 * 3600 + magnitude % 100 * 60) * (offset.hasPrefix("-") ? -1 : 1)
+
+        var calendar = Calendar(identifier: .gregorian)
+        guard let zone = TimeZone(secondsFromGMT: seconds) else { return nil }
+        calendar.timeZone = zone
+
+        var components = calendar.dateComponents([.year, .month, .day], from: reference)
+        components.hour = time.hour
+        components.minute = time.minute
+        components.second = 0
+        return calendar.date(from: components)
     }
 }

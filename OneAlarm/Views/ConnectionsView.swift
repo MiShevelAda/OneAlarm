@@ -156,6 +156,16 @@ struct ConnectionsView: View {
             Text("Whoop has no official alarm API, so this uses the same private one their app uses. Personal account only. Sign in again roughly monthly. Create a smart alarm in the Whoop app first, OneAlarm moves that one.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
+            // Stated rather than carried silently. The reference work this leg is ported from does
+            // not push the time to the strap firmware either, and relies on the official app to
+            // sync it. Whether the band buzzes without that step is genuinely unknown.
+            Label(
+                "Keep the Whoop app installed and open it now and then. OneAlarm changes the alarm on Whoop's servers, and their app is what carries it to the band.",
+                systemImage: "info.circle"
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
         }
     }
 

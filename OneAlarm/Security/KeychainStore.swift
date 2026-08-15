@@ -76,19 +76,23 @@ struct KeychainStore: Sendable {
         try save(data, for: account)
     }
 
+    /// Shared so both update paths map `errSecInteractionNotAllowed` the same way. Mapping it in
+    /// one place and forgetting it in the other is how a caller's `catch` starts behaving
+    /// differently depending on which branch it arrived through.
+    private func mapUpdate(_ status: OSStatus) throws -> Bool {
+        switch status {
+        case errSecSuccess: return true
+        case errSecItemNotFound: return false
+        case errSecInteractionNotAllowed: throw KeychainError.interactionNotAllowed
+        default: throw KeychainError.unhandled(status)
+        }
+    }
+
     func save(_ data: Data, for account: Account) throws {
         // Update first, then add. Delete then add would drop any persistent reference and, worse,
         // a delete on a locked device succeeds while returning nothing useful.
-        let updateStatus = SecItemUpdate(baseQuery(account), [kSecValueData: data] as NSDictionary)
-        switch updateStatus {
-        case errSecSuccess:
+        if try mapUpdate(SecItemUpdate(baseQuery(account), [kSecValueData: data] as NSDictionary)) {
             return
-        case errSecItemNotFound:
-            break
-        case errSecInteractionNotAllowed:
-            throw KeychainError.interactionNotAllowed
-        default:
-            throw KeychainError.unhandled(updateStatus)
         }
 
         let addQuery = baseQuery(account)
@@ -103,7 +107,9 @@ struct KeychainStore: Sendable {
             // Only service plus account form the uniqueness constraint for a generic password, so
             // a lookup can miss and the very next add can still collide. Update is valid now.
             let retry = SecItemUpdate(baseQuery(account), [kSecValueData: data] as NSDictionary)
-            guard retry == errSecSuccess else { throw KeychainError.unhandled(retry) }
+            guard try mapUpdate(retry) else {
+                throw KeychainError.unhandled(retry)
+            }
         default:
             throw KeychainError.unhandled(addStatus)
         }
@@ -141,13 +147,27 @@ struct KeychainStore: Sendable {
         return string
     }
 
-    /// Presence without reading the value, for UI that only needs to know whether a leg is set up.
-    func has(_ account: Account) -> Bool {
+    enum Presence: Equatable {
+        case present
+        case absent
+        /// The item may or may not exist. The device is locked and its data is unreadable.
+        case unknownDeviceLocked
+    }
+
+    /// Presence as a three way answer, not a `Bool`.
+    ///
+    /// A `Bool` here is the same mistake as conflating `errSecItemNotFound` with
+    /// `errSecInteractionNotAllowed`, one layer up. Collapsing "locked" into "absent" makes the UI
+    /// tell someone to re-enter a password they never lost, and invites any future cleanup code to
+    /// delete a credential that is merely unreadable right now.
+    func presence(_ account: Account) -> Presence {
         do {
             _ = try readData(account)
-            return true
+            return .present
+        } catch KeychainError.notFound {
+            return .absent
         } catch {
-            return false
+            return .unknownDeviceLocked
         }
     }
 

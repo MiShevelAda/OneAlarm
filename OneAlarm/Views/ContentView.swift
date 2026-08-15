@@ -158,11 +158,34 @@ struct ContentView: View {
         .disabled(store.isSyncing)
     }
 
+    @ViewBuilder
     private var footer: some View {
         VStack(spacing: 6) {
-            if let lastSyncedAt = store.lastSyncedAt {
+            if store.nothingToApply {
+                // Never a timestamp here. Saying "last set 14:32" when nothing was written is the
+                // worst lie this app could tell.
+                Label(
+                    "Nothing was set. Every device is either switched off or not connected.",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .foregroundStyle(.orange)
+                .multilineTextAlignment(.center)
+            } else if store.needsApply, store.lastSyncedAt != nil {
+                Text("Changed since last set. Tap Set all alarms.")
+                    .foregroundStyle(.orange)
+            } else if let lastSyncedAt = store.lastSyncedAt {
                 Text("Last set \(lastSyncedAt.formatted(date: .omitted, time: .shortened))")
             }
+
+            if store.schedule.rule(for: .iphone)?.isEnabled == false {
+                Label(
+                    "The iPhone alarm is off. That is the only one that rings without a connection.",
+                    systemImage: "bell.slash"
+                )
+                .foregroundStyle(.orange)
+                .multilineTextAlignment(.center)
+            }
+
             Text("The iPhone alarm works on its own. The other two need connecting.")
                 .multilineTextAlignment(.center)
         }

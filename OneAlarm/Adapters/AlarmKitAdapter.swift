@@ -54,8 +54,14 @@ actor AlarmKitAdapter: DeviceAdapter {
         }
     }
 
+    /// True only before the one time prompt has ever been answered.
+    var needsAuthorizationPrompt: Bool {
+        AlarmManager.shared.authorizationState == .notDetermined
+    }
+
     /// Asking explicitly only controls *when* the prompt appears. AlarmKit will ask on its own the
-    /// first time an alarm is scheduled if we never call this.
+    /// first time an alarm is scheduled if we never call this, which is precisely what we do not
+    /// want: that prompt would land inside the fan out, where nothing can time it out.
     @discardableResult
     func requestAuthorization() async -> Bool {
         do {
@@ -82,14 +88,15 @@ actor AlarmKitAdapter: DeviceAdapter {
     }
 
     func write(_ target: ResolvedTarget) async throws -> WriteReceipt {
-        guard await requestAuthorization() else {
-            throw AdapterError.authenticationFailed("Alarm permission is required for the iPhone alarm.")
-        }
-
-        // Replace rather than accumulate. Cancelling a stale id that no longer exists is expected
-        // after an alarm has fired, so a throw here is not an error worth surfacing.
-        if let existing = currentAlarmID {
-            try? AlarmManager.shared.cancel(id: existing)
+        // Deliberately does NOT prompt. `requestAuthorization()` awaits a system alert with no
+        // timeout, and a fan out that waits on it hangs forever if the user swipes the alert away,
+        // leaving the Apply button spinning and disabled with no other way to set an alarm. The
+        // prompt belongs at launch and on the Connections screen, where a human is already looking
+        // at it.
+        guard AlarmManager.shared.authorizationState == .authorized else {
+            throw AdapterError.authenticationFailed(
+                "Alarm permission is needed. Open Connections and tap Request permission."
+            )
         }
 
         // `.relative` and not `.fixed`. A fixed schedule is an absolute instant that does not track
@@ -122,6 +129,13 @@ actor AlarmKitAdapter: DeviceAdapter {
             sound: .default
         )
 
+        // Schedule the new alarm BEFORE cancelling the old one.
+        //
+        // The other order looks tidier and is dangerous: if `schedule` throws, and it can, the
+        // documented `maximumLimitReached` being one way, the old alarm is already gone and the new
+        // one never arrives, so the backstop that exists to always ring has been removed by our own
+        // code. AlarmKit holds more than one alarm happily, so a moment of overlap costs nothing,
+        // and a duplicate ring is a far better failure than silence.
         let id = UUID()
         do {
             _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
@@ -129,6 +143,12 @@ actor AlarmKitAdapter: DeviceAdapter {
             throw AdapterError.unexpectedResponse("AlarmKit refused the alarm: \(error).")
         } catch {
             throw AdapterError.unexpectedResponse(error.localizedDescription)
+        }
+
+        // Only now is the previous one safe to remove. Cancelling an id that no longer exists is
+        // expected once an alarm has fired, so a throw here is not worth surfacing.
+        if let previous = currentAlarmID, previous != id {
+            try? AlarmManager.shared.cancel(id: previous)
         }
 
         currentAlarmID = id

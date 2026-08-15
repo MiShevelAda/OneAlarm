@@ -26,6 +26,11 @@ final class ScheduleStore {
     private(set) var authStates: [DeviceID: AuthState] = [:]
     private(set) var lastSyncedAt: Date?
     private(set) var isSyncing = false
+    /// True when the schedule has changed since the last successful apply.
+    private(set) var needsApply = false
+    /// Set when an apply finds nothing to write, so the UI can say so instead of showing a
+    /// timestamp that implies alarms were set.
+    private(set) var nothingToApply = false
 
     let alarmKit = AlarmKitAdapter()
     let eightSleep = EightSleepAdapter()
@@ -87,6 +92,12 @@ final class ScheduleStore {
     private func persistAndRecompute() {
         persist()
         recompute()
+        // Any edit invalidates every previous result. Leaving them on screen puts a green
+        // "Set for 06:50" directly under a row now reading 07:50, and nothing distinguishes that
+        // from a successful sync.
+        status.removeAll()
+        needsApply = true
+        nothingToApply = false
     }
 
     func recompute() {
@@ -126,9 +137,33 @@ final class ScheduleStore {
         guard !isSyncing else { return }
         isSyncing = true
         recompute()
+        await refreshAuthStates()
+
+        // Stale entries for devices no longer in play would otherwise reappear as if fresh when a
+        // device is re-enabled.
+        let live = Set(targets.map(\.device))
+        status = status.filter { live.contains($0.key) }
+
+        // A leg with no credentials at all is not a failure, it is a leg that was never set up.
+        // Running it anyway paints two red crosses on first launch, which reads as the app being
+        // broken when it is working exactly as intended.
+        let writable = targets.filter { target in
+            guard target.device.requiresCredentials else { return true }
+            return (authStates[target.device] ?? .notConfigured) != .notConfigured
+        }
+
+        guard !writable.isEmpty else {
+            // No timestamp. Stamping one here would tell the user alarms were set when none were,
+            // which is the worst possible lie for this app to tell.
+            nothingToApply = true
+            isSyncing = false
+            return
+        }
+
+        nothingToApply = false
 
         await withTaskGroup(of: Void.self) { group in
-            for target in targets {
+            for target in writable {
                 guard let adapter = adapter(for: target.device) else { continue }
                 group.addTask { @MainActor in
                     await self.apply(target: target, using: adapter)
@@ -137,8 +172,24 @@ final class ScheduleStore {
         }
 
         lastSyncedAt = Date()
+        needsApply = false
         isSyncing = false
         await refreshAuthStates()
+    }
+
+    /// Re-apply when the clock or the zone moves under us.
+    ///
+    /// Only the Whoop leg actually needs this, and it needs it badly: its `time_zone_offset` is a
+    /// fixed string with no daylight saving awareness, so an alarm written in October fires an hour
+    /// wrong from the last Sunday of the month until somebody notices. AlarmKit's relative schedule
+    /// and Eight Sleep's server side zone both handle the transition themselves.
+    func applyIfClockMoved() async {
+        let previous = targets
+        recompute()
+        let offsetChanged = zip(previous, targets).contains { $0.utcOffsetSeconds != $1.utcOffsetSeconds }
+        if offsetChanged || previous.count != targets.count {
+            await apply()
+        }
     }
 
     private func apply(target: ResolvedTarget, using adapter: any DeviceAdapter) async {

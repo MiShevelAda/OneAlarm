@@ -10,7 +10,13 @@ import os
 /// deliberate edit to a short list rather than an accident.
 struct HTTPClient {
 
-    /// Paths this client is permitted to reach, as regular expressions anchored to the full URL.
+    /// Requests this client is permitted to make, as regular expressions matched against
+    /// `"METHOD https://host/path"`.
+    ///
+    /// The method is part of the pattern deliberately. Matching on the URL alone leaves the verb
+    /// free, which means a path allowlisted for `GET` is also open to `DELETE`. On these two APIs
+    /// that is the difference between reading an alarm and destroying it, so the verb is not
+    /// something the caller gets to choose after the check has passed.
     let allowedPatterns: [String]
     let session: URLSession
 
@@ -28,10 +34,13 @@ struct HTTPClient {
         var isSuccess: Bool { (200..<300).contains(status) }
     }
 
-    func isAllowed(_ url: URL) -> Bool {
-        let absolute = url.absoluteString
+    func isAllowed(_ method: String, _ url: URL) -> Bool {
+        // A pattern edit must never be able to authorise cleartext.
+        guard url.scheme == "https" else { return false }
+
+        let candidate = "\(method.uppercased()) \(url.absoluteString)"
         return allowedPatterns.contains { pattern in
-            absolute.range(of: pattern, options: [.regularExpression]) != nil
+            candidate.range(of: pattern, options: [.regularExpression]) != nil
         }
     }
 
@@ -41,10 +50,10 @@ struct HTTPClient {
         headers: [String: String],
         body: Data? = nil
     ) async throws -> Response {
-        guard isAllowed(url) else {
-            // Deliberately loud. Reaching here means a code change tried to call something the
+        guard isAllowed(method, url) else {
+            // Deliberately loud. Reaching here means a code change tried to make a request the
             // allowlist does not cover, which is exactly the mistake this type exists to stop.
-            throw AdapterError.unexpectedResponse("Blocked by allowlist: \(method) \(url.path)")
+            throw AdapterError.unexpectedResponse("Blocked by allowlist: \(method) \(Self.safePath(url))")
         }
 
         var request = URLRequest(url: url)
@@ -55,18 +64,25 @@ struct HTTPClient {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
-        // Path only. Never the headers, which carry the bearer token, and never the body, which on
-        // the auth calls carries the password.
-        Self.log.debug("\(method, privacy: .public) \(url.path, privacy: .public)")
+        // Never the headers, which carry the bearer token, and never the body, which on the auth
+        // calls carries the password. The path is hashed rather than printed because these paths
+        // embed the account id, and the unified log survives in a sysdiagnose.
+        Self.log.debug("\(method, privacy: .public) \(url.path, privacy: .private(mask: .hash))")
 
         do {
             let (data, response) = try await session.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            Self.log.debug("\(url.path, privacy: .public) -> \(status, privacy: .public)")
+            Self.log.debug("-> \(status, privacy: .public)")
             return Response(status: status, data: data)
         } catch {
             throw AdapterError.transport(error.localizedDescription)
         }
+    }
+
+    /// A path with the account id dropped, safe to put in an error the user might screenshot.
+    static func safePath(_ url: URL) -> String {
+        let components = url.pathComponents.filter { $0 != "/" }
+        return "/" + components.prefix(2).joined(separator: "/")
     }
 
     static func json(_ object: Any) throws -> Data {
@@ -80,18 +96,19 @@ struct HTTPClient {
         return object
     }
 
-    /// Pretty printed for the preview gate, with anything credential shaped removed.
-    static func redactedPreview(_ object: Any) -> String {
-        let sensitive: Set<String> = [
-            "password", "client_secret", "access_token", "refresh_token", "RefreshToken",
-            "AccessToken", "IdToken", "PASSWORD", "authorization",
-        ]
-
+    /// Pretty printed for the preview gate, showing only keys that were explicitly named as safe.
+    ///
+    /// Deliberately an allowlist rather than a list of credential shaped names to strip. A denylist
+    /// maintained by hand against a private API always lags: it would have to know that Cognito
+    /// spells it `REFRESH_TOKEN` in one place and `RefreshToken` in another, and that `Session` is
+    /// bearer equivalent. With an allowlist a field added to a payload later is invisible by
+    /// default rather than exposed by default, which is the correct way round.
+    static func redactedPreview(_ object: Any, showing allowed: Set<String>) -> String {
         func scrub(_ value: Any) -> Any {
             if let dict = value as? [String: Any] {
                 var copy: [String: Any] = [:]
                 for (key, inner) in dict {
-                    copy[key] = sensitive.contains(key) ? "<redacted>" : scrub(inner)
+                    copy[key] = allowed.contains(key) ? scrub(inner) : "<redacted>"
                 }
                 return copy
             }
