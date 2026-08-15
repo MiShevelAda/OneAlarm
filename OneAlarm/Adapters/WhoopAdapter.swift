@@ -382,22 +382,11 @@ actor WhoopAdapter: DeviceAdapter {
         return access
     }
 
-    /// How the string is punctuated, so a write can be sent back in the shape it arrived in.
-    ///
-    /// A wrong format in this field is indistinguishable from a wrong field name: both are a 422.
-    struct TimeFormat: Equatable {
-        var isTwelveHour = false
-        var uppercaseSuffix = false
-        var spaceBeforeSuffix = true
-        var hasSeconds = false
-        var padHour = true
-    }
-
     /// Tolerant of what Whoop might actually be sending, since the spec was wrong about the names
     /// and is therefore not trustworthy about the shape either.
     ///
-    /// A real account returned `"7:45 am"`. The spec showed `"07:45:00"`. Both parse here, and
-    /// `format(of:)` records which one arrived so the write can match it.
+    /// A real account returned `"7:45 am"`. The spec showed `"07:45:00"`. Both parse here. The
+    /// write does **not** mirror whichever arrived: see `encodeWakeTime`.
     static func wakeTime(from value: Any?) -> WallClockTime? {
         if let text = value as? String {
             let lower = text.lowercased()
@@ -436,54 +425,23 @@ actor WhoopAdapter: DeviceAdapter {
         return nil
     }
 
-    static func format(of text: String) -> TimeFormat {
-        var format = TimeFormat()
-        let lower = text.lowercased()
-
-        if let range = lower.range(of: "am") ?? lower.range(of: "pm") {
-            format.isTwelveHour = true
-            format.uppercaseSuffix = text.contains("AM") || text.contains("PM")
-            let before = lower[lower.startIndex..<range.lowerBound]
-            format.spaceBeforeSuffix = before.last == " "
-        }
-
-        let digits = lower
-            .replacingOccurrences(of: "am", with: "")
-            .replacingOccurrences(of: "pm", with: "")
-            .trimmingCharacters(in: .whitespaces)
-        format.hasSeconds = digits.filter { $0 == ":" }.count >= 2
-        format.padHour = digits.first == "0" || digits.split(separator: ":").first?.count == 2
-
-        return format
-    }
-
-    /// Rebuild the time in the format it arrived in.
+    /// The canonical `"HH:mm:ss"`, whatever the read looked like.
+    ///
+    /// Deliberately **not** a mirror of the incoming format, which is what this was before. The
+    /// account returns `"7:45 am"`, and sending that straight back produced a **400**: the server
+    /// could not parse its own display string. `"07:55:00"` produced a **422** instead, which is a
+    /// value understood and then rejected on other grounds. A parse failure and a validation
+    /// failure are different answers, and together they say the read format and the write format
+    /// are simply not the same thing on this endpoint.
     static func encodeWakeTime(_ time: WallClockTime, like existing: Any?) -> Any {
-        guard let sample = existing as? String else {
-            // Numeric, so the units follow the same guess the reader made.
+        guard existing is String else {
+            // Numeric, so the units follow the same reading the parser made.
             if let number = existing as? NSNumber, number.intValue >= 1440 {
                 return time.minutesSinceMidnight * 60
             }
             return time.minutesSinceMidnight
         }
-
-        let format = Self.format(of: sample)
-        var hour = time.hour
-        var suffix = ""
-
-        if format.isTwelveHour {
-            hour = time.hour % 12 == 0 ? 12 : time.hour % 12
-            let word = time.hour < 12 ? "am" : "pm"
-            suffix = (format.spaceBeforeSuffix ? " " : "")
-                + (format.uppercaseSuffix ? word.uppercased() : word)
-        }
-
-        var body = format.padHour
-            ? String(format: "%02d:%02d", hour, time.minute)
-            : String(format: "%d:%02d", hour, time.minute)
-        if format.hasSeconds { body += ":00" }
-
-        return body + suffix
+        return time.hhmmss
     }
 
     /// `true` as the same kind of value the server sent.
@@ -523,19 +481,19 @@ actor WhoopAdapter: DeviceAdapter {
         return ordered.map(\.whoopName)
     }
 
-    /// The same payload with the wake time in the canonical `"HH:mm:ss"` form, or `nil` when the
-    /// first attempt already used it and a second request would be identical.
+    /// The two body shapes worth trying, in the order that assumes least.
     ///
-    /// Exists because the read format and the write format need not be the same on a BFF. The
-    /// schedule comes back carrying half a dozen `*_label_display` strings, so a rendered
-    /// `"7:45 am"` in `latest_wake_time` is entirely plausible as a seventh.
-    static func canonicalVariant(of payload: [String: Any], target: ResolvedTarget) -> [String: Any]? {
-        guard let text = payload["latest_wake_time"] as? String, text != target.localTime.hhmmss else {
-            return nil
-        }
-        var variant = payload
-        variant["latest_wake_time"] = target.localTime.hhmmss
-        return variant
+    /// First the server's own object with three fields changed and nothing removed. Then the same
+    /// with the identifier and the stale display strings taken out. Removing them was my judgement
+    /// call, not the server's instruction, and it is the judgement call most likely to be the
+    /// remaining 422: a read modify write that deletes fields is no longer a read modify write.
+    static func variants(_ schedule: [String: Any], to target: ResolvedTarget) throws -> [(String, [String: Any])] {
+        let echo = try Self.mutate(schedule, to: target)
+        let trimmed = Self.trimmed(echo)
+        // Identical when the schedule carried neither an id nor a label, so do not spend a request
+        // on the same body twice.
+        if trimmed.keys.count == echo.keys.count { return [("full", echo)] }
+        return [("full", echo), ("trimmed", trimmed)]
     }
 
     /// What the server actually objected to, so the next fix is read rather than guessed.
@@ -653,10 +611,10 @@ actor WhoopAdapter: DeviceAdapter {
 
         var payload = schedule
 
-        // Send back exactly the shape that arrived, down to the punctuation. The names here came
-        // from a real account, not from the reference spec, which named four fields Whoop has never
-        // heard of and got a 422 for every one. The same account returned "7:45 am" where the spec
-        // showed "07:45:00", so the format is no more trustworthy than the names were.
+        // 24 hour, and this one is evidence rather than preference. Sending the account's own
+        // "1:00 pm" back earned a 400, which is a parse failure. Sending "13:00:00" earned a 422,
+        // which is a value the server understood and then refused. The endpoint reads a display
+        // string on the way out and a canonical one on the way in.
         payload["latest_wake_time"] = Self.encodeWakeTime(target.localTime, like: existing)
 
         if schedule["scheduled_days"] != nil {
@@ -665,16 +623,24 @@ actor WhoopAdapter: DeviceAdapter {
         if let flag = schedule["alarm_on"] {
             payload["alarm_on"] = Self.encodeFlag(true, like: flag)
         }
-
-        // Server rendered display strings. Sending stale ones back is at best noise and at worst
-        // what a 422 is complaining about. Snapshot the keys first: removing from the dictionary
-        // being iterated is a trap even where it happens to work.
-        for key in Array(payload.keys) where key.hasSuffix("_label_display") {
-            payload.removeValue(forKey: key)
-        }
-        payload.removeValue(forKey: "schedule_id")
-        payload.removeValue(forKey: "id")
         return payload
+    }
+
+    /// `mutate` with everything we are not certain the server needs taken back out.
+    ///
+    /// The two differ only in what is removed, and which one is right is not something to reason
+    /// about from first principles: a read modify write should send back what it was given, but
+    /// echoing an identifier into a body and returning six stale `*_label_display` strings that
+    /// describe the previous time both look wrong. So both are tried, in the order that keeps the
+    /// server's own object intact first, and the receipt records which one it took.
+    static func trimmed(_ payload: [String: Any]) -> [String: Any] {
+        var copy = payload
+        for key in Array(copy.keys) where key.hasSuffix("_label_display") {
+            copy.removeValue(forKey: key)
+        }
+        copy.removeValue(forKey: "schedule_id")
+        copy.removeValue(forKey: "id")
+        return copy
     }
 
     nonisolated func preview(_ target: ResolvedTarget) -> WritePreview {
@@ -735,21 +701,14 @@ actor WhoopAdapter: DeviceAdapter {
             throw AdapterError.transport("Bad schedule update URL.")
         }
 
-        // This endpoint is a BFF, and the schedule it returns is full of server rendered
-        // `*_label_display` strings. "7:45 am" may well be another one of them, in which case the
-        // write wants the canonical form even though the read never shows it. Rather than guess and
-        // make him rebuild again, try what it gave us and, only if that is rejected as bad input,
-        // try the canonical form once. Two requests at most, no loop, and the receipt says which
-        // one the server took so this stops being a question.
-        var attempts = [try Self.mutate(existing, to: target)]
-        if let canonical = Self.canonicalVariant(of: attempts[0], target: target) {
-            attempts.append(canonical)
-        }
+        // Two body shapes at most, and every outcome is reported rather than only the last, because
+        // "full 422, trimmed 422" and "full 200" are different findings and only one screenshot
+        // comes back per round.
+        var accepted: (String, [String: Any])?
+        var outcomes: [String] = []
+        var serverSaid = ""
 
-        var accepted: [String: Any]?
-        var lastFailure = ""
-
-        for payload in attempts {
+        for (label, payload) in try Self.variants(existing, to: target) {
             let response = try await http.send(
                 "PUT", url,
                 headers: Self.dataHeaders(token: token, timeZone: TimeZone.current.identifier),
@@ -758,22 +717,25 @@ actor WhoopAdapter: DeviceAdapter {
 
             if response.status == 429 { throw AdapterError.rateLimited }
             if response.isSuccess {
-                accepted = payload
+                accepted = (label, payload)
                 break
             }
 
-            lastFailure = """
-                HTTP \(response.status) updating the alarm. \
-                Sent \(Self.describeValue(payload["latest_wake_time"])). \
-                Whoop said: \(Self.serverMessage(response.data))
-                """
+            outcomes.append("\(label) \(payload.keys.count) fields: \(response.status)")
+            let said = Self.serverMessage(response.data)
+            if said != "nothing" { serverSaid = said }
 
             // Only a complaint about the body is worth a second shape. Anything else, stop.
             guard response.status == 400 || response.status == 422 else { break }
         }
 
-        guard let written = accepted else {
-            throw AdapterError.unexpectedResponse(lastFailure)
+        guard let (shape, written) = accepted else {
+            throw AdapterError.unexpectedResponse(
+                "Rejected updating the alarm. "
+                    + outcomes.joined(separator: ", ")
+                    + ". Sent \"\(target.localTime.hhmmss)\"."
+                    + (serverSaid.isEmpty ? " No message from Whoop." : " Whoop said: \(serverSaid)")
+            )
         }
 
         authState = .connected
@@ -781,9 +743,8 @@ actor WhoopAdapter: DeviceAdapter {
         var note = schedules.count > 1
             ? "Moved your chosen schedule of \(schedules.count), previously \(previous)."
             : "Updated the smart alarm schedule, previously \(previous)."
-        // Which shape it took, because the read format and the write format are not the same thing
-        // here and that took two rounds to find out.
-        note += " Accepted \(Self.describeValue(written["latest_wake_time"]))."
+        // Which shape it took, because that is the fact this leg keeps failing to have.
+        note += " Accepted the \(shape) body, \(Self.describeValue(written["latest_wake_time"]))."
 
         return WriteReceipt(
             device: .whoop,

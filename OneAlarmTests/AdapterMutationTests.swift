@@ -144,41 +144,25 @@ final class WhoopMutationTests: XCTestCase {
     func testWakeTimeAndDaysAreReplaced() throws {
         let payload = try WhoopAdapter.mutate(serverSchedule, to: target)
 
-        XCTAssertEqual(payload["latest_wake_time"] as? String, "6:55 am")
+        XCTAssertEqual(payload["latest_wake_time"] as? String, "06:55:00")
         XCTAssertEqual(payload["scheduled_days"] as? [String], ["MONDAY", "WEDNESDAY"])
         XCTAssertEqual(payload["alarm_on"] as? Bool, true)
     }
 
-    /// The one that was actually failing. A 12 hour value must not go back as a 24 hour one.
-    func testTheOutgoingTimeFormatMatchesTheIncomingOne() throws {
-        var padded = serverSchedule
-        padded["latest_wake_time"] = "07:45:00"
-        XCTAssertEqual(
-            try WhoopAdapter.mutate(padded, to: target)["latest_wake_time"] as? String,
-            "06:55:00"
-        )
-
-        var uppercase = serverSchedule
-        uppercase["latest_wake_time"] = "7:45AM"
-        XCTAssertEqual(
-            try WhoopAdapter.mutate(uppercase, to: target)["latest_wake_time"] as? String,
-            "6:55AM"
-        )
-
-        var afternoon = serverSchedule
-        afternoon["latest_wake_time"] = "1:15 pm"
-        let evening = ResolvedTarget(
-            device: .whoop,
-            localTime: WallClockTime(hour: 18, minute: 5),
-            weekdays: [.monday],
-            dayShift: 0,
-            nextOccurrence: Date(timeIntervalSince1970: 1_800_000_000),
-            utcOffsetSeconds: 7200
-        )
-        XCTAssertEqual(
-            try WhoopAdapter.mutate(afternoon, to: evening)["latest_wake_time"] as? String,
-            "6:05 pm"
-        )
+    /// The write does not mirror the read, and the reason is two different status codes rather than
+    /// a preference. Sending the account's own `"7:45 am"` straight back earned a 400, a parse
+    /// failure. `"07:55:00"` earned a 422, a value understood and rejected on other grounds. The
+    /// endpoint renders a display string on the way out and wants a canonical one on the way in.
+    func testTheOutgoingTimeIsAlwaysCanonical() throws {
+        for incoming in ["7:45 am", "7:45AM", "07:45:00", "1:15 pm", "07:45"] {
+            var schedule = serverSchedule
+            schedule["latest_wake_time"] = incoming
+            XCTAssertEqual(
+                try WhoopAdapter.mutate(schedule, to: target)["latest_wake_time"] as? String,
+                "06:55:00",
+                "incoming \(incoming)"
+            )
+        }
     }
 
     /// This PUT replaces rather than merges, so the smart wake mode he chose in the Whoop app is
@@ -197,23 +181,21 @@ final class WhoopMutationTests: XCTestCase {
         XCTAssertEqual(WhoopAdapter.encodeFlag(true, like: nil) as? Bool, true)
     }
 
-    func testIdentifiersAreNotEchoedIntoTheBody() throws {
-        let payload = try WhoopAdapter.mutate(serverSchedule, to: target)
+    func testIdentifiersAreNotEchoedIntoTheTrimmedBody() throws {
+        let payload = WhoopAdapter.trimmed(try WhoopAdapter.mutate(serverSchedule, to: target))
 
         XCTAssertNil(payload["schedule_id"])
         XCTAssertNil(payload["id"])
     }
 
-    /// Server rendered labels describe the old time. Echoing them back is at best noise, and was a
-    /// live suspect for the 422.
     func testDisplayLabelsAreStripped() throws {
-        let payload = try WhoopAdapter.mutate(serverSchedule, to: target)
+        let payload = WhoopAdapter.trimmed(try WhoopAdapter.mutate(serverSchedule, to: target))
 
         XCTAssertTrue(payload.keys.allSatisfy { !$0.hasSuffix("_label_display") })
     }
 
-    /// The spec was wrong about the names, so it is not evidence about the types either. Whatever
-    /// arrives is what goes back.
+    /// The spec was wrong about the names, so it is not evidence about the types either. A number
+    /// goes back as a number.
     func testTheOutgoingTypeMatchesTheIncomingOne() throws {
         var numeric = serverSchedule
         numeric["latest_wake_time"] = 450          // 07:30 as minutes since midnight
@@ -249,24 +231,33 @@ final class WhoopMutationTests: XCTestCase {
         XCTAssertThrowsError(try WhoopAdapter.mutate(unreadable, to: target))
     }
 
-    /// The second attempt only exists to try a different shape. If the first attempt already used
-    /// the canonical form there is nothing to retry, and sending the identical body again would be
-    /// a wasted request against a private API.
-    func testTheCanonicalRetryIsOnlyOfferedWhenItDiffers() throws {
-        let twelveHour = try WhoopAdapter.mutate(serverSchedule, to: target)
-        let variant = WhoopAdapter.canonicalVariant(of: twelveHour, target: target)
-        XCTAssertEqual(variant?["latest_wake_time"] as? String, "06:55:00")
-        XCTAssertEqual(variant?["alarm_mode"] as? String, "SLEEP_GOAL")
+    /// The full body goes first because it assumes least: it is the server's own object with three
+    /// fields changed. Trimming is my judgement about what the server does not need, and judgement
+    /// is what has been wrong three times on this endpoint.
+    func testTheFullBodyIsTriedBeforeTheTrimmedOne() throws {
+        let variants = try WhoopAdapter.variants(serverSchedule, to: target)
 
-        var padded = serverSchedule
-        padded["latest_wake_time"] = "07:45:00"
-        let alreadyCanonical = try WhoopAdapter.mutate(padded, to: target)
-        XCTAssertNil(WhoopAdapter.canonicalVariant(of: alreadyCanonical, target: target))
+        XCTAssertEqual(variants.map(\.0), ["full", "trimmed"])
+        XCTAssertEqual(variants[0].1["schedule_id"] as? String, "uuid-1")
+        XCTAssertNotNil(variants[0].1["alarm_mode_label_display"])
+        XCTAssertNil(variants[1].1["schedule_id"])
+        XCTAssertNil(variants[1].1["alarm_mode_label_display"])
+        // Both carry the change itself, or the second attempt would prove nothing.
+        for (_, payload) in variants {
+            XCTAssertEqual(payload["latest_wake_time"] as? String, "06:55:00")
+        }
+    }
 
-        var numeric = serverSchedule
-        numeric["latest_wake_time"] = 465
-        let asNumber = try WhoopAdapter.mutate(numeric, to: target)
-        XCTAssertNil(WhoopAdapter.canonicalVariant(of: asNumber, target: target))
+    /// No second request when there is nothing to remove, since it would be the same body twice.
+    func testOnlyOneAttemptWhenTrimmingChangesNothing() throws {
+        let lean: [String: Any] = [
+            "alarm_on": true,
+            "scheduled_days": ["SUNDAY"],
+            "latest_wake_time": "7:45 am",
+            "alarm_mode": "SLEEP_GOAL",
+        ]
+
+        XCTAssertEqual(try WhoopAdapter.variants(lean, to: target).count, 1)
     }
 
     // MARK: Reading
