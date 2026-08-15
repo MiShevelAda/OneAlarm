@@ -367,7 +367,9 @@ struct WhoopLinkView: View {
         Screen(title: "Whoop", onBack: { stage = .credentials }) {
             VStack(spacing: 16) {
                 StepDots(total: 4, current: 2)
-                Text("Enter the code Whoop texted you")
+                // Deliberately not "texted": Whoop sends this by SMS, email or an authenticator
+                // app depending on the account, and `prompt` says which.
+                Text("Enter your Whoop code")
                     .font(.system(size: 25, weight: .bold)).tracking(-0.6)
                     .multilineTextAlignment(.center)
                 Text(prompt.isEmpty ? "It expires in about three minutes." : prompt)
@@ -391,6 +393,13 @@ struct WhoopLinkView: View {
             SolidButton(title: "Confirm", busy: busy, enabled: codeText.count >= 4) {
                 failure = nil
                 Task { await confirm() }
+            }
+            // Codes expire in about three minutes, and fetching one means leaving the app, so
+            // needing a fresh one is routine rather than a failure.
+            QuietButton(title: "Send a new code") {
+                failure = nil
+                codeText = ""
+                stage = .credentials
             }
         }
     }

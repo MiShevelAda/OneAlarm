@@ -41,7 +41,7 @@ actor WhoopAdapter: DeviceAdapter {
     /// Set while an SMS or TOTP challenge is outstanding.
     private(set) var pendingChallenge: Challenge?
 
-    struct Challenge: Equatable, Sendable {
+    struct Challenge: Equatable, Sendable, Codable {
         let name: String
         let session: String
         let username: String
@@ -159,7 +159,7 @@ actor WhoopAdapter: DeviceAdapter {
             // Nothing is persisted until the challenge is answered. An unconfirmed credential on
             // disk is a credential that makes the app claim a connection it does not have.
             let challenge = Challenge(name: challengeName, session: session, username: email)
-            pendingChallenge = challenge
+            rememberChallenge(challenge)
             return .needsCode(challenge)
         }
 
@@ -168,8 +168,12 @@ actor WhoopAdapter: DeviceAdapter {
     }
 
     func submitCode(_ code: String) async throws {
-        guard let challenge = pendingChallenge else {
-            throw AdapterError.authenticationFailed("There is no code to confirm.")
+        // Falls back to the stored copy, because reading the code means leaving the app and the
+        // in-memory one does not survive being suspended.
+        guard let challenge = pendingChallenge ?? storedChallenge() else {
+            throw AdapterError.authenticationFailed(
+                "That sign in attempt has expired. Tap Send a new code and try again."
+            )
         }
         guard let url = URL(string: Self.host + Self.authPath) else {
             throw AdapterError.transport("Bad auth URL.")
@@ -199,12 +203,29 @@ actor WhoopAdapter: DeviceAdapter {
         // Cognito can answer one challenge with another. Without this the user is told the response
         // carried no access token and left with no way forward.
         if let next = json["ChallengeName"] as? String, let session = json["Session"] as? String {
-            pendingChallenge = Challenge(name: next, session: session, username: challenge.username)
+            rememberChallenge(Challenge(name: next, session: session, username: challenge.username))
             throw AdapterError.authenticationFailed("Whoop asked for a second code.")
         }
 
         try store(authResult: json, email: challenge.username)
+        forgetChallenge()
+    }
+
+    private func rememberChallenge(_ challenge: Challenge) {
+        pendingChallenge = challenge
+        if let data = try? JSONEncoder().encode(challenge) {
+            try? keychain.save(data, for: .whoopChallenge)
+        }
+    }
+
+    private func storedChallenge() -> Challenge? {
+        guard let data = try? keychain.readData(.whoopChallenge) else { return nil }
+        return try? JSONDecoder().decode(Challenge.self, from: data)
+    }
+
+    private func forgetChallenge() {
         pendingChallenge = nil
+        try? keychain.delete(.whoopChallenge)
     }
 
     private func store(authResult json: [String: Any], email: String) throws {
@@ -289,7 +310,7 @@ actor WhoopAdapter: DeviceAdapter {
         try? keychain.delete(.whoopRefreshToken)
         accessToken = nil
         tokenExpiry = nil
-        pendingChallenge = nil
+        forgetChallenge()
         authState = .notConfigured
     }
 

@@ -53,6 +53,9 @@ struct KeychainStore: Sendable {
         case whoopEmail = "whoop.email"
         case whoopPassword = "whoop.password"
         case whoopRefreshToken = "whoop.refresh"
+        /// The in-flight MFA challenge, so it survives the app being backgrounded while the user
+        /// goes to fetch the code. That trip out of the app is the normal path, not an edge case.
+        case whoopChallenge = "whoop.challenge"
     }
 
     // A fresh dictionary per call. Reusing or mutating one across SecItem calls is a documented
