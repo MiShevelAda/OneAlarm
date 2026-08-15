@@ -96,6 +96,16 @@ struct Notice: View {
         self.message = message
     }
 
+    /// Shorthand for a plain explanatory note.
+    ///
+    /// Needed because the initialiser above has two unlabelled parameters, so a lone
+    /// `Notice("text")` binds the string to `kind` and fails rather than falling through to
+    /// `message`. This overload takes that call unambiguously, since a String cannot convert to
+    /// `Kind`.
+    init(_ message: String) {
+        self.init(.neutral, title: nil, message)
+    }
+
     private var tint: Color {
         switch kind {
         case .neutral: return Theme.grey
