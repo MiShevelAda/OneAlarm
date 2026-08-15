@@ -671,7 +671,12 @@ actor WhoopAdapter: DeviceAdapter {
     }
 
     func write(_ target: ResolvedTarget) async throws -> WriteReceipt {
-        let schedules = try await fetchSchedules()
+        // The envelope rather than just the list, because its other keys are the only part of this
+        // endpoint's shape we have never looked at, and a 422 with an empty body has to be
+        // diagnosed from something.
+        let envelope = try await fetchScheduleEnvelope()
+        try Self.assertMasterSwitchOn(envelope)
+        let schedules = (envelope["alarm_schedule_list"] as? [[String: Any]]) ?? []
 
         // Never guess when the account holds more than one. Moving the wrong alarm is silent and
         // only discovered by not waking up.
@@ -725,6 +730,8 @@ actor WhoopAdapter: DeviceAdapter {
             outcomes.append("\(label) \(payload.keys.count) fields: \(response.status)")
             let said = Self.serverMessage(response.data)
             if said != "nothing" { serverSaid = said }
+            let fromHeaders = response.diagnosticHeaders
+            if serverSaid.isEmpty, !fromHeaders.isEmpty { serverSaid = fromHeaders }
 
             // Only a complaint about the body is worth a second shape. Anything else, stop.
             guard response.status == 400 || response.status == 422 else { break }
@@ -734,8 +741,10 @@ actor WhoopAdapter: DeviceAdapter {
             throw AdapterError.unexpectedResponse(
                 "Rejected updating the alarm. "
                     + outcomes.joined(separator: ", ")
-                    + ". Sent \"\(target.localTime.hhmmss)\"."
-                    + (serverSaid.isEmpty ? " No message from Whoop." : " Whoop said: \(serverSaid)")
+                    + ". Sent \"\(target.localTime.hhmmss)\", mode "
+                    + Self.describeValue(existing["alarm_mode"])
+                    + ". Envelope: " + envelope.keys.sorted().joined(separator: " ")
+                    + (serverSaid.isEmpty ? ". Nothing from Whoop." : ". Whoop said: \(serverSaid)")
             )
         }
 

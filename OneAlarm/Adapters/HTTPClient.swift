@@ -30,8 +30,28 @@ struct HTTPClient {
     struct Response {
         let status: Int
         let data: Data
+        /// Response headers, lowercased keys.
+        ///
+        /// Kept because an empty error body is not the same as no explanation. API gateways put the
+        /// reason in a header routinely, and on the Whoop write the body has been empty every time
+        /// while the status kept changing.
+        var headers: [String: String] = [:]
 
         var isSuccess: Bool { (200..<300).contains(status) }
+
+        /// The headers that ever say why, and never the ones that say who.
+        ///
+        /// An allowlist rather than a strip list, for the same reason `redactedPreview` is: a
+        /// response header added later is invisible by default rather than exposed by default, and
+        /// `set-cookie` on this API is bearer equivalent.
+        var diagnosticHeaders: String {
+            let wanted = ["x-amzn-errortype", "x-amz-apigw-id", "x-error", "x-error-message",
+                          "warning", "content-type", "content-length", "allow", "www-authenticate"]
+            let found = wanted.compactMap { key in
+                headers[key].map { "\(key): \($0)" }
+            }
+            return found.isEmpty ? "" : found.joined(separator: ", ")
+        }
     }
 
     func isAllowed(_ method: String, _ url: URL) -> Bool {
@@ -71,9 +91,17 @@ struct HTTPClient {
 
         do {
             let (data, response) = try await session.data(for: request)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let http = response as? HTTPURLResponse
+            let status = http?.statusCode ?? 0
             Self.log.debug("-> \(status, privacy: .public)")
-            return Response(status: status, data: data)
+
+            var headers: [String: String] = [:]
+            for (key, value) in http?.allHeaderFields ?? [:] {
+                if let key = key as? String, let value = value as? String {
+                    headers[key.lowercased()] = value
+                }
+            }
+            return Response(status: status, data: data, headers: headers)
         } catch {
             throw AdapterError.transport(error.localizedDescription)
         }
