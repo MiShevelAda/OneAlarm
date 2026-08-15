@@ -212,6 +212,22 @@ private struct CascadeRow: View {
     private var status: DeviceSyncStatus { store.status[target.device] ?? .idle }
     private var authState: AuthState { store.authStates[target.device] ?? .notConfigured }
 
+    /// Which morning this actually fires, shown whenever that is not the next one.
+    ///
+    /// Silent on the common case so the row stays a time, loud the moment the answer is surprising,
+    /// which is the case that costs you a morning.
+    private var whenLabel: String? {
+        let calendar = Calendar.current
+        let next = target.nextOccurrence
+        if calendar.isDateInToday(next) || calendar.isDateInTomorrow(next) { return nil }
+        let days = calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: Date()),
+            to: calendar.startOfDay(for: next)
+        ).day ?? 0
+        return next.formatted(.dateTime.weekday(.abbreviated)).uppercased() + ", IN \(days) DAYS"
+    }
+
     var body: some View {
         HStack(spacing: 14) {
             RoundedRectangle(cornerRadius: 2)
@@ -219,7 +235,17 @@ private struct CascadeRow: View {
                 .frame(width: 3)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(target.localTime.hhmm).font(Theme.numeral(30))
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(target.localTime.hhmm).font(Theme.numeral(30))
+                    // A time with no day is how a weekday alarm gets tested on a Sunday and
+                    // reported as broken. It fired exactly when it was told to; the screen just
+                    // never said which morning that was.
+                    if let day = whenLabel {
+                        Text(day)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.State.unconfirmed)
+                    }
+                }
                 Text(target.device.displayName).font(.system(size: 15, weight: .semibold))
 
                 HStack(spacing: 8) {
