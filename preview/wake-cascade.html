@@ -1,0 +1,528 @@
+<title>Wake Cascade</title>
+<style>
+  /* Light: the sky twenty minutes before sunrise. Dark: the hour before that.
+     Neutrals are biased toward indigo rather than pure grey, and the one warm
+     accent is the horizon. Everything else stays quiet. */
+  :root {
+    --ground: #EEF1F7;
+    --surface: #FFFFFF;
+    --surface-sunk: #E4E9F2;
+    --line: #CBD3E2;
+    --ink: #161C2B;
+    --ink-soft: #4E586F;
+    --ink-faint: #78829B;
+    --horizon: #B4661A;
+    --horizon-soft: #F2E2D0;
+    --cool: #3F63A8;
+    --warn: #9A5B12;
+    --bad: #A32F31;
+    --good: #256B4B;
+    --shadow: 0 1px 2px rgba(22, 28, 43, .06), 0 8px 24px rgba(22, 28, 43, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0A0E1A;
+      --surface: #141A2A;
+      --surface-sunk: #0E1424;
+      --line: #26304A;
+      --ink: #EAEEF7;
+      --ink-soft: #A8B2C9;
+      --ink-faint: #7C87A1;
+      --horizon: #E8A15E;
+      --horizon-soft: #2C2113;
+      --cool: #7FA0DE;
+      --warn: #E0A253;
+      --bad: #E8807F;
+      --good: #6FC49B;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0A0E1A;
+    --surface: #141A2A;
+    --surface-sunk: #0E1424;
+    --line: #26304A;
+    --ink: #EAEEF7;
+    --ink-soft: #A8B2C9;
+    --ink-faint: #7C87A1;
+    --horizon: #E8A15E;
+    --horizon-soft: #2C2113;
+    --cool: #7FA0DE;
+    --warn: #E0A253;
+    --bad: #E8807F;
+    --good: #6FC49B;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.55;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .wrap {
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: 2rem 1.15rem 4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  /* A schedule is numerals, so the numerals get the characterful face. */
+  .num {
+    font-family: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+  }
+
+  header h1 {
+    font-family: ui-serif, "Iowan Old Style", Georgia, "Times New Roman", serif;
+    font-size: clamp(1.9rem, 7vw, 2.6rem);
+    font-weight: 600;
+    letter-spacing: -.02em;
+    line-height: 1.1;
+    margin: 0 0 .5rem;
+    text-wrap: balance;
+  }
+  header p { margin: 0; color: var(--ink-soft); font-size: .95rem; }
+
+  .eyebrow {
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    font-weight: 600;
+    color: var(--ink-faint);
+    margin: 0 0 .7rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: .7rem;
+    padding: 1.15rem;
+    box-shadow: var(--shadow);
+  }
+
+  /* Controls */
+  .master {
+    display: flex;
+    align-items: baseline;
+    gap: .9rem;
+    flex-wrap: wrap;
+  }
+  input[type="time"] {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 2.4rem;
+    font-weight: 600;
+    letter-spacing: -.03em;
+    background: var(--surface-sunk);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: .5rem;
+    padding: .3rem .6rem;
+    min-width: 0;
+  }
+  .days { display: flex; gap: .35rem; margin-top: 1rem; }
+  .day {
+    flex: 1;
+    min-width: 0;
+    padding: .55rem 0;
+    font-size: .78rem;
+    font-weight: 600;
+    text-align: center;
+    background: var(--surface-sunk);
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: .4rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .day[aria-pressed="true"] {
+    background: var(--horizon);
+    border-color: var(--horizon);
+    color: var(--ground);
+  }
+
+  /* The descent. Earliest at the top, waking at the bottom. */
+  .cascade { display: flex; flex-direction: column; gap: 0; position: relative; }
+  .leg {
+    display: grid;
+    grid-template-columns: 4.6rem 1fr auto;
+    gap: .9rem;
+    align-items: center;
+    padding: .95rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .leg:last-of-type { border-bottom: 0; }
+  .leg.off { opacity: .42; }
+
+  .leg-time {
+    font-size: 1.45rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .leg.master .leg-time { color: var(--horizon); }
+  .leg-name { font-weight: 600; font-size: .95rem; }
+  .leg-why { font-size: .78rem; color: var(--ink-faint); }
+  .leg-when { font-size: .74rem; color: var(--ink-soft); margin-top: .15rem; }
+
+  .offset {
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+  }
+  .offset button {
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: .35rem;
+    border: 1px solid var(--line);
+    background: var(--surface-sunk);
+    color: var(--ink);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .offset .val {
+    min-width: 3.1rem;
+    text-align: center;
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+  }
+  .toggle {
+    width: 1.9rem; height: 1.9rem;
+    border-radius: .35rem;
+    border: 1px solid var(--line);
+    background: var(--surface-sunk);
+    cursor: pointer;
+    color: var(--ink-faint);
+    font-size: .85rem;
+    font-family: inherit;
+  }
+  .toggle[aria-pressed="true"] { color: var(--good); border-color: var(--good); }
+
+  .badge {
+    display: inline-block;
+    font-size: .66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    padding: .12rem .4rem;
+    border-radius: .25rem;
+    background: var(--horizon-soft);
+    color: var(--warn);
+    margin-left: .35rem;
+    vertical-align: .1em;
+  }
+
+  .note {
+    display: flex;
+    gap: .55rem;
+    font-size: .84rem;
+    padding: .7rem .85rem;
+    border-radius: .45rem;
+    border: 1px solid var(--line);
+    background: var(--surface-sunk);
+    color: var(--ink-soft);
+  }
+  .note.warn { border-color: var(--warn); color: var(--warn); background: var(--horizon-soft); }
+  .note.bad { border-color: var(--bad); color: var(--bad); background: transparent; }
+  .note b { color: inherit; }
+
+  details.payload { border-top: 1px solid var(--line); padding-top: .85rem; }
+  details.payload summary {
+    cursor: pointer;
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    list-style: none;
+  }
+  details.payload summary::-webkit-details-marker { display: none; }
+  details.payload summary::before { content: "▸ "; color: var(--ink-faint); }
+  details.payload[open] summary::before { content: "▾ "; }
+  pre {
+    margin: .7rem 0 0;
+    padding: .8rem;
+    background: var(--surface-sunk);
+    border: 1px solid var(--line);
+    border-radius: .45rem;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: .74rem;
+    line-height: 1.5;
+    color: var(--ink-soft);
+  }
+  pre .k { color: var(--cool); }
+  pre .v { color: var(--horizon); }
+
+  footer { font-size: .8rem; color: var(--ink-faint); }
+  footer a { color: var(--cool); }
+
+  :focus-visible { outline: 2px solid var(--horizon); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (max-width: 26rem) {
+    .leg { grid-template-columns: 4rem 1fr; }
+    .leg .controls { grid-column: 1 / -1; justify-self: start; padding-left: 4.9rem; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Wake Cascade</h1>
+    <p>Set one time. See exactly what each device is told, before the app tells it.</p>
+  </header>
+
+  <section class="card">
+    <p class="eyebrow">Master wake time</p>
+    <div class="master">
+      <input type="time" id="master" value="07:00" aria-label="Master wake time">
+      <span id="lead" class="leg-why"></span>
+    </div>
+    <div class="days" id="days" role="group" aria-label="Days"></div>
+  </section>
+
+  <section class="card">
+    <p class="eyebrow">The descent</p>
+    <div class="cascade" id="cascade"></div>
+  </section>
+
+  <div id="notes" style="display:flex;flex-direction:column;gap:.6rem"></div>
+
+  <section class="card">
+    <p class="eyebrow">What would be sent</p>
+    <div id="payloads"></div>
+  </section>
+
+  <footer>
+    <p><b>This page sets nothing.</b> A browser cannot ring an alarm through Silent mode, and it
+    cannot reach Eight Sleep or Whoop, whose APIs refuse cross-origin requests. This runs the same
+    offset, midnight and daylight-saving arithmetic as the app, so you can settle the numbers now
+    and build with them already right.</p>
+    <p id="tz"></p>
+  </footer>
+</div>
+
+<script>
+  const DAYS = [
+    { js: 1, short: "Mo", whoop: "MONDAY", es: "monday" },
+    { js: 2, short: "Tu", whoop: "TUESDAY", es: "tuesday" },
+    { js: 3, short: "We", whoop: "WEDNESDAY", es: "wednesday" },
+    { js: 4, short: "Th", whoop: "THURSDAY", es: "thursday" },
+    { js: 5, short: "Fr", whoop: "FRIDAY", es: "friday" },
+    { js: 6, short: "Sa", whoop: "SATURDAY", es: "saturday" },
+    { js: 0, short: "Su", whoop: "SUNDAY", es: "sunday" }
+  ];
+
+  const state = {
+    master: 7 * 60,
+    days: new Set([1, 2, 3, 4, 5]),
+    legs: [
+      { id: "eightSleep", name: "Eight Sleep", why: "Thermal and vibration ramp", offset: -10, on: true },
+      { id: "whoop", name: "Whoop", why: "Haptic smart-wake window", offset: -5, on: true },
+      { id: "iphone", name: "iPhone", why: "The loud backstop. Also the Watch.", offset: 0, on: true }
+    ]
+  };
+
+  const pad = n => String(n).padStart(2, "0");
+  const hhmm = m => pad(Math.floor(m / 60)) + ":" + pad(m % 60);
+
+  // Same arithmetic as RulesEngine.swift. floor division, so a negative offset that
+  // crosses midnight moves the weekday back rather than silently staying put.
+  function resolve(leg) {
+    const shifted = state.master + leg.offset;
+    const dayShift = Math.floor(shifted / 1440);
+    const norm = ((shifted % 1440) + 1440) % 1440;
+    const hour = Math.floor(norm / 60), minute = norm % 60;
+    const days = new Set([...state.days].map(d => (((d + dayShift) % 7) + 7) % 7));
+    const next = nextOccurrence(hour, minute, days);
+    return { leg, hour, minute, minutes: norm, dayShift, days, next };
+  }
+
+  function nextOccurrence(hour, minute, days) {
+    if (!days.size) return null;
+    const now = new Date();
+    for (let i = 0; i <= 8; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i, hour, minute, 0, 0);
+      if (d <= now) continue;
+      if (days.has(d.getDay())) return d;
+    }
+    return null;
+  }
+
+  function offsetString(date) {
+    const mins = -date.getTimezoneOffset();
+    const sign = mins < 0 ? "-" : "+";
+    const a = Math.abs(mins);
+    return sign + pad(Math.floor(a / 60)) + pad(a % 60);
+  }
+
+  const fmtWhen = d => d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+
+  function render() {
+    // Days
+    const dayBox = document.getElementById("days");
+    dayBox.innerHTML = "";
+    DAYS.forEach(d => {
+      const b = document.createElement("button");
+      b.className = "day";
+      b.textContent = d.short;
+      b.setAttribute("aria-pressed", state.days.has(d.js));
+      b.onclick = () => {
+        if (state.days.has(d.js)) {
+          if (state.days.size === 1) return;   // an alarm on no days is not an alarm
+          state.days.delete(d.js);
+        } else state.days.add(d.js);
+        render();
+      };
+      dayBox.appendChild(b);
+    });
+
+    const resolved = state.legs.map(resolve);
+    const live = resolved.filter(r => r.leg.on && r.next);
+
+    // Cascade, earliest first
+    const order = [...resolved].sort((a, b) => (a.next && b.next) ? a.next - b.next : 0);
+    const box = document.getElementById("cascade");
+    box.innerHTML = "";
+    order.forEach(r => {
+      const row = document.createElement("div");
+      row.className = "leg" + (r.leg.on ? "" : " off") + (r.leg.offset === 0 ? " master" : "");
+      const shiftBadge = r.dayShift !== 0
+        ? `<span class="badge">${r.dayShift < 0 ? "night before" : "next day"}</span>` : "";
+      row.innerHTML = `
+        <div class="leg-time num">${hhmm(r.minutes)}</div>
+        <div>
+          <div class="leg-name">${r.leg.name}${shiftBadge}</div>
+          <div class="leg-why">${r.leg.why}</div>
+          <div class="leg-when num">${r.next ? fmtWhen(r.next) + " · UTC" + offsetString(r.next) : "no day selected"}</div>
+        </div>
+        <div class="controls offset"></div>`;
+      const controls = row.querySelector(".controls");
+
+      const dec = document.createElement("button");
+      dec.textContent = "−"; dec.setAttribute("aria-label", "Earlier");
+      dec.onclick = () => { r.leg.offset = Math.max(-120, r.leg.offset - 5); render(); };
+
+      const val = document.createElement("span");
+      val.className = "val num";
+      val.textContent = r.leg.offset === 0 ? "T" : (r.leg.offset > 0 ? "T+" : "T−") + Math.abs(r.leg.offset);
+
+      const inc = document.createElement("button");
+      inc.textContent = "+"; inc.setAttribute("aria-label", "Later");
+      inc.onclick = () => { r.leg.offset = Math.min(120, r.leg.offset + 5); render(); };
+
+      const tog = document.createElement("button");
+      tog.className = "toggle";
+      tog.textContent = r.leg.on ? "on" : "off";
+      tog.setAttribute("aria-pressed", r.leg.on);
+      tog.setAttribute("aria-label", r.leg.name + " enabled");
+      tog.onclick = () => { r.leg.on = !r.leg.on; render(); };
+
+      controls.append(dec, val, inc, tog);
+      box.appendChild(row);
+    });
+
+    // Lead time
+    const master = resolved.find(r => r.leg.id === "iphone");
+    const earliest = live.length ? live.reduce((a, b) => a.next < b.next ? a : b) : null;
+    document.getElementById("lead").textContent =
+      (master && master.leg.on && earliest && master.next > earliest.next)
+        ? "Chain starts " + Math.round((master.next - earliest.next) / 60000) + " min earlier"
+        : "";
+
+    renderNotes(resolved, live);
+    renderPayloads(resolved);
+
+    document.getElementById("tz").textContent =
+      "Computed in " + Intl.DateTimeFormat().resolvedOptions().timeZone + ", the timezone this browser is in.";
+  }
+
+  function renderNotes(resolved, live) {
+    const notes = [];
+    const iphone = resolved.find(r => r.leg.id === "iphone");
+
+    if (!iphone.leg.on) {
+      notes.push(["bad", "The iPhone alarm is off. It is the only one that rings with no account, no network and no subscription. Everything else is a nudge."]);
+    }
+    if (resolved.some(r => r.leg.on && r.dayShift !== 0)) {
+      notes.push(["warn", "An offset crosses midnight, so that device fires on the <b>day before</b> your wake day. Its days shift back to match, which is why the bed warms on the right night."]);
+    }
+    const offsets = new Set(live.map(r => offsetString(r.next)));
+    if (offsets.size > 1) {
+      notes.push(["warn", "These alarms straddle a daylight-saving change, so they carry different UTC offsets (" + [...offsets].join(", ") + "). The gap between first and last is not the sum of your offsets on that night."]);
+    }
+    live.forEach(r => {
+      if (r.next.getHours() !== r.hour || r.next.getMinutes() !== r.minute) {
+        notes.push(["warn", "<b>" + r.leg.name + "</b> at " + hhmm(r.minutes) + " does not exist on that date, because the clocks jump forward. It resolves to " + pad(r.next.getHours()) + ":" + pad(r.next.getMinutes()) + " instead."]);
+      }
+    });
+    if (!live.length) {
+      notes.push(["bad", "Nothing is set. Every device is switched off."]);
+    }
+
+    const box = document.getElementById("notes");
+    box.innerHTML = "";
+    notes.forEach(([kind, text]) => {
+      const el = document.createElement("div");
+      el.className = "note " + kind;
+      el.innerHTML = "<span>" + text + "</span>";
+      box.appendChild(el);
+    });
+  }
+
+  function renderPayloads(resolved) {
+    const box = document.getElementById("payloads");
+    box.innerHTML = "";
+    const key = s => '<span class="k">' + s + "</span>";
+    const val = s => '<span class="v">' + s + "</span>";
+
+    resolved.filter(r => r.leg.on && r.next).forEach(r => {
+      const d = document.createElement("details");
+      d.className = "payload";
+      let body;
+
+      if (r.leg.id === "eightSleep") {
+        const week = DAYS.map(x => "    " + key('"' + x.es + '"') + ": " + val(r.days.has(x.js))).join(",\n");
+        body = "PUT app-api.8slp.net/v1/users/{id}/alarms/{alarmId}\n\n{\n  "
+          + key('"time"') + ": " + val('"' + hhmm(r.minutes) + ':00"') + ",\n  "
+          + key('"enabled"') + ": " + val("true") + ",\n  "
+          + key('"repeat"') + ": {\n    " + key('"enabled"') + ": " + val("true") + ",\n    "
+          + key('"weekDays"') + ": {\n" + week + "\n    }\n  }\n}\n\n"
+          + "Your vibration and thermal settings are read from the server and sent back untouched.";
+      } else if (r.leg.id === "whoop") {
+        const list = DAYS.filter(x => r.days.has(x.js)).map(x => '"' + x.whoop + '"').join(", ");
+        body = "PUT api.prod.whoop.com/smart-alarm-bff/v1/schedule/{id}?apiVersion=7\n\n{\n  "
+          + key('"latest_wake_time"') + ": " + val('"' + hhmm(r.minutes) + ':00"') + ",\n  "
+          + key('"day_of_week_list"') + ": [" + val(list) + "],\n  "
+          + key('"enabled"') + ": " + val("true") + ",\n  "
+          + key('"time_zone_offset"') + ": " + val('"' + offsetString(r.next) + '"') + "\n}\n\n"
+          + "Your smart-wake mode is preserved. Note the offset is fixed, so it is re-sent whenever the clocks change.";
+      } else {
+        const list = DAYS.filter(x => r.days.has(x.js)).map(x => "." + x.whoop.toLowerCase()).join(", ");
+        body = "AlarmKit, on the phone itself. No network.\n\n"
+          + "Alarm.Schedule.relative(.init(\n"
+          + "  time: .init(hour: " + val(r.hour) + ", minute: " + val(r.minute) + "),\n"
+          + "  repeats: .weekly([" + val(list) + "])\n))\n\n"
+          + "Relative, not fixed, so it tracks the phone's timezone and repeats.";
+      }
+
+      d.innerHTML = "<summary>" + r.leg.name + " · " + hhmm(r.minutes) + "</summary><pre>" + body + "</pre>";
+      box.appendChild(d);
+    });
+  }
+
+  document.getElementById("master").addEventListener("input", e => {
+    const [h, m] = e.target.value.split(":").map(Number);
+    if (!isNaN(h) && !isNaN(m)) { state.master = h * 60 + m; render(); }
+  });
+
+  render();
+</script>
