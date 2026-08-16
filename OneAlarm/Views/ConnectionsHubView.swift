@@ -875,9 +875,13 @@ struct BedConfirmScreen: View {
     /// the summary and the detail can never disagree about the same alarm. Two readers of one fact is
     /// how a screen and a write ended up describing different accounts earlier today.
     private var overriddenAlarms: [String] {
-        choices
-            .filter { $0.rawKeys.contains { $0.contains("SOMETHING is overriding") } }
-            .map(\.summary)
+        choices.compactMap { choice in
+            guard let detail = choice.rawKeys.compactMap(EightSleepAdapter.overrideDetail).first
+            else { return nil }
+            // The alarm, then what it is actually doing. Naming only the alarm was the whole gap:
+            // it told him an override exists and made him go and find what it is.
+            return "\(choice.summary). \(detail)"
+        }
     }
 
     @ViewBuilder

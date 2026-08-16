@@ -647,6 +647,23 @@ actor EightSleepAdapter: DeviceAdapter {
         return now > was
     }
 
+    /// The useful half of an `agreementLine`, or `nil` when it does not report an override.
+    ///
+    /// **The summary named the alarm and not the fact.** On 18 August Alex's panel read
+    /// `OVERRIDDEN: 07:45, weekdays · vibration 100, enabled=1, skipNext=0`, which says an override is
+    /// in force and not what it is. The one number he needs, what it is firing at instead, was three
+    /// lines further down inside a block he has to expand.
+    ///
+    /// `agreementLine` already computes it. This is only the trimming, kept here rather than in the
+    /// view so it can be tested, because a string transform in a SwiftUI property is a string
+    /// transform nobody ever runs.
+    static func overrideDetail(_ line: String) -> String? {
+        guard line.contains("SOMETHING is overriding") else { return nil }
+        return line
+            .replacingOccurrences(of: "OVERRIDE CHECK: ", with: "")
+            .replacingOccurrences(of: ", so SOMETHING is overriding it", with: "")
+    }
+
     /// Whether this alarm's **next** firing falls on a given day, according to the server.
     ///
     /// Against `nextTimestamp`, the absolute instant Eight Sleep issues, rather than against the day

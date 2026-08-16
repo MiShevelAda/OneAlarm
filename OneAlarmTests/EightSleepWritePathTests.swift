@@ -1321,6 +1321,56 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertEqual(receipt.remoteID, "his", "tonight is still the routine's own alarm")
     }
 
+    /// The overridden summary carries what the alarm is firing at, not just that something is wrong.
+    ///
+    /// Alex's panel on 18 August read `OVERRIDDEN: 07:45, weekdays · vibration 100, enabled=1,
+    /// skipNext=0`. That says an override is in force and not what it is. The number he needs was
+    /// three lines further down inside a block he has to expand, and `agreementLine` had already
+    /// computed it.
+    ///
+    /// Fed a literal line rather than a timestamp, deliberately. `agreementLine` converts to the
+    /// machine's own time zone, so a test built on an instant asserts different numbers in Zurich and
+    /// in New York. This is a string transform and is tested as one.
+    func testTheOverrideDetailKeepsBothTimes() throws {
+        let line = "OVERRIDE CHECK: next firing is 120 min later (09:45 against 07:45), so SOMETHING is overriding it"
+        let detail = try XCTUnwrap(EightSleepAdapter.overrideDetail(line))
+
+        XCTAssertTrue(detail.contains("09:45") && detail.contains("07:45"),
+                      "both times, which is the whole fact: \(detail)")
+        XCTAssertFalse(detail.contains("OVERRIDE CHECK"), "the prefix is redundant on that row")
+        XCTAssertFalse(detail.contains("SOMETHING is overriding"),
+                       "the word OVERRIDDEN already leads the line: \(detail)")
+    }
+
+    /// A line reporting no override yields nothing, so the summary stays quiet.
+    func testTheOverrideDetailIsNilWhenNothingIsOverriding() {
+        XCTAssertNil(EightSleepAdapter.overrideDetail(
+            "OVERRIDE CHECK: next firing matches the weekly time, so NO override is in force"
+        ))
+        XCTAssertNil(EightSleepAdapter.overrideDetail(
+            "OVERRIDE CHECK: cannot compare, nextTimestamp is unreadable"
+        ))
+    }
+
+    /// And the real detector still produces a line this can read.
+    ///
+    /// The pair to the two above. Testing the transform against a literal is deterministic and proves
+    /// nothing about whether that literal is the shape `agreementLine` actually emits, which is the
+    /// classic way a string test passes while the feature is broken. So: one instant, chosen so the
+    /// two times disagree in **every** time zone, and only the fact of a detail is asserted.
+    func testTheDetectorEmitsSomethingTheSummaryCanRead() throws {
+        let line = EightSleepAdapter.agreementLine(
+            time: "07:45:00",
+            // **Minutes, not hours, are what makes this time zone proof.** An hours-only choice can
+            // always be undone by some offset: 20:45Z is exactly 07:45 local at UTC+11. Every real
+            // offset is a multiple of fifteen minutes, so a :50 instant reads as :50, :05, :20 or
+            // :35 locally and can never be :45, anywhere.
+            nextTimestamp: "2026-08-19T20:50:00Z"
+        )
+        let detail = try XCTUnwrap(EightSleepAdapter.overrideDetail(line), line)
+        XCTAssertTrue(detail.contains("07:45"), detail)
+    }
+
     // MARK: The gate has to describe what will actually be sent
 
     /// The preview shows the routine's own time, not the override's.
