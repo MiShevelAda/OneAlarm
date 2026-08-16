@@ -60,7 +60,7 @@ struct RoutinesView: View {
             SolidButton(title: "Done") { dismiss() }
         }
         .confirmationDialog(
-            "Delete this routine?",
+            deletionTitle,
             isPresented: Binding(get: { confirmingDelete != nil },
                                  set: { if !$0 { confirmingDelete = nil } }),
             titleVisibility: .visible
@@ -71,8 +71,31 @@ struct RoutinesView: View {
             }
             Button("Keep it", role: .cancel) { confirmingDelete = nil }
         } message: {
-            Text("Its days stop having an alarm. They are not handed to another routine, because that would move a morning you did not ask to move.")
+            Text(deletionMessage)
         }
+    }
+
+    /// The routine about to be deleted, by name and by days.
+    ///
+    /// It used to read "Delete this routine?" with a generic body. With three routines on screen
+    /// that names none of them, and this is the only destructive action in the app: it ends with an
+    /// alarm switched off on his bed on the next sync. Everywhere else in this project a destructive
+    /// act is named out loud, and this was the one place it was not.
+    private var deletionTitle: String {
+        guard let routine = doomed else { return "Delete this routine?" }
+        return "Delete \(routine.displayName)?"
+    }
+
+    private var deletionMessage: String {
+        guard let routine = doomed, !routine.weekdays.isEmpty else {
+            return "It has no days, so nothing changes on any device."
+        }
+        return "Every \(routine.daysSentence) stops having an alarm. Those days are not handed to another routine, because that would move a morning you did not ask to move. On your bed, the alarm this routine owns is switched off on the next sync rather than deleted, so you can turn it back on in the Eight Sleep app."
+    }
+
+    private var doomed: Routine? {
+        guard let id = confirmingDelete else { return nil }
+        return store.schedule.routines.first { $0.id == id }
     }
 
     private var addButton: some View {

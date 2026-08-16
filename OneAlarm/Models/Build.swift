@@ -12,7 +12,7 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "17 Aug, 03:05 · unique routine ids"
+    static let marker = "17 Aug, 03:25 · delete names what it deletes"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
