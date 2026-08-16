@@ -2294,6 +2294,19 @@ actor EightSleepAdapter: DeviceAdapter {
             for (routineID, alarmID) in RemoteAlarmLink.orphans(for: .eightSleep, livingRoutines: living) {
                 guard let existing = alarms.first(where: { Self.alarmID($0) == alarmID }) else {
                     // Already gone from the account, so the links are all that is left to clean up.
+                    //
+                    // **Silent until 19 August, and that silence hid the one open question.** When a
+                    // one day override has vanished on its own, this branch is Eight Sleep telling us
+                    // its one-shot self-clears, which is the whole of `E25`'s remaining unknown: if it
+                    // does, the synthetic key, the link and the delete are all unnecessary. Cleaning
+                    // up quietly and moving on meant the morning-after run would print nothing at all
+                    // and the question would stay open after the exact test designed to close it.
+                    //
+                    // Only reported for an override key. A routine's alarm disappearing means he
+                    // deleted it in their app, which is his business and not news.
+                    if routineID.hasPrefix("oneoff:") {
+                        deleted.append("the one time alarm, which Eight Sleep had already removed by itself")
+                    }
                     RemoteAlarmLink.unlink(routine: routineID, on: .eightSleep)
                     RemoteAlarmLink.forgetCreated(alarmID, on: .eightSleep)
                     continue
