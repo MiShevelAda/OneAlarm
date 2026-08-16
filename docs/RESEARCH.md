@@ -40,6 +40,12 @@ write-up that PUTs to `/v1/users/{id}/routines` for alarm control is obsolete. N
 had a release in about twelve months, so treat this whole section as a starting hypothesis to
 validate rather than a guarantee.
 
+> **That paragraph is about v1, and it does not retire the object in §1.5.** Two different things
+> are called routines. `/v1/users/{id}/routines` is the deleted feature, and OneAlarm never writes
+> it. `/v2/users/{id}/routines/{routineId}` is the current object their app renders alarms through,
+> and OneAlarm reads and writes it. A session that reads the paragraph above without reading §1.5
+> will conclude the routine write is dead code and delete it. It is not. See §1.5.
+
 ### 1.2 Auth
 
 A password grant, with credentials extracted from the Android APK and hardcoded in the library.
@@ -193,6 +199,59 @@ separate stop endpoint: stop is dismiss.
 `"RISE"` on create against `"rise"` on read. Either the API accepts both or one docstring is wrong.
 **This is the single highest-value thing to test first**, because it is a write-path mismatch on the
 exact operation the product depends on.
+
+### 1.5b Routines, the object their app actually renders alarms through
+
+**Added 17 August, and it is the reason two weeks of "the write returns 200 and nothing appears"
+finally made sense.** Eight Sleep's app does not render the alarm list from §1.5. It renders
+routines, and each routine carries its own alarms. An alarm created standalone through
+`POST /v1/users/{id}/alarms` belongs to no routine, so it exists on the API and is invisible in the
+app. That is also why the account returned three alarms where the app showed two.
+
+**This is not the retired feature in §1.1.** `/v1/users/{id}/routines` is the deleted one. This is
+`/v2`, a different object, and both facts hold at once.
+
+```http
+GET https://app-api.8slp.net/v2/users/{userId}/routines
+PUT https://app-api.8slp.net/v2/users/{userId}/routines/{routineId}
+```
+
+```json
+{
+  "id": "uuid",
+  "enabled": true,
+  "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+  "bedtime": { "time": "22:30:00", "dayOffset": "MinusOne" },
+  "alarms": [],
+  "alarmsToCreate": [{
+    "enabled": true,
+    "disabledIndividually": false,
+    "timeWithOffset": { "time": "07:00:00", "dayOffset": "Zero" },
+    "settings": { "vibration": {}, "thermal": {} },
+    "dismissedUntil": "1970-01-01T00:00:00Z",
+    "snoozedUntil": "1970-01-01T00:00:00Z"
+  }]
+}
+```
+
+Note the differences from §1.5, each of which will bite somebody:
+
+- **`days` is an array of lowercase names**, where an alarm's `repeat.weekDays` is seven named
+  booleans. Same week, two encodings, one service.
+- **`dayOffset` is a string enum, not a number.** `"Zero"` for an alarm, `"MinusOne"` for a bedtime.
+  Confirmed by two independent implementations, `atfinke/EightSleep` and `blacktop/clim8`. Sending
+  `0` is the obvious guess and it is wrong.
+- **`alarmsToCreate` is how a new alarm becomes visible.** Append an entry, PUT the routine.
+- **The PUT replaces the routine.** Read modify write, and echo back every field including ones with
+  no known meaning, exactly as with alarms.
+
+**What OneAlarm authors here, and nothing else:** `days` and `enabled` on a routine it owns, and new
+entries in `alarmsToCreate`. Never `bedtime`, per Alex: when he goes to bed is not an alarm setting.
+Never `vibration` or `thermal`, which are copied from an existing alarm and echoed, never composed.
+
+**Unverified on his account.** Every line above comes from public captures, not from a response
+Eight Sleep has sent us. `retiredRoutinesProbe` and the raw routines panel exist to replace this with
+his own data on the next run. Until then treat it as §1.1 says: a starting hypothesis.
 
 ### 1.6 Timezone semantics
 

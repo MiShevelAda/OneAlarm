@@ -84,19 +84,20 @@ actor EightSleepAdapter: DeviceAdapter {
         // why the account returns three alarms where the app shows two.
         //
         // Alex asked for exactly this by name: *"be able to also write routines inside the 8sleep
-        // app."* Nothing is written here yet, and deliberately: no routine object from his account
-        // has ever been read, and composing a write against a shape taken from somebody else's
-        // capture is the mistake that cost five hours on Whoop. Read first, print it, then write.
-        // Both versions, and this one is not paranoia. The routine **write** is `/v2/.../routines/{id}`
-        // in two independent captures, and an OpenAPI description of this API documents the routine
-        // **read** as `GET /v1/users/{userId}/routines`. That is the third version asymmetry on this
-        // service: the alarm list is v2 while the alarm update is v1, and here it may run the other
-        // way. Nothing public resolves it.
+        // app."*
         //
-        // Guessing one and being wrong is the worst outcome available, because a 404 on the read
-        // makes `fetchRoutines` return empty, and empty means the routine write silently does
-        // nothing and reports nothing. That is the exact failure shape this whole evening has been
-        // spent removing. So both are read, in order, and whichever answers is used.
+        // **Two versions are listed and they are not alternatives.** v2 is the object OneAlarm reads
+        // and writes, `PUT /v2/users/{id}/routines/{routineId}`, confirmed in two independent public
+        // captures. v1 is the **retired** Routines feature: `docs/RESEARCH.md` records that Eight
+        // Sleep deleted it from the app and that any write-up PUTting to `/v1/users/{id}/routines`
+        // for alarm control is obsolete. Both statements are true at once, because they are about
+        // different objects that happen to share a word.
+        //
+        // So `fetchRoutines` reads v2 and only v2. The v1 line exists for `retiredRoutinesProbe`,
+        // which runs only after v2 has failed, only to tell Alex whether the account is unreachable
+        // or the address is wrong, and whose answer is printed and thrown away. Falling back to it
+        // would mean reading object A and writing its fields to endpoint B, which is the shape of
+        // the mistake that cost five hours on Whoop.
         #"^GET https://app-api\.8slp\.net/v2/users/[^/]+/routines$"#,
         #"^GET https://app-api\.8slp\.net/v1/users/[^/]+/routines$"#,
         // The routine write. Read modify write, exactly like the alarm write, and for exactly the
@@ -1341,11 +1342,16 @@ actor EightSleepAdapter: DeviceAdapter {
     func routineDump() async -> [String] {
         let routines = (try? await fetchRoutines()) ?? []
         guard !routines.isEmpty else {
-            if let failure = lastRoutineReadFailure {
-                return ["The routines read was refused. \(failure).",
-                        "This is the object Eight Sleep's app renders alarms through, so if it cannot be read, OneAlarm cannot make a new alarm appear in their app."]
+            guard let failure = lastRoutineReadFailure else {
+                return ["This account returned no routines, and the read itself succeeded."]
             }
-            return ["This account returned no routines, and the read itself succeeded."]
+            var lines = ["The routines read was refused. \(failure).",
+                         "This is the object Eight Sleep's app renders alarms through, so if it cannot be read, OneAlarm cannot make a new alarm appear in their app."]
+            if let probe = await retiredRoutinesProbe() {
+                lines.append("v1, the retired Routines API, answered HTTP \(probe.status). Recorded, never used: it is a different object from the one OneAlarm writes.")
+                if probe.isSuccess { lines.append(Self.serverMessage(probe.data)) }
+            }
+            return lines
         }
 
         // Printed rather than parsed. Parsing it would mean deciding what it means, and the point of
@@ -1362,6 +1368,22 @@ actor EightSleepAdapter: DeviceAdapter {
 
     // MARK: Routines
 
+    /// A read of the **retired** v1 Routines API, for the diagnostic panel and nothing else.
+    ///
+    /// `docs/RESEARCH.md` is explicit that Eight Sleep deleted the Routines feature from its app and
+    /// that any write-up PUTting to `/v1/users/{id}/routines` for alarm control is obsolete. So an
+    /// answer here is a **different object** from the one OneAlarm writes, and its fields must never
+    /// reach a v2 write. It is read only when v2 has already failed, only to tell Alex whether the
+    /// account is unreachable or the address is wrong, and the result is printed and dropped.
+    ///
+    /// Returns nil rather than throwing, and each `try?` stands alone: a diagnostic that can raise
+    /// is a diagnostic that hides the thing it was added to show.
+    private func retiredRoutinesProbe() async -> HTTPClient.Response? {
+        guard let session = try? await currentToken() else { return nil }
+        guard let url = URL(string: "\(Self.appHost)/v1/users/\(session.userID)/routines") else { return nil }
+        return try? await http.send("GET", url, headers: Self.baseHeaders(token: session.token))
+    }
+
     /// Every routine on the account, raw.
     ///
     /// Their app models alarms **inside** routines, so this is the object that decides what he
@@ -1370,26 +1392,34 @@ actor EightSleepAdapter: DeviceAdapter {
     func fetchRoutines() async throws -> [[String: Any]] {
         let (token, user) = try await currentToken()
 
-        // v2 first, because that is where the write lives in both captures, then v1, because that is
-        // where an OpenAPI description puts the read. One of them answers.
-        var response: HTTPClient.Response?
-        for version in ["v2", "v1"] {
-            guard let url = URL(string: "\(Self.appHost)/\(version)/users/\(user)/routines") else { continue }
-            let attempt = try await http.send("GET", url, headers: Self.baseHeaders(token: token))
-            if attempt.status == 403 { throw AdapterError.subscriptionRequired }
-            if attempt.status == 401 {
-                accessToken = nil
-                throw AdapterError.authenticationFailed("Token was rejected.")
-            }
-            if attempt.isSuccess {
-                response = attempt
-                routinesVersion = version
-                break
-            }
-            lastRoutineReadFailure = "\(version): HTTP \(attempt.status)"
+        // **v2 only, and the v1 fallback that was here has been removed.**
+        //
+        // `docs/RESEARCH.md` is explicit: Eight Sleep deleted the Routines feature from its app and
+        // "any write-up that PUTs to `/v1/users/{id}/routines` for alarm control is obsolete". The
+        // object this adapter writes is a different one, `PUT /v2/users/{id}/routines/{routineId}`,
+        // carrying `days`, `bedtime` and `alarmsToCreate`, and confirmed in two independent public
+        // captures. Both statements are true: v1 routines is the retired feature, v2 routines is the
+        // current one.
+        //
+        // Which makes falling back to v1 actively dangerous rather than merely useless. If it
+        // answers, it answers with the **retired** object, and this function's caller would then
+        // echo those fields into a v2 write. Reading object A and writing it to endpoint B is the
+        // exact shape of the mistake that cost five hours on the Whoop read. The v1 probe survives
+        // in `routineDump`, where it is labelled and never written back.
+        guard let url = URL(string: "\(Self.appHost)/v2/users/\(user)/routines") else { return [] }
+        let response = try await http.send("GET", url, headers: Self.baseHeaders(token: token))
+        if response.status == 403 { throw AdapterError.subscriptionRequired }
+        if response.status == 401 {
+            accessToken = nil
+            throw AdapterError.authenticationFailed("Token was rejected.")
         }
+        guard response.isSuccess else {
+            lastRoutineReadFailure = "v2: HTTP \(response.status)"
+            return []
+        }
+        routinesVersion = "v2"
 
-        guard let response, let json = try? HTTPClient.dictionary(response.data) else { return [] }
+        guard let json = try? HTTPClient.dictionary(response.data) else { return [] }
 
         // Two envelope shapes, because nobody has seen this account's yet and guessing one would
         // return empty and read as "you have no routines".

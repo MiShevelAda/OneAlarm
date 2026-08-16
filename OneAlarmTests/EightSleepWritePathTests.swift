@@ -458,20 +458,25 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertTrue(receipt.note?.contains("Added the Weekend alarm") ?? false)
     }
 
-    /// The routines read falls back to `v1`, and says which one answered.
+    /// The routines read is `v2` and only `v2`, even when `v1` would have answered.
     ///
-    /// `E19`: the routine write is `/v2/routines/{id}` in two captures, and an OpenAPI description
-    /// puts the read at `/v1/users/{id}/routines`. Guessing one and being wrong is the worst outcome
-    /// available, because a 404 makes the read return empty, empty is indistinguishable from "this
-    /// account has no routines", and the routine write then silently does nothing while the receipt
-    /// reports the alarm times as set.
-    func testTheRoutinesReadFallsBackToTheOtherVersion() async throws {
+    /// **This test asserts the reverse of the one it replaces**, and the reason is worth keeping.
+    /// The first version read v2, then fell back to v1, on the reasoning that whichever answered was
+    /// the right address. `docs/RESEARCH.md` §1.1 says three times that `/v1/users/{id}/routines` is
+    /// the **retired** Routines feature, deleted from their app. §1.5b is the current `/v2` object,
+    /// the one with `alarmsToCreate` in it. They share a word and are not the same thing.
+    ///
+    /// So a fallback that fires hands the caller the retired object, whose fields are then echoed
+    /// into a `PUT /v2/.../routines/{id}`. Reading object A and writing it to endpoint B is the shape
+    /// of the mistake that cost five hours on the Whoop leg. The stub here answers v1 happily, and
+    /// the assertion is that OneAlarm never asks.
+    func testTheRoutinesReadNeverFallsBackToTheRetiredVersion() async throws {
         StubServer.responses = [
             StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
                 "alarms": [alarm(id: "a1", time: "07:00:00", days: weekdayNames, routine: "r1")],
             ]),
-            // v2 refuses, exactly as the prediction says it will.
             StubServer.key("GET", "/v2/users/\(userID)/routines"): (404, ["message": "no route"]),
+            // Answers, and must still never be called on a write path.
             StubServer.key("GET", "/v1/users/\(userID)/routines"): (200, [
                 "routines": [routine(id: "r1", days: weekdayNames)],
             ]),
@@ -489,14 +494,18 @@ final class EightSleepWritePathTests: XCTestCase {
 
         _ = try await subject.write(target, plan: plan)
 
-        XCTAssertTrue(StubServer.calls.contains { $0.path == "/v1/users/\(userID)/routines" },
-                      "a refused v2 has to fall through to v1")
-        // And the routine's days were written, which is the whole point of reading it at all.
-        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v2/users/\(userID)/routines/r1")])
-        XCTAssertEqual(body["days"] as? [String], ["monday", "tuesday"])
+        XCTAssertFalse(StubServer.calls.contains { $0.path == "/v1/users/\(userID)/routines" },
+                       "the retired Routines API must not be read on a write path, however willingly it answers")
+        // The routine write is skipped rather than sent from the wrong object. The alarm time still
+        // goes out, which is the deliberate part: a routine read that fails must not take the times
+        // down with it.
+        XCTAssertNil(StubServer.bodies[StubServer.key("PUT", "/v2/users/\(userID)/routines/r1")],
+                     "no routine was read, so no routine may be written")
+        XCTAssertNotNil(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1")],
+                        "the alarm time still goes out")
 
-        let version = await subject.routinesVersion
-        XCTAssertEqual(version, "v1", "which address answered is recorded, not guessed at again")
+        let failure = await subject.lastRoutineReadFailure
+        XCTAssertEqual(failure, "v2: HTTP 404", "the refusal is named with its status, not swallowed")
     }
 
     /// A refused read must not pass as "you have no routines".
