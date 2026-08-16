@@ -55,12 +55,15 @@ says so, and the three verbs under it sit beneath the words "This morning only".
 visible on home as a read only line, and `RoutinesView` is the only place any of them can be edited,
 added or deleted.
 
-**Eight Sleep is driven by day set, not by a chosen alarm** as of 16 August. Each routine finds the
-alarm on the account that already runs on its days and changes **only that alarm's `time`**. Days,
-`enabled`, vibration and thermal are echoed back exactly as the server sent them. Nothing is picked
-by hand: what Alex confirms is the bed. A routine with no matching alarm is named on screen and
-written nowhere, and an alarm no routine describes is named and never touched. A write where any
-routine had no home reports as a **warning**, not as done.
+**Nothing is picked by hand.** What Alex confirms is the bed. A routine with no alarm gets one
+created rather than a instruction to go and build it, an alarm no routine describes is named and
+never touched, and a write where any routine had no home reports as a **warning**, not as done.
+
+> **A paragraph here used to say Eight Sleep gets "only that alarm's `time`", with days and `enabled`
+> echoed back.** That was true between roughly 09:00 and 13:00 on 16 August and was left standing
+> after the ownership model replaced it, two paragraphs below the text that contradicts it. Removed
+> rather than quietly overwritten, because this is the second contradiction found in this file in one
+> day and the first one nearly sent somebody looking in the wrong place.
 
 Everything under "designed, not built" below is on paper.
 
@@ -102,8 +105,11 @@ is attacking it now, with an adversary at every stage.
    the write from three requests to one.
 7. 🟡 **No snooze.** Apple's sleep alarm has a nine minute snooze; ours has none. Needs a widget
    extension.
-8. 🟡 **The test suite has never run.** No Swift toolchain here. The tests are written and are code
-   shaped text until Xcode says otherwise.
+8. 🟡 **The test suite has never run.** No Swift toolchain here, and `download.swift.org`,
+   `github.com` releases and `objects.githubusercontent.com` are all refused by the proxy. Seventeen
+   tests are written and are code shaped text until `Cmd+U` says otherwise. What **has** run is
+   `npm run check`: the project structure, the secret scan, and a real tree-sitter parse of all 31
+   Swift files. A parse is not a type check and cannot see a wrong type or a missing argument label.
 
 ## Next, in order
 
