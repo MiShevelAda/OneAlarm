@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "17 Aug, 21:30 · Whoop screen stops talking about beds"
+    static let marker = "17 Aug, 22:10 · hand a Whoop schedule to a routine"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Whoop can hold more than one schedule, which this app did not know. It now writes one Whoop schedule per routine, matched by days, so your weekend routine reaches your strap instead of only the routine covering tomorrow."
+    static let whatIsNew = "Your Weekend routine covers Sa and Su and your Whoop schedule covered Sa alone, so nothing matched and Whoop cannot create one. Tapping a schedule in Connections, Whoop now hands it to the routine that covers those days, and OneAlarm sets its days from then on."
 }

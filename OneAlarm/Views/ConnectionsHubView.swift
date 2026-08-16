@@ -588,7 +588,32 @@ struct WhoopLinkView: View {
     }
 
     private var picker: some View {
-        AlarmPickerScreen(device: .whoop, choices: choices) { _ in
+        AlarmPickerScreen(device: .whoop, choices: choices) { choice in
+            // **His tap is ownership, and that is the third way a routine can come to own a schedule.**
+            //
+            // The matcher adopts only on exact day equality, never a subset, because writing days to
+            // an alarm nobody established was ours is what turned his real Monday to Friday schedule
+            // into every day. Correct, and on 17 August it stranded him: his Weekend routine covers
+            // Saturday and Sunday, the Whoop schedule he made covered Saturday alone, so nothing
+            // matched. On Eight Sleep that is harmless because a routine with no alarm gets one made.
+            // Whoop cannot create, so the routine had nowhere to go and Sunday never arrived.
+            //
+            // Until now this closure discarded the choice entirely, `{ _ in }`, while the button said
+            // "Use this alarm". Choosing here now records the link, which is the same standing as an
+            // exact day match: safe for the reason the other two are, which is that he said so.
+            //
+            // Only a routine whose days **contain** the schedule's, and which owns nothing yet, so a
+            // tap can never take a schedule away from a routine that already has one. Falls back to
+            // the old single-schedule selection when nothing fits, rather than silently doing nothing.
+            if !choice.weekdays.isEmpty,
+               let routine = store.plans[.whoop]?.entries.first(where: {
+                   $0.weekdays.isSuperset(of: choice.weekdays)
+                       && RemoteAlarmLink.alarmID(for: $0.routineID, on: .whoop) == nil
+               }) {
+                RemoteAlarmLink.link(routine: routine.routineID, to: choice.id, on: .whoop)
+            } else {
+                RemoteAlarmSelection.select(choice.id, for: .whoop)
+            }
             Task { await finish() }
         } onBack: {
             dismiss()
@@ -1103,7 +1128,7 @@ struct AlarmPickerScreen: View {
         Screen(title: device.displayName, onBack: onBack) {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(device == .whoop ? "Which schedule is the fallback?" : "Which alarm should OneAlarm move?")
+                    Text(device == .whoop ? "Which schedule should a routine take over?" : "Which alarm should OneAlarm move?")
                         .font(.system(size: 25, weight: .bold)).tracking(-0.6)
                     Text(pickerSubtitle).font(.system(size: 15)).foregroundStyle(Theme.grey)
                 }
@@ -1209,7 +1234,7 @@ struct AlarmPickerScreen: View {
                                ? "Whoop does not label its schedules."
                                : "This account did not name its beds.",
                            (device == .whoop
-                            ? "A Whoop schedule carries days and a wake time and no name, so these are listed by time. Since 17 August you do not usually have to choose: each of your routines drives the schedule with its own days. This list is here for the case where that cannot be worked out.\n\nWhat this account returned: "
+                            ? "A Whoop schedule carries days and a wake time and no name, so these are listed by time. Each of your routines drives the schedule whose days match it exactly. Pick one here when the days do not match, for example a routine covering Saturday and Sunday against a schedule covering Saturday alone: choosing it hands that schedule to the routine, and OneAlarm sets its days from then on.\n\nWhat this account returned: "
                             : "Eight Sleep does not put a bed or a side on an alarm, so these are listed by time. To be certain which is which, open the Eight Sleep app and compare the times.\n\nWhat this account returned: ")
                                + sample.rawKeys.joined(separator: ", "))
                 }
