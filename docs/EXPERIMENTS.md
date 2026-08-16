@@ -129,6 +129,30 @@ not far-fetched, because the alarm may route to a device that is asleep on a cha
 >   sentence in their UI. Read it instead of assuming it.
 > - `audio` and `tags`, unexamined.
 
+> **E3 FOLLOW UP, 2026-08-16, and it reopens the question.** `tags` was printed and it is not
+> decoration:
+>
+> ```
+> tags  = ( "routine-94b49169-0ef4-4739-ae95-124e45473c97" )
+> smart = { lightSleepEnabled = 1; sleepCapEnabled = 0; sleepCapMinutes = 480 }
+> audio = { enabled = 0; level = 30 }
+> skipNext = 0
+> skippedUntil = 2026-08-16T22:19:00Z
+> ```
+>
+> **Every alarm is stamped with a routine id.** If routines are per bed or per side, that is the
+> link from an alarm to a Pod, and the earlier conclusion that alarms are irreducibly account level
+> was wrong. It was drawn from the absence of a `deviceId`, which is the same reasoning that was
+> wrong about Whoop's field names and wrong about Eight Sleep's bed names: **absence in one object
+> is not absence everywhere.** Three times now.
+>
+> Also: **`smart` carries no window length.** `sleepCapMinutes` is 480, which is eight hours, so it
+> is a sleep cap and not a wake window. The 30 minute figure in this project came from a sentence in
+> the Eight Sleep UI and is still `[to confirm]`, not confirmed by this.
+>
+> And `skippedUntil` holds a real timestamp while `skipNext` is 0, so the two are not a simple pair
+> and the native skip is not yet understood well enough to use.
+
 ## E6 🟡 Can one Eight Sleep account expose both sides of one bed?
 
 **Why.** It decides whether the couple case is a real product case or out of scope. The spec
