@@ -749,7 +749,7 @@ struct AlarmPickerScreen: View {
                     // never a credential.
                     Notice(.warn,
                            title: "This account did not name its beds.",
-                           "OneAlarm found no name, label or side on these alarms, so they are listed by time only. Fields returned: "
+                           "Eight Sleep does not put a bed or a side on an alarm, so these are listed by time. To be certain which is which, open the Eight Sleep app and compare the times.\n\nWhat this account returned: "
                                + sample.rawKeys.joined(separator: ", "))
                 }
 

@@ -419,7 +419,11 @@ actor EightSleepAdapter: DeviceAdapter {
     /// answer "does this account name its pods", because the parse succeeds either way.
     static func describe(_ alarm: [String: Any]) -> [String] {
         var lines = alarm.keys.sorted()
-        for key in ["name", "label", "side", "deviceId", "device", "pod"] {
+        // `tags` and `smart` have never been printed. Both are on every alarm this account returns
+        // and neither has a known shape, and `tags` is the only field left that could carry a bed
+        // name. Reasoning about them from their names is exactly what cost five hours on Whoop.
+        for key in ["name", "label", "side", "deviceId", "device", "pod",
+                    "tags", "smart", "audio", "skipNext", "skippedUntil"] {
             if let value = alarm[key], !(value is NSNull) {
                 lines.append("\(key) = \(value)")
             }
