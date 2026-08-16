@@ -911,6 +911,43 @@ and the class of bug where a bend outlives its morning, disappear rather than ge
 
 
 
+---
+
+## E24 🟠 Why did the same write report Tue and then Mon, a minute apart?
+
+**Observed 18 August 17:54 and 17:55**, two Set all alarms a minute apart with nothing changed
+between them:
+
+```
+17:54   Accepted, but it reads back as Tue 07:45 instead of Mon 07:45     [yellow]
+17:55   Set for 07:45. Eight Sleep reads back Mon 07:45.                  [green]
+```
+
+**Why this matters more than it looks.** The verification exists because a 200 is not a moved alarm,
+and it works by comparing `nextTimestamp` against the instant OneAlarm meant. A check that reports a
+mismatch and then agrees, on identical inputs, is a check he will learn to ignore. That is worse than
+no check, and this project has already written down what happens when a warning fires on a harmless
+state.
+
+**Three candidate causes, none confirmed:**
+
+1. **The server had not recomputed `nextTimestamp` yet.** `verify` already retries twice for exactly
+   this reason, so a first read landing on the pre-write value would explain it. If so the retry
+   window is too short and the fix is to widen it, not to weaken the check.
+2. **The day boundary.** He wrote at 17:54 on a Monday. Monday's 07:45 was ten hours past, so the true
+   next firing **is** Tuesday, and the yellow row may have been right while the green one was wrong.
+   That inverts which reading is the bug.
+3. **The override he had just set in the Eight Sleep app** moved the next firing, and the write reset
+   it between the two attempts.
+
+**Test.** Set all alarms twice in a row, mid-afternoon, with no override anywhere and nothing changed
+between. If the first is yellow and the second green, it is 1 or 2 and the timestamps in the raw panel
+say which. If both are green, it was 3, and this entry closes as a side effect of `E23`.
+
+**Whose.** Alex, two taps, any afternoon.
+
+
+
 ## Completed
 
 | | Question | Answer | Date |
