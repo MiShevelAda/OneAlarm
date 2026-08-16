@@ -339,6 +339,8 @@ struct CascadeView: View {
                        "Its days shift back to match, so the bed reacts on the right night.")
             }
 
+            whoopCarriesOneRoutine
+
             if store.needsApply, store.lastSyncedAt != nil {
                 Text("Changed since last set")
                     .font(.system(size: 13, weight: .medium))
@@ -348,6 +350,32 @@ struct CascadeView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.greyDim)
             }
+        }
+    }
+
+    /// Whoop holds **one** schedule, so it can only carry one routine at a time.
+    ///
+    /// Said out loud because it is a real limitation with a real consequence and nothing on screen
+    /// admitted it. Eight Sleep holds one alarm per day set, so a whole week fits there. Whoop has a
+    /// single smart alarm schedule with a single day list, so OneAlarm writes the routine covering
+    /// the next morning and that list replaces whatever was on it.
+    ///
+    /// On a Friday night that puts his strap on Saturday and Sunday, and Monday morning has no Whoop
+    /// alarm unless he syncs again on the Sunday. Same shape as the damage done on 15 August, when a
+    /// test wrote all seven days over his real Monday to Friday schedule, except that this time it is
+    /// the service's limit rather than a mistake. Either way he should hear it from the app rather
+    /// than from his wrist.
+    ///
+    /// Only shown when it can actually bite: more than one live routine, Whoop connected and on.
+    @ViewBuilder
+    private var whoopCarriesOneRoutine: some View {
+        let live = store.schedule.routines.filter { $0.isOn && !$0.weekdays.isEmpty }
+        if live.count > 1,
+           store.isConnected(.whoop),
+           store.schedule.rule(for: .whoop)?.isEnabled == true,
+           let next = store.next?.routineName {
+            Notice(.warn, title: "Whoop can only hold one routine at a time.",
+                   "It has a single smart alarm schedule, so OneAlarm sets it to \(next) and that replaces the days it had. Your bed and your phone carry the whole week. Your strap carries the next morning, and follows along the next time you sync.")
         }
     }
 }

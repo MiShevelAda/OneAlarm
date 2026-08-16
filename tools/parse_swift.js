@@ -66,6 +66,28 @@ function swiftFiles(dir, out = []) {
   return out;
 }
 
+/// A member that landed at file scope.
+///
+/// Added after it happened. A view's computed property was inserted one line past the closing brace
+/// of its own type, which made it a global referencing `store`, a name that does not exist there.
+/// Brace balance was zero, the syntax parse was clean, and the file was broken: it is a scope error,
+/// not a syntax one. Editing these files with scripts makes this a recurring risk rather than a
+/// freak, so it is checked rather than watched for.
+function strayMembers(tree, source) {
+  const stray = [];
+  const rootNode = tree.rootNode;
+  for (let i = 0; i < rootNode.childCount; i++) {
+    const node = rootNode.child(i);
+    if (node.type !== 'property_declaration' && node.type !== 'function_declaration') continue;
+    const text = source.slice(node.startIndex, node.endIndex);
+    // `store` is always an `@Environment` member, and `self` is never available at file scope.
+    if (/\bstore\b/.test(text) || /\bself\./.test(text)) {
+      stray.push(node.startPosition.row + 1);
+    }
+  }
+  return stray;
+}
+
 let checked = 0;
 let real = 0;
 let excused = 0;
@@ -77,13 +99,24 @@ for (const file of swiftFiles(root)) {
   const lines = source.split('\n');
   const findings = [];
 
+  const tree = parser.parse(source);
+
   (function visit(node) {
     if (node.type === 'ERROR' || node.isMissing) {
       findings.push({ line: node.startPosition.row + 1, missing: node.isMissing });
       return;
     }
     for (let i = 0; i < node.childCount; i++) visit(node.child(i));
-  })(parser.parse(source).rootNode);
+  })(tree.rootNode);
+
+  // Skipped for a file whose parse is already known to be unreliable: its tree is one big ERROR
+  // node, so its top-level children are whatever the parser salvaged rather than what is there.
+  for (const line of knownFiles.has(rel) ? [] : strayMembers(tree, source)) {
+    real++;
+    console.log(`  FAIL ${rel}:${line}  a member landed at file scope`);
+    console.log(`       ${(lines[line - 1] || '').trim().slice(0, 100)}`);
+    console.log('       It references `store` or `self` outside any type. Move it inside.');
+  }
 
   for (const finding of findings) {
     const text = lines[finding.line - 1] || '';
