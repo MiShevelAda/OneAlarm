@@ -891,9 +891,13 @@ struct BedConfirmScreen: View {
                     Task {
                         silenceResult = (try? await store.eightSleep.silenceAlarms(ids))
                             ?? ["That did not work. Nothing was changed."]
-                        choices = (try? await store.eightSleep.availableAlarms()) ?? choices
                         isSilencing = false
                     }
+                    // `choices` is a `let` handed down by the parent, not state this screen owns, so
+                    // there is nothing to refresh here and an attempt to would not compile. The
+                    // result text takes over the block instead, which is also the more honest
+                    // rendering: it says what happened rather than redrawing a list and leaving him
+                    // to infer it from something no longer being there.
                 }
                 Button("Leave them", role: .cancel) {}
             } message: {
