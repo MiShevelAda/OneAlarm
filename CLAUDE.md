@@ -103,6 +103,15 @@ find them are worth running by hand on new code:
 grep -rn ': \[\s*\]\|: \[\s*:\s*\]' --include=*.swift OneAlarm OneAlarmTests   # empty literal in an Any position
 ```
 
+**The three services are unreachable from a session too.** `app-api.8slp.net` is refused by the proxy
+at the CONNECT stage, gateway 403, checked on 16 August with four unauthenticated GETs. So even a 404
+against 401 probe, which needs no credentials and would settle which API version an endpoint lives
+at, cannot be run here. Every question about what their server accepts is answerable only on Alex's
+phone. Do not spend the time re-discovering that.
+
+And never ask him for a password to work around it. Credentials live in his iPhone Keychain, that is
+the whole design, and a session holding one would be worse than the delay it saves.
+
 Nothing here has been compiled by a session; the app is built by Alex in Xcode. **Say "not compiled"
 rather than implying otherwise**, and never call something done that only a compiler could confirm.
 

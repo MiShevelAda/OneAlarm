@@ -506,6 +506,14 @@ inverting the alarm asymmetry. Written before the test.
 
 **Whose.** Alex, one Set and one look at the routines panel, which now prints which version answered.
 
+**Why the session cannot answer this itself.** A 404 against a 401 would settle it with no
+credentials at all: one says the path does not exist, the other says it exists and wants a token.
+That probe was attempted on 16 August and `app-api.8slp.net` is refused by the session proxy at the
+CONNECT stage, gateway 403, four requests, all identical. So the host is unreachable from here
+whether authenticated or not, and this is checked rather than assumed. Do not spend the time again.
+
+The same applies to `E16`. Neither version question can be resolved anywhere but on Alex's phone.
+
 
 ## Completed
 
