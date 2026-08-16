@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 22:30 · Save baseline and Compare, the field finder"
+    static let marker = "18 Aug, 22:50 · Compare watches Autopilot too"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Two buttons on the Eight Sleep screen: Save baseline, then set UPCOMING ALARM ONLY in the Eight Sleep app, then Compare. It tells you which field changed, by name. No more reading raw blocks and comparing them by eye, which failed four times."
+    static let whatIsNew = "Two buttons on the Eight Sleep screen: Save baseline, then set UPCOMING ALARM ONLY in the Eight Sleep app, then Compare. It tells you which field changed, by name, and it watches the alarms AND the Autopilot settings, so one comparison tests everywhere the setting could possibly live."
 }

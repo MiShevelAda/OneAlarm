@@ -687,7 +687,50 @@ actor EightSleepAdapter: DeviceAdapter {
         UserDefaults.standard.dictionary(forKey: baselineKey) as? [String: String] ?? [:]
     }
 
-    /// Read the account and remember every field as it is now.
+    /// The two candidate resources beyond the alarm object, flattened the same way.
+    ///
+    /// **So that one comparison settles every remaining theory at once.** The override has three
+    /// possible homes and only three: the alarm object (`E28`), the Autopilot resource (`E27`), or
+    /// nowhere reachable. Watching only the alarms would send back "nothing changed" and leave two
+    /// of the three untested, which is a test that cannot fail usefully.
+    ///
+    /// Both are reads and a failure is simply absent from the snapshot rather than fatal. An
+    /// endpoint that 404s on both passes contributes nothing and distorts nothing.
+    private func sideResources() async -> [String: String] {
+        var out: [String: String] = [:]
+        guard let (token, user) = try? await currentToken() else { return out }
+        for path in ["autopilotDetails", "temperature"] {
+            guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/\(path)"),
+                  let response = try? await http.send("GET", url, headers: Self.baseHeaders(token: token)),
+                  response.isSuccess,
+                  let json = try? HTTPClient.dictionary(response.data)
+            else { continue }
+            for (key, value) in Self.flattenObject(json, prefix: path) { out[key] = value }
+        }
+        return out
+    }
+
+    /// One object flattened to `prefix.key.subkey = value`. The alarm walker, without the alarm.
+    static func flattenObject(_ object: [String: Any], prefix: String) -> [String: String] {
+        var out: [String: String] = [:]
+        func walk(_ value: Any, path: String) {
+            if let dict = value as? [String: Any] {
+                for (key, inner) in dict where !computedFields.contains(key) {
+                    walk(inner, path: "\(path).\(key)")
+                }
+                return
+            }
+            if let list = value as? [Any] {
+                out[path] = list.map { raw($0) }.sorted().joined(separator: ", ")
+                return
+            }
+            out[path] = raw(value)
+        }
+        walk(object, path: prefix)
+        return out
+    }
+
+    /// Read everything and remember it as it is now.
     ///
     /// The fetch stays inside the adapter. `fetchAlarms` is private on purpose, and a view reaching
     /// through to it would be a second caller of the raw read with its own idea of error handling.
@@ -695,9 +738,15 @@ actor EightSleepAdapter: DeviceAdapter {
         guard let alarms = try? await fetchAlarms() else {
             return "Could not read your bed, so no baseline was saved."
         }
-        Self.saveBaseline(alarms)
-        let count = Self.savedBaseline().count
-        return "Baseline saved: \(count) fields across \(alarms.count) alarms. Now set UPCOMING ALARM ONLY in the Eight Sleep app and press Compare."
+        var snapshot = Self.flatten(alarms)
+        let side = await sideResources()
+        for (key, value) in side { snapshot[key] = value }
+        UserDefaults.standard.set(snapshot, forKey: Self.baselineKey)
+
+        let extras = side.isEmpty
+            ? "Autopilot returned nothing, so only the alarms are being watched."
+            : "\(side.count) of those are Autopilot fields."
+        return "Baseline saved: \(snapshot.count) fields across \(alarms.count) alarms. \(extras) Now set UPCOMING ALARM ONLY in the Eight Sleep app and press Compare."
     }
 
     /// Read the account and say what has moved since the baseline. One line when nothing has.
@@ -709,7 +758,9 @@ actor EightSleepAdapter: DeviceAdapter {
         guard !baseline.isEmpty else {
             return "No baseline saved yet. Press Save baseline first, then change something in the Eight Sleep app and come back."
         }
-        let changes = Self.diff(baseline: baseline, now: Self.flatten(alarms))
+        var now = Self.flatten(alarms)
+        for (key, value) in await sideResources() { now[key] = value }
+        let changes = Self.diff(baseline: baseline, now: now)
         guard !changes.isEmpty else {
             // Stated rather than left blank. "Nothing changed" and "the check did not run" look
             // identical when both print nothing, and this project has fixed that confusion twice.

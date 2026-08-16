@@ -1192,7 +1192,21 @@ the top of the panel and is labelled, so "send me the first block" is unambiguou
 | the same thirteen keys as every other alarm | the object genuinely does not carry it | `E27`'s Autopilot read becomes the last candidate, and if that fails the current design is the answer |
 | a field with an unfamiliar name and a plausible value | probably it | do not write to it until a second dump with a different override time moves it |
 
-**Whose.** Alex, one screenshot, while an override is live. He already has one live.
+**Superseded by the instrument, 18 August.** Nobody needs to read a block at all now. **Save
+baseline**, set the override in Eight Sleep's app, **Compare**, and whatever field carries it is
+printed by name with its value. The comparison covers the alarm objects **and** the two Autopilot
+resources from `E27`, so one run tests all three of the remaining theories rather than one of them.
+`nextTimestamp` is excluded, or every comparison would carry noise and stop being read.
+
+`E23`, `E27` and `E28` are now a single one minute test with three possible answers:
+
+| Compare says | Which theory | What follows |
+|---|---|---|
+| `APPEARED <alarm>.<field>` | `E28`, it was on the object all along | read it, echo it, author only its time. The one-day-alarm mechanism is deleted |
+| `APPEARED autopilotDetails...` or `temperature...` | `E27`, it is an Autopilot preference | same, one endpoint further away, and Eight Sleep owns the expiry |
+| nothing changed | it is on neither, reachable from neither | the current design is the answer, and `E25` is the only thing left to confirm |
+
+**Whose.** Alex, three taps, one minute.
 
 **Whose fault the delay was.** Mine, and specifically for asserting a conclusion from evidence that
 did not support it, four times, in five separate documents.

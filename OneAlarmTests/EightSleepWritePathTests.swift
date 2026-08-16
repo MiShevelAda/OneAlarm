@@ -1434,6 +1434,34 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertFalse(snap.isEmpty, "and it is comparing something, not silently empty")
     }
 
+    /// The Autopilot resources are watched too, so one comparison settles every theory at once.
+    ///
+    /// The override has three possible homes and only three: the alarm object, the Autopilot
+    /// resource, or nowhere reachable. Watching only the alarms would answer "nothing changed" while
+    /// leaving two of the three untested, which is a test that cannot fail usefully.
+    func testASideResourceChangeIsCaughtToo() {
+        let before = EightSleepAdapter.flattenObject(
+            ["smart": ["bedtime": "23:00", "wakeup": "07:45"] as [String: Any]],
+            prefix: "autopilotDetails"
+        )
+        let after = EightSleepAdapter.flattenObject(
+            ["smart": ["bedtime": "23:00", "wakeup": "07:45", "nextWakeupOverride": "09:45"] as [String: Any]],
+            prefix: "autopilotDetails"
+        )
+
+        let changes = EightSleepAdapter.diff(baseline: before, now: after)
+        XCTAssertEqual(changes.count, 1, "\(changes)")
+        XCTAssertTrue(changes[0].contains("autopilotDetails.smart.nextWakeupOverride"), changes[0])
+        XCTAssertTrue(changes[0].hasPrefix("APPEARED"), changes[0])
+    }
+
+    /// A side resource keys under its own prefix, so it cannot collide with an alarm field.
+    func testSideResourceKeysArePrefixed() {
+        let flat = EightSleepAdapter.flattenObject(["time": "07:45"], prefix: "temperature")
+        XCTAssertEqual(flat["temperature.time"], "\"07:45\"", "\(flat)")
+        XCTAssertNil(flat["time"], "an unprefixed key could be mistaken for an alarm's own field")
+    }
+
     /// Fields are labelled by what the alarm is, not by its uuid.
     ///
     /// "07:45 weekdays" places the alarm instantly. Eight hex characters do not, and the whole
