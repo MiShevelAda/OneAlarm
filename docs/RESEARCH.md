@@ -989,6 +989,42 @@ available; that is a fact about the environment worth not re-testing.
 alarms directly to the strap. OneAlarm is an HTTP client for one account and has no business there,
 so none of it is recorded as actionable and nothing in this project will act on it.
 
+### 2.3j ANSWERED from his phone: Whoop partitions the week, and that is the whole design constraint
+
+**Alex, 20 August, after looking:** *"I cannot. You can either have one schedule for 7 days or split
+the 7 days."*
+
+So a Whoop account holds a **partition of the week**. Every day belongs to **exactly one** schedule.
+No overlap, no spare schedules, and the *"Your schedule is complete"* line on his screen is the app
+confirming all seven days are covered.
+
+**This settles three open questions at once, and nobody had published any of them.**
+
+1. Two schedules **cannot** cover the same day. The adversarial sweep's best opening, parking a
+   temporary single day schedule beside the recurring one, is dead.
+2. There is no schedule count independent of the week. "How many can an account hold" is answered by
+   "at most seven, one per day".
+3. It explains why no create or delete has ever been captured as a plain REST pair. Adding and
+   removing a schedule is **splitting and merging a partition**, not creating and deleting a row, so
+   the requests are probably shaped around days rather than around schedule ids.
+
+**What it leaves open, and it is the only route left.** Splitting is allowed. So an account carrying
+**seven single day schedules** can have any one day moved on its own, using nothing but the PUT this
+project has already run successfully. And with that structure, switching a single day off also
+becomes possible without touching the other six, which is what made silencing unusable at two
+schedules: his weekday schedule covers five mornings, so silencing it costs all five.
+
+**The costs are real and belong in front of him rather than in a design doc.** Seven rows in his
+Whoop app instead of two. OneAlarm writing seven from two routines, which its matcher, pairing on
+exact day set equality, does not currently do. And a revert obligation on every bend, on a leg where
+**the app has no automatic write at all**: `apply()` has exactly two callers, the Set all alarms
+button and a timezone check that only runs in the foreground. Checked, not assumed.
+
+**And it reopens `E30` as worth retesting.** That experiment concluded the per schedule `enabled`
+cannot switch a schedule back on. The master switch was down throughout, which is sufficient to
+explain the same observation. **Per schedule on and off has never been tested with the master on**,
+and the seven schedule design would depend on it.
+
 ### 2.4 Whoop hazards
 
 **Never build a retry loop around `USER_PASSWORD_AUTH`.** `429 TooManyRequestsException` is real on
