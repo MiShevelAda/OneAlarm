@@ -915,6 +915,66 @@ final class EightSleepWritePathTests: XCTestCase {
                        "a switched off alarm is not a problem and saying it is trains him to ignore this")
     }
 
+    // MARK: The override detector
+
+    /// An alarm firing at its weekly time reports no override.
+    ///
+    /// Alex's dump of 18 August: `time = 07:45:00` with `nextTimestamp = 2026-08-17T05:45:00Z`, which
+    /// is 07:45 in Zurich. They agree, so nothing was overriding it, which is the fact three rounds of
+    /// reading raw field lists could not establish.
+    func testAnAlarmFiringAtItsWeeklyTimeReportsNoOverride() {
+        let line = EightSleepAdapter.agreementLine(
+            time: "07:45:00", nextTimestamp: "2026-08-17T05:45:00Z"
+        )
+
+        XCTAssertTrue(line.contains("NO override"), line)
+    }
+
+    /// An alarm firing at a different moment reports one, without knowing which field did it.
+    ///
+    /// This is the whole point. `UPCOMING ALARM ONLY` moves when the alarm fires, so `nextTimestamp`
+    /// stops matching `time`, **whatever field carries the override and wherever it lives**. Three
+    /// dumps came back with the same sixteen keys, which left "he never set it" and "it is not on this
+    /// object" indistinguishable by reading. This tells them apart.
+    func testAnAlarmFiringEarlyReportsAnOverride() {
+        // 05:45Z is 07:45 local; 05:25Z is 07:25, twenty minutes earlier than the weekly 07:45.
+        let line = EightSleepAdapter.agreementLine(
+            time: "07:45:00", nextTimestamp: "2026-08-17T05:25:00Z"
+        )
+
+        XCTAssertTrue(line.contains("SOMETHING is overriding"), line)
+        XCTAssertTrue(line.contains("20 min earlier"), line)
+    }
+
+    /// Across midnight it reports the small number, not the complement.
+    ///
+    /// "20 minutes earlier" and "1420 minutes later" are the same fact and only one of them reads as
+    /// one. A detector that says the second is technically right and useless.
+    func testTheOverrideDetectorWrapsAcrossMidnight() {
+        // Weekly 00:10 local; firing 23:50 local the previous evening, 21:50Z.
+        let line = EightSleepAdapter.agreementLine(
+            time: "00:10:00", nextTimestamp: "2026-08-17T21:50:00Z"
+        )
+
+        XCTAssertTrue(line.contains("20 min earlier"), line)
+        XCTAssertFalse(line.contains("1420"), line)
+    }
+
+    /// Unreadable input says so rather than reporting agreement.
+    ///
+    /// A detector that reports "no override" on data it could not parse is worse than none, because
+    /// this panel exists to answer a question nothing else can.
+    func testTheOverrideDetectorRefusesToGuess() {
+        XCTAssertTrue(
+            EightSleepAdapter.agreementLine(time: "07:45:00", nextTimestamp: "not a date")
+                .contains("cannot compare")
+        )
+        XCTAssertTrue(
+            EightSleepAdapter.agreementLine(time: "quarter to eight", nextTimestamp: "2026-08-17T05:45:00Z")
+                .contains("cannot compare")
+        )
+    }
+
     // MARK: Skip, through Eight Sleep's own field
 
     /// A skip uses `skipNext` and leaves the weekly alarm switched on.

@@ -1010,6 +1010,50 @@ actor EightSleepAdapter: DeviceAdapter {
     }
 
     /// A value with its kind visible, so `true`, `1` and `"1"` are distinguishable on screen.
+    /// Whether the next firing lands at the weekly time, in words.
+    ///
+    /// **The detector that needed no new field.** `time` is the weekly wall clock. `nextTimestamp` is
+    /// the absolute instant it next fires. If Eight Sleep's `UPCOMING ALARM ONLY` is in force, the
+    /// alarm fires at a different moment from the one its weekly time describes, so these two must
+    /// disagree, **whatever field carries the override and wherever that field lives**.
+    ///
+    /// Alex sent three raw dumps on 17 and 18 August hunting for the override's field name and every
+    /// one came back with the same sixteen keys. That leaves two possibilities nobody could tell apart
+    /// by reading them: the override was never set, or it does not live on the alarm object at all.
+    /// This separates them without knowing anything about the field.
+    ///
+    /// Says "cannot compare" rather than guessing when either side is unreadable. A detector that
+    /// reports agreement on data it could not parse is worse than none, because this panel exists to
+    /// answer a question nothing else can.
+    static func agreementLine(time: String, nextTimestamp: String) -> String {
+        guard let instant = ISO8601DateFormatter.parseFlexible(nextTimestamp) else {
+            return "OVERRIDE CHECK: cannot compare, nextTimestamp is unreadable"
+        }
+        let parts = time.split(separator: ":").compactMap { Int($0) }
+        guard parts.count >= 2 else {
+            return "OVERRIDE CHECK: cannot compare, time is unreadable"
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone.current
+        let fields = calendar.dateComponents([.hour, .minute], from: instant)
+        guard let hour = fields.hour, let minute = fields.minute else {
+            return "OVERRIDE CHECK: cannot compare"
+        }
+        let weekly = parts[0] * 60 + parts[1]
+        let firing = hour * 60 + minute
+        guard weekly != firing else {
+            return "OVERRIDE CHECK: next firing matches the weekly time, so NO override is in force"
+        }
+        // Signed and wrapped across midnight, because "20 earlier" and "1420 later" are the same fact
+        // and only one of them reads as one.
+        var delta = firing - weekly
+        if delta > 720 { delta -= 1440 }
+        if delta < -720 { delta += 1440 }
+        let direction = delta < 0 ? "earlier" : "later"
+        let firingText = String(format: "%02d:%02d", hour, minute)
+        return "OVERRIDE CHECK: next firing is \(abs(delta)) min \(direction) than the weekly time (\(firingText) against \(time)), so SOMETHING is overriding it"
+    }
+
     static func raw(_ value: Any?) -> String {
         guard let value, !(value is NSNull) else { return "absent" }
         if let text = value as? String { return "\"\(text)\"" }
@@ -1041,6 +1085,13 @@ actor EightSleepAdapter: DeviceAdapter {
         //
         // Ordering is kept: `time` and `nextTimestamp` first because they settle whether a write
         // landed, then the rest alphabetically so a new field is easy to spot between two runs.
+        // **Does the next firing agree with the weekly time?** Computed, printed first, and it is the
+        // one line in this panel that needed no new field to exist. See `agreementLine`.
+        if let clock = alarm["time"] as? String,
+           let stamp = alarm["nextTimestamp"] as? String {
+            lines.append(Self.agreementLine(time: clock, nextTimestamp: stamp))
+        }
+
         let first = ["time", "nextTimestamp", "enabled"]
         for key in first where alarm[key] != nil {
             if let value = alarm[key], !(value is NSNull) { lines.append("\(key) = \(value)") }

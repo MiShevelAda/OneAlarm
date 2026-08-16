@@ -825,6 +825,33 @@ capped at `WhoopAdapter.scheduleCeiling`.
 > is the last thing on this leg that does not work**, and it does not work because OneAlarm is using
 > `time` on the recurring alarm instead of the mechanism Eight Sleep built for it.
 >
+> **Three dumps, same sixteen keys, and a detector built because of it.** 17 August 17:02, 17:14 and
+> 18 August. Every one came back with exactly:
+>
+> ```
+> time, nextTimestamp, enabled, audio, dismissedUntil, endTimestamp, id, repeat,
+> skipNext, skippedUntil, smart, snoozedUntil, snoozing, startTimestamp, tags, thermal, vibration
+> ```
+>
+> **No override field, in any of them.** Which leaves two possibilities that reading cannot separate:
+> the override was never actually set at the moment of the dump, or it does not live on the alarm
+> object at all.
+>
+> The last dump settles part of it by arithmetic rather than by field names. `time = 07:45:00` with
+> `nextTimestamp = 2026-08-17T05:45:00Z`, which is 07:45 in Zurich. **They agree**, so nothing was
+> overriding that alarm when it was read.
+>
+> So the panel now computes that comparison itself and prints it as `OVERRIDE CHECK`. If
+> `UPCOMING ALARM ONLY` is in force the alarm fires at a different moment from the one its weekly time
+> describes, so the two **must** disagree, whatever field carries it and wherever that field lives.
+> One line, no new API knowledge, and it turns "did he set it?" from a question about him into a fact
+> the app reports.
+>
+> **The next dump therefore answers this entry either way**, which none of the previous three could:
+> `OVERRIDE CHECK: SOMETHING is overriding it` with no new field means the override lives off the
+> alarm object, and the search moves to a separate endpoint. `NO override is in force` means it was
+> not set, and the capture simply needs redoing.
+
 > **The raw dump he sent is not the one that answers this.** It carries no override field, and it
 > could not: the alarm he dumped is one of the old nap-tagged ghosts, and more importantly **no
 > Eight Sleep native override was active at the time**. OneAlarm's bend does not set one, it rewrites

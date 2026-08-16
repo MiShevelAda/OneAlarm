@@ -15,6 +15,27 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**When three dumps in a row answer nothing, stop asking for a fourth and compute the answer.**
+`[18 August]` Alex sent three raw Eight Sleep alarm dumps hunting for the field behind
+`UPCOMING ALARM ONLY`. All three came back with the same sixteen keys and no override field, which
+left two explanations that **reading cannot separate**: he never had one set at that moment, or it is
+not on the alarm object.
+
+The answer was already in the data and not in the field names. `time` is the weekly wall clock,
+`nextTimestamp` is the absolute instant it next fires. **An override necessarily makes those two
+disagree**, whatever field carries it and wherever it lives. His last dump had `07:45:00` against an
+instant that is 07:45 in Zurich, so nothing was overriding it.
+
+So the panel computes that comparison now and prints `OVERRIDE CHECK` at the top. The next dump
+answers the question either way, which none of the previous three could.
+
+**The transferable form:** "dump the response, do not reason" is this project's oldest rule and it has
+a blind spot, which is a response that keeps coming back the same. When that happens the missing thing
+is not another dump, it is a **derived** value: something computed from two fields that is impossible
+unless the state you are hunting for exists. Three round trips through a person, replaced by four
+lines of arithmetic.
+
+
 **The setup guide works, all five steps.** `[observed, Alex, 18 August]` *"step 1-5 worked"*, meaning: two alarms on the bed, two Whoop schedules with the master switch on, and two matching
 routines in OneAlarm. From that state every routine finds its alarm on the first pass and the whole
 fan out is green.
