@@ -611,6 +611,113 @@ actor EightSleepAdapter: DeviceAdapter {
         return "\(pad)\(raw(value))"
     }
 
+    // MARK: The baseline diff, which answers E23 without anybody reading a dump
+
+    /// Every field of every alarm, flattened to `id.key.subkey = value`, for comparing two reads.
+    ///
+    /// **The instrument that should have existed on Monday.** Four rounds were spent asking Alex to
+    /// read raw blocks and compare them by eye, and every one of them failed: three because the
+    /// instruction never said which of four blocks, and the fourth because a wrong block's fields
+    /// were then treated as proof of a field's absence.
+    ///
+    /// A person comparing two screenshots of thirteen nested fields is the wrong tool. The app has
+    /// both reads. It can subtract them.
+    ///
+    /// Flattened rather than compared structurally, because the question is "which single value
+    /// moved", and a nested diff answers a harder question than the one being asked. Computed fields
+    /// are excluded: `nextTimestamp` moves on its own between any two reads, and a diff that always
+    /// has noise in it is a diff nobody reads. That exclusion is the whole reason this is worth
+    /// building rather than eyeballing.
+    static func flatten(_ alarms: [[String: Any]]) -> [String: String] {
+        var out: [String: String] = [:]
+        func walk(_ value: Any, path: String) {
+            if let dict = value as? [String: Any] {
+                for (key, inner) in dict where !computedFields.contains(key) {
+                    walk(inner, path: "\(path).\(key)")
+                }
+                return
+            }
+            if let list = value as? [Any] {
+                out[path] = list.map { raw($0) }.sorted().joined(separator: ", ")
+                return
+            }
+            out[path] = raw(value)
+        }
+        for alarm in alarms {
+            guard let id = alarmID(alarm) else { continue }
+            // Keyed by the alarm's short label rather than its uuid, so a change reads as
+            // "07:45 weekdays" rather than as eight hex characters nobody can place.
+            walk(alarm, path: shortLabel(alarm) + " [\(id.prefix(4))]")
+        }
+        return out
+    }
+
+    /// What changed between a saved baseline and now, in words.
+    ///
+    /// Three kinds of change, kept apart because they mean different things: a value that moved, a
+    /// field that appeared, and a field that vanished. **An appearing field is the one this exists
+    /// to catch.** If Eight Sleep carries the one time change on the alarm object, setting one in
+    /// their app makes a key appear that was not there before, and that is a sentence on a screen
+    /// rather than two screenshots and a squint.
+    static func diff(baseline: [String: String], now: [String: String]) -> [String] {
+        var lines: [String] = []
+        for key in Set(baseline.keys).union(now.keys).sorted() {
+            switch (baseline[key], now[key]) {
+            case let (old?, new?) where old != new:
+                lines.append("CHANGED  \(key): \(old) -> \(new)")
+            case (nil, let new?):
+                lines.append("APPEARED \(key) = \(new)")
+            case (let old?, nil):
+                lines.append("GONE     \(key), was \(old)")
+            default:
+                continue
+            }
+        }
+        return lines
+    }
+
+    private static let baselineKey = "OneAlarm.eightSleep.fieldBaseline"
+
+    /// Remember every field of every alarm as it is right now.
+    static func saveBaseline(_ alarms: [[String: Any]]) {
+        UserDefaults.standard.set(flatten(alarms), forKey: baselineKey)
+    }
+
+    static func savedBaseline() -> [String: String] {
+        UserDefaults.standard.dictionary(forKey: baselineKey) as? [String: String] ?? [:]
+    }
+
+    /// Read the account and remember every field as it is now.
+    ///
+    /// The fetch stays inside the adapter. `fetchAlarms` is private on purpose, and a view reaching
+    /// through to it would be a second caller of the raw read with its own idea of error handling.
+    func saveFieldBaseline() async -> String {
+        guard let alarms = try? await fetchAlarms() else {
+            return "Could not read your bed, so no baseline was saved."
+        }
+        Self.saveBaseline(alarms)
+        let count = Self.savedBaseline().count
+        return "Baseline saved: \(count) fields across \(alarms.count) alarms. Now set UPCOMING ALARM ONLY in the Eight Sleep app and press Compare."
+    }
+
+    /// Read the account and say what has moved since the baseline. One line when nothing has.
+    func changesSinceBaseline() async -> String {
+        guard let alarms = try? await fetchAlarms() else {
+            return "Could not read your bed."
+        }
+        let baseline = Self.savedBaseline()
+        guard !baseline.isEmpty else {
+            return "No baseline saved yet. Press Save baseline first, then change something in the Eight Sleep app and come back."
+        }
+        let changes = Self.diff(baseline: baseline, now: Self.flatten(alarms))
+        guard !changes.isEmpty else {
+            // Stated rather than left blank. "Nothing changed" and "the check did not run" look
+            // identical when both print nothing, and this project has fixed that confusion twice.
+            return "Nothing on your bed has changed since the baseline. \(baseline.count) fields compared."
+        }
+        return changes.joined(separator: "\n")
+    }
+
     /// Server computed fields. Sending them back is rejected or ignored depending on the field, so
     /// they come off before every write.
     private static let computedFields = [

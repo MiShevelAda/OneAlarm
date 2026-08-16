@@ -885,6 +885,9 @@ struct BedConfirmScreen: View {
         return overridden + rest
     }
 
+    /// What changed on the bed since the saved baseline. `nil` until asked. `E23`.
+    @State private var fieldDiff: String?
+
     /// The Autopilot resource, once it has been asked for. `nil` until then. `E27`.
     @State private var autopilot: String?
 
@@ -937,6 +940,45 @@ struct BedConfirmScreen: View {
                 // rather than as a field, then one of these will be sitting at exactly the time the
                 // line above says the bed is firing, and the question is answered by reading two
                 // lines instead of hunting a field that may not exist.
+                // **The baseline diff. `E23`, and it needs nobody to read a dump.**
+                //
+                // Save a baseline, go and set UPCOMING ALARM ONLY in the Eight Sleep app, come back
+                // and press Compare. Whatever field carries the override appears in the list, by
+                // name, with its value. Four rounds of asking Alex to compare raw blocks by eye all
+                // failed; the app has both reads and can subtract them.
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 18) {
+                        Button {
+                            Task {
+                                fieldDiff = "Reading..."
+                                fieldDiff = await store.eightSleep.saveFieldBaseline()
+                            }
+                        } label: {
+                            Text("Save baseline")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.State.unconfirmed)
+                        }
+                        Button {
+                            Task {
+                                fieldDiff = "Comparing..."
+                                fieldDiff = await store.eightSleep.changesSinceBaseline()
+                            }
+                        } label: {
+                            Text("Compare")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.State.unconfirmed)
+                        }
+                    }
+                    if let fieldDiff {
+                        Text(fieldDiff)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Theme.grey)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(.top, 2)
+
                 // **The Autopilot probe. `E27`.**
                 //
                 // Read only, and the first candidate address this project has had for the one time

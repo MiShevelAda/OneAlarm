@@ -1371,6 +1371,80 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertTrue(detail.contains("07:45"), detail)
     }
 
+    // MARK: The baseline diff, which answers E23 without anybody reading a dump
+
+    /// A field that appears between two reads is named, which is the whole point.
+    ///
+    /// If Eight Sleep carries the one time change on the alarm object, setting one in their app
+    /// makes a key appear that was not there before. Four rounds of asking Alex to compare raw blocks
+    /// by eye failed. The app has both reads and can subtract them.
+    func testAnAppearingFieldIsNamed() {
+        let before = EightSleepAdapter.flatten([
+            alarm(id: "his", time: "07:45:00", days: weekdayNames, routine: nil),
+        ])
+        var overridden = alarm(id: "his", time: "07:45:00", days: weekdayNames, routine: nil)
+        overridden["upcomingAlarmOverride"] = "09:45:00"
+        let after = EightSleepAdapter.flatten([overridden])
+
+        let changes = EightSleepAdapter.diff(baseline: before, now: after)
+        XCTAssertEqual(changes.count, 1, "\(changes)")
+        XCTAssertTrue(changes[0].hasPrefix("APPEARED"), changes[0])
+        XCTAssertTrue(changes[0].contains("upcomingAlarmOverride"), changes[0])
+        XCTAssertTrue(changes[0].contains("09:45:00"), changes[0])
+    }
+
+    /// A changed value reads as old then new, and reaches nested fields.
+    func testAChangedNestedValueIsNamed() {
+        let before = EightSleepAdapter.flatten([
+            alarm(id: "his", time: "07:45:00", days: weekdayNames, routine: nil),
+        ])
+        let after = EightSleepAdapter.flatten([
+            alarm(id: "his", time: "07:45:00", days: ["monday"], routine: nil),
+        ])
+
+        let changes = EightSleepAdapter.diff(baseline: before, now: after)
+        XCTAssertTrue(changes.contains { $0.contains("tuesday") && $0.contains("true -> false") },
+                      "\(changes)")
+    }
+
+    /// **`nextTimestamp` never appears in a diff, and this is why the tool is worth building.**
+    ///
+    /// It moves on its own between any two reads, so including it would put noise in every single
+    /// comparison, and a diff that always has noise in it is a diff nobody reads. That is the
+    /// difference between this and comparing two screenshots by eye.
+    func testComputedFieldsAreNotDiffed() {
+        var before = alarm(id: "his", time: "07:45:00", days: weekdayNames, routine: nil)
+        before["nextTimestamp"] = "2026-08-19T05:45:00Z"
+        var after = alarm(id: "his", time: "07:45:00", days: weekdayNames, routine: nil)
+        after["nextTimestamp"] = "2026-08-20T05:45:00Z"
+
+        let changes = EightSleepAdapter.diff(
+            baseline: EightSleepAdapter.flatten([before]),
+            now: EightSleepAdapter.flatten([after])
+        )
+        XCTAssertEqual(changes, [], "a moving clock is not a change worth reporting")
+    }
+
+    /// Two identical reads produce nothing at all. The control.
+    func testAnUnchangedAccountDiffsToNothing() {
+        let one = alarm(id: "his", time: "07:45:00", days: weekdayNames, routine: nil)
+        let two = alarm(id: "wend", time: "09:55:00", days: ["saturday", "sunday"], routine: nil)
+        let snap = EightSleepAdapter.flatten([one, two])
+        XCTAssertEqual(EightSleepAdapter.diff(baseline: snap, now: snap), [])
+        XCTAssertFalse(snap.isEmpty, "and it is comparing something, not silently empty")
+    }
+
+    /// Fields are labelled by what the alarm is, not by its uuid.
+    ///
+    /// "07:45 weekdays" places the alarm instantly. Eight hex characters do not, and the whole
+    /// purpose of this output is to be read once and understood.
+    func testFieldsAreLabelledByTheAlarmNotItsId() {
+        let flat = EightSleepAdapter.flatten([
+            alarm(id: "abcdef123456", time: "07:45:00", days: weekdayNames, routine: nil),
+        ])
+        XCTAssertTrue(flat.keys.contains { $0.contains("07:45 weekdays") }, "\(flat.keys.sorted())")
+    }
+
     // MARK: The gate has to describe what will actually be sent
 
     /// The preview shows the routine's own time, not the override's.
