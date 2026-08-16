@@ -1397,10 +1397,8 @@ struct AlarmPickerScreen: View {
                                         Text(detail)
                                             .font(.system(size: 12)).foregroundStyle(Theme.greyDim)
                                     }
-                                    if !choice.canFire {
-                                        Text(choice.isEnabled
-                                             ? "No days set, so it never goes off"
-                                             : "Switched off, and no days set")
+                                    if let reason = choice.cannotFireReason {
+                                        Text(reason)
                                             .font(.system(size: 12, weight: .semibold))
                                             .foregroundStyle(Theme.State.unconfirmed)
                                     } else if !choice.isEnabled {

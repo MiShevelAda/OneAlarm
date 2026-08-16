@@ -498,6 +498,23 @@ fact, and twice it existed in an endpoint nobody had called. The third time the 
 better still: the field was missing because the **relationship does not exist**, and the question
 had to be rephrased rather than answered.
 
+**A two branch answer to a three case question, and it told him his days were gone.** `[19 August]`
+His Whoop card read *"Switched off, and no days set"* directly above a dump listing
+`scheduled_days = (MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY)`. The schedule was switched off and
+its days were completely intact.
+
+The line was a ternary on `isEnabled`, and `canFire` is `isEnabled && !weekdays.isEmpty`, false for
+**either** reason alone. So whenever the switch was off the message asserted the days were missing
+too, having never checked. Three cases, two branches.
+
+**Why it mattered more than a wording slip:** he had just been asked to check whether the days on that
+schedule survived a bad write. The app answered the exact question he was investigating, and answered
+it wrong, with the same confidence as the half it got right.
+
+**The rule.** When a boolean is an `&&` of two conditions, the message explaining why it is false has
+to test them separately. A wrong reason is worse than no reason, because a reason is where somebody
+goes to rule a cause out.
+
 **The fix for a bug reintroduced the bug, one hour later, through the code that was preventing it.**
 `[19 August]` The Whoop leg was switched from "leave the strap alone on a moved morning" to "switch
 the strap off for that morning". An hour later his schedule read `MON TUE WED THU FRI 09:36 ALARM

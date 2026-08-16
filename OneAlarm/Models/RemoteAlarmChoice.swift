@@ -77,6 +77,28 @@ struct RemoteAlarmChoice: Identifiable, Equatable, Sendable {
     /// three times already.
     var canFire: Bool { isEnabled && !weekdays.isEmpty }
 
+    /// Why it cannot fire, in as many words as are actually true.
+    ///
+    /// **From Alex's Whoop screen, 19 August.** A schedule reading
+    /// `scheduled_days = (MONDAY .. FRIDAY), alarm_on = 0` was labelled *"Switched off, and no days
+    /// set"*, directly above a dump listing all five days. Half the sentence was right and the app
+    /// said it with the same confidence as the other half.
+    ///
+    /// The old line was a two branch ternary on `isEnabled`, which silently assumed the **other**
+    /// reason whenever the first did not apply. `canFire` is false for either reason alone, so it
+    /// needs three answers and not two.
+    ///
+    /// A wrong reason is worse than no reason. He had just been asked to check whether the days on
+    /// that schedule were intact, and the app told him they were gone.
+    var cannotFireReason: String? {
+        switch (isEnabled, weekdays.isEmpty) {
+        case (true, true): "No days set, so it never goes off"
+        case (false, true): "Switched off, and no days set"
+        case (false, false): "Switched off"
+        case (true, false): nil
+        }
+    }
+
     var timeLabel: String { time?.hhmm ?? "unknown time" }
 
     var daysLabel: String {
