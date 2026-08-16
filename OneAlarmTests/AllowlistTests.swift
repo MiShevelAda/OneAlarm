@@ -31,7 +31,7 @@ final class AllowlistTests: XCTestCase {
             ("POST", "https://app-api.8slp.net/v1/users/\(user)/alarms", "create, v1 rung"),
             ("POST", "https://app-api.8slp.net/v2/users/\(user)/alarms", "create, v2 rung"),
             ("GET", "https://app-api.8slp.net/v2/users/\(user)/routines", "routines read, v2 first"),
-            ("GET", "https://app-api.8slp.net/v1/users/\(user)/routines", "routines read, v1 fallback"),
+            ("GET", "https://app-api.8slp.net/v1/users/\(user)/routines", "retired v1 routines, diagnostic probe only"),
             ("PUT", "https://app-api.8slp.net/v2/users/\(user)/routines/\(routine)", "routine write"),
             ("GET", "https://client-api.8slp.net/v1/users/me", "currentBed"),
             ("GET", "https://app-api.8slp.net/v1/household/users/\(user)/summary", "pod name"),
@@ -118,6 +118,25 @@ final class AllowlistTests: XCTestCase {
                 HTTPClient(allowedPatterns: [$0]).isAllowed(request.method, url)
             }
             XCTAssertEqual(hits.count, 1, "\(request.why) matches \(hits.count) patterns")
+        }
+    }
+
+    /// Anchors have to prevent a substring match, since the matcher searches rather than matches.
+    ///
+    /// Ported here on 17 August from a second `AllowlistTests` that had grown in
+    /// `AdapterMutationTests.swift`. Two classes of the same name in one target is a compile error,
+    /// "Invalid redeclaration", and it broke `Cmd+U`. This file survived because it reads
+    /// `EightSleepAdapter.allowedPatterns` directly, where the other kept its own copy of the
+    /// patterns: a copy that had already fallen four entries behind the real list and would have gone
+    /// on passing while testing an allowlist the app does not use.
+    func testAnchorsPreventPrefixAndSuffixSmuggling() throws {
+        let smuggled = [
+            "https://app-api.8slp.net/v2/users/\(user)/alarms/extra",
+            "https://evil.example.com/https://app-api.8slp.net/v2/users/\(user)/alarms",
+        ]
+        for attempt in smuggled {
+            let url = try XCTUnwrap(URL(string: attempt))
+            XCTAssertFalse(client.isAllowed("GET", url), "anchors should refuse \(attempt)")
         }
     }
 }

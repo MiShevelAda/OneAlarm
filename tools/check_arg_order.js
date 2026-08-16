@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 //
-// Memberwise initialiser argument order.
+// Two things a Swift compiler knows that a parse does not: memberwise argument order, and a type
+// declared twice in one module.
 //
 // Swift builds a struct's initialiser from its stored properties **in the order they are written
 // down**, and there is no other order available. Passing them in a different order is a compile
@@ -122,6 +123,37 @@ function calleeName(call) {
 let failures = 0;
 let checked = 0;
 
+// A type declared twice in one module.
+//
+// "Invalid redeclaration of 'AllowlistTests'". It broke Cmd+U on 17 August: a second `AllowlistTests`
+// had grown inside `AdapterMutationTests.swift` while a dedicated `AllowlistTests.swift` existed, and
+// neither file was wrong on its own. Only a compiler sees the collision, and only when both are in
+// the same module, which is why `OneAlarm` and `OneAlarmTests` are counted separately.
+//
+// The duplicate was also quietly harmful before it stopped compiling: it carried its own copy of the
+// allowlist, four entries behind the real one, so it would have gone on passing while testing an
+// allowlist the app does not use.
+for (const module of ['OneAlarm', 'OneAlarmTests']) {
+  const seen = new Map();
+  for (const file of swiftFiles(path.join(root, module))) {
+    const tree = trees.get(file);
+    if (!tree) continue;
+    for (const node of children(tree.rootNode)) {
+      if (node.type !== 'class_declaration' && node.type !== 'protocol_declaration') continue;
+      const name = firstOfType(node, 'type_identifier');
+      if (!name) continue;
+      const where = `${path.relative(root, file)}:${node.startPosition.row + 1}`;
+      if (seen.has(name.text)) {
+        failures++;
+        console.log(`  FAIL ${where}  invalid redeclaration of '${name.text}'`);
+        console.log(`       already declared at ${seen.get(name.text)}, and both are in ${module}`);
+      } else {
+        seen.set(name.text, where);
+      }
+    }
+  }
+}
+
 for (const [file, tree] of trees) {
   const rel = path.relative(root, file);
   (function visit(node) {
@@ -166,9 +198,12 @@ for (const [file, tree] of trees) {
   })(tree.rootNode);
 }
 
-console.log(`  ${checked} memberwise call site(s) checked against ${structs.size} struct(s).`);
+console.log(`  ${checked} memberwise call site(s) checked against ${structs.size} struct(s), and every type name.`);
 if (failures) {
-  console.log(`  ${failures} argument order error(s). Xcode will refuse these.`);
+  // Deliberately not named as one kind of error. An earlier version called every failure here an
+  // "argument order error", which is the sort of small lie that sends somebody looking in the wrong
+  // place for ten minutes.
+  console.log(`  ${failures} error(s) above. Xcode will refuse these.`);
   process.exit(1);
 }
-console.log('  Argument order agrees with declaration order everywhere it could be checked.');
+console.log('  Argument order matches declaration order, and no type is declared twice in one module.');
