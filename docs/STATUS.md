@@ -44,13 +44,16 @@ Three things are still true and none of them is the Eight Sleep write:
 
 ## The setup that is known to work
 
-`[Alex, 18 August: "worked step 1-3"]` From this state the whole fan out is green, because every
+`[Alex, 18 August: "step 1-5 worked"]` From this state the whole fan out is green, because every
 routine finds its alarm on the first pass:
 
 1. **Eight Sleep app:** exactly two alarms, `EVERY WEEKDAY` and `EVERY WEEKEND`. Times do not matter,
    days do.
 2. **Whoop app:** master switch on, one schedule on Mon to Fri, one on Sat and Sun.
 3. **OneAlarm:** exactly two routines, Weekdays and Weekend. No "Every day" routine.
+4. **Set all alarms.** All three rows green.
+5. **Check both apps by eye.** Two alarms on the bed and two Whoop schedules, each at the routine time
+   minus its lead. A green row has never counted as evidence here, and this step is why.
 
 **And the known weakness is the other side of the same coin**, in his words: *"the problem is when
 something changes, if one alarm would change the entire thing then it usually doesn't work."* Matching

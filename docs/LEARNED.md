@@ -15,8 +15,7 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
-**The setup guide works, and that is Steps 1 to 3 only.** `[observed, Alex, 18 August]` *"worked step
-1-3"*, meaning: two alarms on the bed, two Whoop schedules with the master switch on, and two matching
+**The setup guide works, all five steps.** `[observed, Alex, 18 August]` *"step 1-5 worked"*, meaning: two alarms on the bed, two Whoop schedules with the master switch on, and two matching
 routines in OneAlarm. From that state every routine finds its alarm on the first pass and the whole
 fan out is green.
 
