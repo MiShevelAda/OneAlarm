@@ -141,9 +141,9 @@ struct EightSleepLinkView: View {
 
                 VStack(alignment: .leading, spacing: 7) {
                     Text("Before you start").themeLabel(.white)
-                    Text("You need one alarm in the Eight Sleep app")
+                    Text("Set up your alarms in the Eight Sleep app first")
                         .font(.system(size: 21, weight: .semibold)).tracking(-0.4)
-                    Text("Any time. OneAlarm will move it.")
+                    Text("One per routine, on the days you want. Any time will do, OneAlarm sets the times.")
                         .font(.system(size: 15)).foregroundStyle(.white.opacity(0.82))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -152,10 +152,10 @@ struct EightSleepLinkView: View {
                             in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
 
                 Text("Why it works this way").font(.system(size: 19, weight: .semibold))
-                Text("OneAlarm changes the alarm you already have rather than creating a new one. That keeps your vibration, thermal and level settings exactly as you set them, because it never has to guess what they should be.")
+                Text("OneAlarm matches each of your routines to the alarm that already runs on the same days, and changes only that alarm's time. Days, vibration, thermal and the on switch stay exactly as you set them, because it never has to guess what they should be.")
                     .font(.system(size: 15)).foregroundStyle(Theme.grey)
 
-                Notice("Open the Eight Sleep app, make sure one alarm exists, then come back.")
+                Notice("If you wake at one time Monday to Friday and another at the weekend, you want two alarms there with those days. OneAlarm will drive both.")
             }
         } footer: {
             SolidButton(title: "I have an alarm set") { stage = .credentials }
@@ -224,7 +224,7 @@ struct EightSleepLinkView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Left exactly as you set it").themeLabel(.white)
-                    Text("Your vibration, pattern and thermal settings are read from the server and sent back untouched.")
+                    Text("Days, vibration, pattern, thermal and the on switch are read from the server and sent back untouched. The only field OneAlarm ever writes is the time.")
                         .font(.system(size: 14)).foregroundStyle(.white.opacity(0.8))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -238,9 +238,12 @@ struct EightSleepLinkView: View {
         }
     }
 
-    /// Shown when the account holds more than one alarm.
+    /// What the account holds, and which routine drives which alarm. Read only.
+    ///
+    /// Was a picker. Nothing is chosen here any more: the routines match themselves to the alarms
+    /// that already have their days, so the only thing left to confirm is the bed.
     private var picker: some View {
-        AlarmPickerScreen(device: .eightSleep, choices: choices) { _ in
+        BedConfirmScreen(choices: choices) {
             stage = .working
             Task { await finish() }
         } onBack: {
@@ -267,13 +270,15 @@ struct EightSleepLinkView: View {
         await store.refreshAuthStates()
     }
 
-    /// Signing in only proves the password. This proves the leg will actually work, and asks which
-    /// alarm to move when the answer is genuinely ambiguous.
+    /// Signing in only proves the password. This proves the leg will actually work: an active
+    /// subscription, at least one alarm, and at least one routine whose days an alarm here carries.
     private func finish() async {
         do {
-            result = try await store.eightSleep.readiness()
+            result = try await store.eightSleep.readiness(against: store.plans[.eightSleep])
             stage = .done
-        } catch AdapterError.alarmChoiceNeeded {
+        } catch AdapterError.noMatchingDays {
+            // Not a failure and not a question either. Show the account, say which routine has no
+            // alarm to drive, and let him decide whether to add one in the Eight Sleep app.
             choices = (try? await store.eightSleep.availableAlarms()) ?? []
             stage = choices.isEmpty ? .blocked : .choose
         } catch AdapterError.authenticationFailed(let detail) {
@@ -646,11 +651,171 @@ private func progressRow(_ title: String, done: Bool, detail: String? = nil) -> 
     .padding(.horizontal, 15).padding(.vertical, 11)
 }
 
+// MARK: Bed confirmation
+
+/// The Eight Sleep screen that replaced the alarm picker.
+///
+/// Alex, 2026-08-16: *"I shouldn't actually pick routines... So what I should be able to pick is
+/// just the bed, and I should not pick a routine. This doesn't make sense to me. This should only
+/// be done in the background."*
+///
+/// He is right on both halves. Picking one alarm out of a list was the app asking him to answer a
+/// question it had created for itself, and the answer could not be right: one alarm cannot carry two
+/// routines, so every time the week turned over the app rewrote the chosen alarm's **days**. The bed
+/// is the only thing on this account that is genuinely ambiguous, so it is the only thing he is
+/// asked about.
+///
+/// What is left is a statement, not a question. It shows which alarm each routine will drive, which
+/// routines have no alarm to drive, and which alarms OneAlarm will never touch. Nothing on it is
+/// selectable, because there is nothing left to select.
+@MainActor
+struct BedConfirmScreen: View {
+    let choices: [RemoteAlarmChoice]
+    let onConfirm: () -> Void
+    let onBack: () -> Void
+    let onDisconnect: () -> Void
+
+    @Environment(ScheduleStore.self) private var store
+
+    @State private var bed: EightSleepAdapter.BedIdentity?
+
+    private var matchReport: AlarmMatchReport {
+        guard let plan = store.plans[.eightSleep], !plan.entries.isEmpty else {
+            return AlarmMatchReport()
+        }
+        return RoutinePlan.match(entries: plan.entries, against: choices.map(\.candidate))
+    }
+
+    var body: some View {
+        let report = matchReport
+        return Screen(title: "Eight Sleep", onBack: onBack) {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(bed?.label.map { "You are on \($0)" } ?? "Your bed")
+                        .font(.system(size: 25, weight: .bold)).tracking(-0.6)
+                    Text("OneAlarm matches each of your routines to the alarm on this bed that already runs on the same days, and changes only its time. You do not pick an alarm, and its days are never rewritten.")
+                        .font(.system(size: 15)).foregroundStyle(Theme.grey)
+                }
+                .padding(.top, 4)
+
+                if let bed, bed.deviceCount > 1 {
+                    Notice(title: "This account has \(bed.deviceCount) Pods and one shared list of alarms.",
+                           "Alarms belong to the account rather than to a bed, and they fire on whichever Pod you are currently assigned to. Move yourself in the Eight Sleep app to change that.")
+                } else if bed?.label == nil {
+                    Notice(.warn, title: "This account did not name a bed.",
+                           "The matching below still works: it goes by days, not by names. Only the heading is missing.")
+                }
+
+                matchRows(report)
+
+                if !report.routinesWithNoAlarm.isEmpty {
+                    Notice(.warn,
+                           title: "No alarm here runs on \(report.routinesWithNoAlarm.joined(separator: " or ")).",
+                           "Add one in the Eight Sleep app with those days, at any time you like, and OneAlarm will keep it in step from then on. It will not reshape an existing alarm's days to fit, because that would move a morning you did not ask it to move.")
+                }
+
+                Notice("Nothing else on the account is touched. Vibration, thermal, the on switch and any alarm no routine describes are read and sent back exactly as they are.")
+
+                // There was no way to sign out of anything. `signOut()` has existed on both
+                // adapters since the first build and no screen ever called it, so the only way off
+                // an account was deleting the app.
+                Button {
+                    onDisconnect()
+                } label: {
+                    Text("Disconnect this account")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.State.failed)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+
+                Notice("Disconnecting forgets the password on this phone and stops OneAlarm writing. It does not change or delete any alarm, which all stay exactly where they are now.")
+            }
+            .padding(.bottom, 20)
+        } footer: {
+            SolidButton(title: "This is my bed", action: onConfirm)
+            QuietButton(title: "Leave it as it is", action: onBack)
+        }
+        .task {
+            // A label. It never blocks and it never fails loudly: `currentBed` returns nil rather
+            // than throwing, because a bed whose name cannot be fetched must not take an alarm
+            // down with it.
+            bed = await store.eightSleep.currentBed()
+        }
+    }
+
+    @ViewBuilder
+    private func matchRows(_ report: AlarmMatchReport) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            // Indexed rather than keyed on the alarm id. Two routines with the same days would both
+            // claim the same alarm, and a duplicate id in a ForEach is a silently dropped row.
+            ForEach(Array(report.pairs.enumerated()), id: \.offset) { _, pair in
+                MatchRow(
+                    title: pair.routineName,
+                    detail: choices.first { $0.id == pair.alarmID }
+                        .map { "follows the alarm at \($0.timeLabel), \($0.daysLabel)" } ?? "matched",
+                    warning: pair.isDisabledRemotely
+                        ? "Switched off in Eight Sleep, so it will not fire. OneAlarm keeps its time up to date and leaves the switch to you."
+                        : nil,
+                    live: true
+                )
+            }
+            ForEach(report.routinesWithNoAlarm, id: \.self) { name in
+                MatchRow(title: name, detail: "no alarm on this bed runs on these days", warning: nil, live: false)
+            }
+            ForEach(report.alarmsWithNoRoutine, id: \.self) { label in
+                MatchRow(title: label, detail: "no routine has these days, so OneAlarm never touches it",
+                         warning: nil, live: false)
+            }
+        }
+    }
+
+    /// Extracted because the enclosing body was already at the size where the Swift type checker
+    /// gives up and says so only as "unable to type-check this expression in reasonable time".
+    private struct MatchRow: View {
+        let title: String
+        let detail: String
+        let warning: String?
+        let live: Bool
+
+        var body: some View {
+            HStack(spacing: 14) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(live ? AnyShapeStyle(Theme.Ramp.rail(for: .eightSleep)) : AnyShapeStyle(Theme.line))
+                    .frame(width: 3)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(live ? Color.white : Theme.grey)
+                    Text(detail).font(.system(size: 13)).foregroundStyle(Theme.grey)
+                    if let warning {
+                        Text(warning)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.State.unconfirmed)
+                    }
+                }
+                Spacer(minLength: 8)
+            }
+            .padding(15)
+            .frame(maxWidth: .infinity, minHeight: 70)
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
+                .strokeBorder(Theme.line, lineWidth: 1))
+        }
+    }
+}
+
 // MARK: Alarm picker
 
 /// Shown when an account holds more than one alarm.
 ///
-/// Neither service labels an alarm with a device or a room, so these are identified by time and
+/// **Whoop only now.** Eight Sleep holds one alarm per day set, so its routines match themselves and
+/// there is nothing to pick; see `BedConfirmScreen`. Whoop holds one schedule per account, so if
+/// that account ever returns more than one row, the ambiguity is real and asking is the only honest
+/// answer.
+///
+/// Whoop does not label a schedule with a device or a room, so these are identified by time and
 /// days, which is the only honest thing the data supports. The choice is remembered, and if the
 /// chosen alarm later disappears the app asks again rather than quietly moving a different one.
 @MainActor

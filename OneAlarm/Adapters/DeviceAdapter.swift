@@ -19,7 +19,16 @@ enum AdapterError: LocalizedError, Equatable {
     case rateLimited
     case noAlarmToUpdate
     /// Several alarms exist and none has been chosen. Not a failure, a question.
+    ///
+    /// Still thrown by the Whoop leg, which holds one schedule per account and genuinely can be
+    /// ambiguous. The Eight Sleep leg no longer raises it: it matches routines to alarms by their
+    /// days instead of asking, so there is nothing left to choose.
     case alarmChoiceNeeded(count: Int)
+    /// Alarms exist, and not one of them has the days of any routine.
+    ///
+    /// A question, not a fault, and specifically not a reason to write anything. Rewriting an
+    /// alarm's days to make it fit is the operation this app deliberately does not have.
+    case noMatchingDays(routines: [String], alarms: [String])
     case unexpectedResponse(String)
     case transport(String)
 
@@ -39,6 +48,12 @@ enum AdapterError: LocalizedError, Equatable {
             return "No alarm found to move. Create one alarm in the device's own app first, then connect again."
         case .alarmChoiceNeeded(let count):
             return "This account has \(count) alarms. Choose which one OneAlarm should move."
+        case .noMatchingDays(let routines, let alarms):
+            let wanted = routines.joined(separator: " and ")
+            guard !alarms.isEmpty else {
+                return "No alarm on your bed runs on \(wanted). Add one in the Eight Sleep app and OneAlarm will keep its time in step."
+            }
+            return "No alarm on your bed runs on \(wanted). It has \(alarms.joined(separator: ", ")). OneAlarm changes times, never days, so it will not reshape one of those to fit."
         case .unexpectedResponse(let detail):
             return "Unexpected response. \(detail)"
         case .transport(let detail):
@@ -73,7 +88,21 @@ protocol DeviceAdapter: Actor {
 
     func write(_ target: ResolvedTarget) async throws -> WriteReceipt
 
+    /// Write the whole week, when the leg can hold more than one alarm.
+    ///
+    /// Optional by design. AlarmKit and Whoop each hold **one** schedule with one day set, so the
+    /// single target is the whole truth for them and this method's default forwards to it. Eight
+    /// Sleep holds a list, one alarm per day set, and for that leg a single target cannot say what
+    /// the week looks like without rewriting somebody's days to fit it.
+    func write(_ target: ResolvedTarget, plan: RoutinePlan) async throws -> WriteReceipt
+
     func verify(_ receipt: WriteReceipt, against target: ResolvedTarget) async throws -> Verification
+}
+
+extension DeviceAdapter {
+    func write(_ target: ResolvedTarget, plan: RoutinePlan) async throws -> WriteReceipt {
+        try await write(target)
+    }
 }
 
 extension DeviceAdapter {

@@ -182,7 +182,7 @@ than subagents. In-session subagents with one lead is the right shape here.
 
 | Agent | Model | Tools | Owns | Done when |
 |---|---|---|---|---|
-| `orchestrator` (me) | opus | all | decomposition, integration, the merge, this document | — |
+| `orchestrator` (me) | opus | all | decomposition, integration, the merge, this document | none |
 | `researcher` | opus | Read, Grep, Glob, WebSearch, WebFetch. **No write tools** | Phase 0, on call for spec lookups | `RESEARCH.md`, delivered |
 | `ios-lead` | opus | Read, Edit, Write, Grep, Glob, Bash | app shell, AlarmKitAdapter, RulesEngine, Keychain layer | RulesEngine passes its tests on a Mac |
 | `integrations-dev` | opus | Read, Edit, Write, Grep, Glob, Bash | EightSleepAdapter, WhoopAdapter, the spike CLI | contract tests pass against fixtures |

@@ -10,19 +10,8 @@ import XCTest
 /// struct, unknown fields start disappearing and this test is what notices.
 final class EightSleepMutationTests: XCTestCase {
 
-    private func target(
-        hour: Int = 6,
-        minute: Int = 50,
-        weekdays: Set<Locale.Weekday> = Locale.Weekday.weekdaysOnly
-    ) -> ResolvedTarget {
-        ResolvedTarget(
-            device: .eightSleep,
-            localTime: WallClockTime(hour: hour, minute: minute),
-            weekdays: weekdays,
-            dayShift: 0,
-            nextOccurrence: Date(timeIntervalSince1970: 1_800_000_000),
-            utcOffsetSeconds: 7200
-        )
+    private func time(hour: Int = 6, minute: Int = 50) -> WallClockTime {
+        WallClockTime(hour: hour, minute: minute)
     }
 
     /// The read shape as captured in the research, plus a field nobody has seen yet.
@@ -50,34 +39,51 @@ final class EightSleepMutationTests: XCTestCase {
     }
 
     func testAllFiveComputedFieldsAreStripped() {
-        let payload = EightSleepAdapter.mutate(serverAlarm, to: target())
+        let payload = EightSleepAdapter.mutate(serverAlarm, to: time())
 
         for field in ["nextTimestamp", "startTimestamp", "endTimestamp", "dismissedUntil", "snoozedUntil"] {
             XCTAssertNil(payload[field], "\(field) is server computed and must not be sent back")
         }
     }
 
-    func testTheThreeFieldsWeOwnAreChanged() {
-        let payload = EightSleepAdapter.mutate(serverAlarm, to: target())
+    /// The one field this adapter writes.
+    func testOnlyTheTimeIsChanged() {
+        let payload = EightSleepAdapter.mutate(serverAlarm, to: time())
 
         XCTAssertEqual(payload["time"] as? String, "06:50:00")
-        XCTAssertEqual(payload["enabled"] as? Bool, true)
+    }
+
+    /// The regression that mattered most.
+    ///
+    /// Writing `repeat.weekDays` is what rewrote a real Monday to Friday schedule into every day:
+    /// with one alarm chosen by hand, the app had no way to express two routines, so each time the
+    /// week turned over it reshaped the chosen alarm's days. Days are now the key a routine is
+    /// matched on, so there is nothing to write, and this test is what notices if that comes back.
+    func testDaysAreNeverWritten() {
+        let payload = EightSleepAdapter.mutate(serverAlarm, to: time())
 
         let repeatBlock = payload["repeat"] as? [String: Any]
-        XCTAssertEqual(repeatBlock?["enabled"] as? Bool, true)
+        let weekDays = repeatBlock?["weekDays"] as? [String: Any]
+        XCTAssertEqual(weekDays?.count, 2, "the server sent two day keys and must get exactly those back")
+        XCTAssertEqual(weekDays?["monday"] as? Bool, true)
+        XCTAssertEqual(weekDays?["saturday"] as? Bool, true)
+        XCTAssertNil(weekDays?["friday"], "a day the server never sent must not appear")
+    }
 
-        let weekDays = repeatBlock?["weekDays"] as? [String: Bool]
-        XCTAssertEqual(weekDays?.count, 7, "all seven days must be named, not only the true ones")
-        XCTAssertEqual(weekDays?["monday"], true)
-        XCTAssertEqual(weekDays?["friday"], true)
-        XCTAssertEqual(weekDays?["saturday"], false)
-        XCTAssertEqual(weekDays?["sunday"], false)
+    /// A switch he turned off in the Eight Sleep app stays off.
+    ///
+    /// This used to be forced to `true` on every write, which is authoring a decision rather than
+    /// syncing a time. The time still gets updated so that switching it back on gives today's time.
+    func testTheOnSwitchIsNeverForced() {
+        let payload = EightSleepAdapter.mutate(serverAlarm, to: time())
+
+        XCTAssertEqual(payload["enabled"] as? Bool, false, "the server said false and must get false back")
     }
 
     /// The whole point of the design. Vibration and thermal settings are his, we never asked what
     /// they mean, and they have to come back unchanged.
     func testEverythingElseSurvivesUntouched() {
-        let payload = EightSleepAdapter.mutate(serverAlarm, to: target())
+        let payload = EightSleepAdapter.mutate(serverAlarm, to: time())
 
         XCTAssertEqual(payload["id"] as? String, "abc-123")
         XCTAssertEqual(payload["snoozing"] as? Bool, false)
@@ -96,16 +102,41 @@ final class EightSleepMutationTests: XCTestCase {
     /// A round trip through JSONSerialization has to preserve booleans as booleans rather than
     /// collapsing them to 1 and 0, or every weekday flag changes meaning on the wire.
     func testPayloadSurvivesAJSONRoundTrip() throws {
-        let payload = EightSleepAdapter.mutate(serverAlarm, to: target())
+        let payload = EightSleepAdapter.mutate(serverAlarm, to: time())
         let data = try JSONSerialization.data(withJSONObject: payload)
         let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
-        XCTAssertEqual(decoded["enabled"] as? Bool, true)
+        XCTAssertEqual(decoded["enabled"] as? Bool, false)
         XCTAssertEqual(decoded["snoozing"] as? Bool, false)
         XCTAssertEqual(decoded["futureFieldNobodyHasSeenYet"] as? Int, 42)
         let weekDays = (decoded["repeat"] as? [String: Any])?["weekDays"] as? [String: Bool]
         XCTAssertEqual(weekDays?["monday"], true)
-        XCTAssertEqual(weekDays?["saturday"], false)
+        XCTAssertEqual(weekDays?["saturday"], true)
+    }
+
+    // MARK: Reading days off an alarm
+
+    func testRepeatDisabledMeansNoDays() {
+        var alarm = serverAlarm
+        alarm["repeat"] = ["enabled": false, "weekDays": ["monday": true]] as [String: Any]
+
+        XCTAssertTrue(
+            EightSleepAdapter.weekdays(of: alarm).isEmpty,
+            "a one-shot alarm must not match a recurring routine, whatever its day flags say"
+        )
+    }
+
+    func testDaysAreReadFromTheSevenNamedBooleans() {
+        var alarm = serverAlarm
+        alarm["repeat"] = [
+            "enabled": true,
+            "weekDays": [
+                "monday": true, "tuesday": true, "wednesday": true,
+                "thursday": true, "friday": true, "saturday": false, "sunday": false,
+            ],
+        ] as [String: Any]
+
+        XCTAssertEqual(EightSleepAdapter.weekdays(of: alarm), Locale.Weekday.weekdaysOnly)
     }
 }
 
@@ -479,14 +510,38 @@ final class PreviewTests: XCTestCase {
         }
     }
 
-    func testEightSleepPreviewShowsTheScheduleItWouldSend() throws {
+    /// The body is one key now, because one key is the entire diff. Days are matched on, never
+    /// written, so a preview showing seven weekday booleans would describe a request this adapter
+    /// can no longer send.
+    func testEightSleepPreviewShowsOnlyTheTime() throws {
         let body = try XCTUnwrap(EightSleepAdapter().preview(target).body)
 
         XCTAssertTrue(body.contains("06:50:00"))
-        XCTAssertTrue(body.contains("monday"))
-        // The redaction is an allowlist, so a preview that renders every day as <redacted> would be
+        XCTAssertFalse(body.contains("monday"))
+        // The redaction is an allowlist, so a preview that renders the time as <redacted> would be
         // a regression rather than extra safety.
         XCTAssertFalse(body.contains("<redacted>"))
+    }
+
+    /// Every routine is named in the summary, so the gate describes the whole write rather than one
+    /// request out of two or three.
+    func testEightSleepPreviewNamesEveryRoutine() {
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [
+                RoutinePlan.Entry(routineID: "weekdays", routineName: "Weekdays",
+                                  weekdays: Locale.Weekday.weekdaysOnly,
+                                  localTime: WallClockTime(hour: 6, minute: 50), bentTo: nil),
+                RoutinePlan.Entry(routineID: "weekend", routineName: "Weekend",
+                                  weekdays: [.saturday, .sunday],
+                                  localTime: WallClockTime(hour: 8, minute: 50), bentTo: nil),
+            ],
+            skipsNextMorning: false
+        )
+        let summary = EightSleepAdapter().preview(target, plan: plan).summary
+
+        XCTAssertTrue(summary.contains("Weekdays"))
+        XCTAssertTrue(summary.contains("08:50"))
     }
 
     /// A reconstruction, and it has to say so. The real body is the account's schedule with three

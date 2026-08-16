@@ -22,6 +22,9 @@ final class ScheduleStore {
 
     private(set) var schedule: WakeSchedule
     private(set) var targets: [ResolvedTarget] = []
+    /// The whole week, per device. Only the Eight Sleep leg reads it today, because it is the only
+    /// one whose service holds more than one alarm.
+    private(set) var plans: [DeviceID: RoutinePlan] = [:]
     private(set) var status: [DeviceID: DeviceSyncStatus] = [:]
     private(set) var authStates: [DeviceID: AuthState] = [:]
     private(set) var lastSyncedAt: Date?
@@ -335,7 +338,19 @@ final class ScheduleStore {
             }
         }
 
-        targets = RulesEngine.resolve(schedule: schedule, calendar: calendar, now: Date())
+        let now = Date()
+        targets = RulesEngine.resolve(schedule: schedule, calendar: calendar, now: now)
+
+        // The whole week per device, alongside the single next target.
+        //
+        // Both are kept because they answer different questions. The target is "when does this
+        // device go off next", which is what the screen shows and what a write can be verified
+        // against. The plan is "what does this device's week look like", which is what a leg holding
+        // one alarm per routine needs, and without it the only way to express two routines on one
+        // remote alarm is to rewrite that alarm's days every time the week turns over.
+        plans = Dictionary(uniqueKeysWithValues: schedule.rules.filter(\.isEnabled).map { rule in
+            (rule.device, RulesEngine.plan(for: rule, in: schedule, calendar: calendar, now: now))
+        })
     }
 
     /// True while a bend is armed, so the screen can say what is temporary and when it ends.
@@ -429,6 +444,12 @@ final class ScheduleStore {
 
     func preview(for device: DeviceID) -> WritePreview? {
         guard let target = target(for: device), let adapter = adapter(for: device) else { return nil }
+        // The Eight Sleep leg sends one request per routine, so a preview built from the single next
+        // target would show one of them and imply it was the whole write. The gate has already told
+        // one lie of that shape, and it was the screen Alex went to in order to rule the bug out.
+        if let eight = adapter as? EightSleepAdapter, let plan = plans[device] {
+            return eight.preview(target, plan: plan)
+        }
         return adapter.preview(target)
     }
 
@@ -518,13 +539,23 @@ final class ScheduleStore {
     private func apply(target: ResolvedTarget, using adapter: any DeviceAdapter) async {
         status[target.device] = .writing
         do {
-            let receipt = try await adapter.write(target)
+            let plan = plans[target.device]
+                ?? RoutinePlan(device: target.device, entries: [], skipsNextMorning: false)
+            let receipt = try await adapter.write(target, plan: plan)
             status[target.device] = .verifying
 
             let verification = try await adapter.verify(receipt, against: target)
             switch verification {
             case .confirmed:
-                status[target.device] = .done("Set for \(target.localTime.hhmm)")
+                // A partial write is not a done write. On a leg holding one alarm per routine, two
+                // routines can land and a third can have no alarm with its days, and the morning
+                // that third routine covers is then not carried by this device at all. A green tick
+                // over that is the one lie this app must never tell.
+                if receipt.isPartial, let note = receipt.note {
+                    status[target.device] = .warning(note)
+                } else {
+                    status[target.device] = .done("Set for \(target.localTime.hhmm)")
+                }
             case .mismatch(let expected, let actual):
                 // The case this whole verification step exists for. A 200 was returned and the
                 // alarm still landed somewhere else, almost always a time zone disagreement.
@@ -534,7 +565,8 @@ final class ScheduleStore {
                     "Accepted, but it reads back as \(formatter.string(from: actual)) instead of \(formatter.string(from: expected))."
                 )
             case .unavailable(let reason):
-                status[target.device] = .warning("Written. Could not confirm: \(reason)")
+                let head = receipt.isPartial ? (receipt.note ?? "Written.") : "Written."
+                status[target.device] = .warning("\(head) Could not confirm: \(reason)")
             }
         } catch let error as AdapterError {
             status[target.device] = .failed(error.errorDescription ?? "Failed.")

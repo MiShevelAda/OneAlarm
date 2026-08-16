@@ -80,6 +80,20 @@ struct WriteReceipt: Equatable, Sendable {
     /// Identifier the remote gave back, when there is one.
     let remoteID: String?
     let note: String?
+    /// Something the user asked for did not land, even though the request succeeded.
+    ///
+    /// Exists because a leg holding several alarms can now half-succeed: two routines matched and a
+    /// third had no alarm with its days. Reporting that as done would put a green tick on a week
+    /// with a hole in it, and the hole is a morning nobody is woken on.
+    var isPartial: Bool = false
+
+    init(device: DeviceID, succeededAt: Date, remoteID: String?, note: String?, isPartial: Bool = false) {
+        self.device = device
+        self.succeededAt = succeededAt
+        self.remoteID = remoteID
+        self.note = note
+        self.isPartial = isPartial
+    }
 }
 
 /// The result of reading the alarm back and checking it landed where we meant.

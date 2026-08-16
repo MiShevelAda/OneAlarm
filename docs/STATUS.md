@@ -18,11 +18,18 @@ builds, installs, and rings.
 
 ## What the app actually does today
 
-One master time, seven day chips, a Set button. Eight Sleep is written at master minus 10, Whoop at
-master minus 5, the iPhone at master. Each row reports what happened, and the two remote legs are
+Routines, one per day set, each with its own time. Eight Sleep is written at master minus 10, Whoop
+at master minus 5, the iPhone at master. Each row reports what happened, and the two remote legs are
 read back rather than trusted.
 
-That is the whole app. Everything under "designed, not built" below is on paper.
+**Eight Sleep is driven by day set, not by a chosen alarm** as of 16 August. Each routine finds the
+alarm on the account that already runs on its days and changes **only that alarm's `time`**. Days,
+`enabled`, vibration and thermal are echoed back exactly as the server sent them. Nothing is picked
+by hand: what Alex confirms is the bed. A routine with no matching alarm is named on screen and
+written nowhere, and an alarm no routine describes is named and never touched. A write where any
+routine had no home reports as a **warning**, not as done.
+
+Everything under "designed, not built" below is on paper.
 
 ## What is designed and not built
 
@@ -46,18 +53,23 @@ is attacking it now, with an adversary at every stage.
 2. 🔴 **Alex's Whoop schedule was rewritten by our own test.** Turning on all seven days for the ring
    test collapsed his Monday to Friday schedule into every day, because the Whoop write replaces
    rather than merges. Whether his Saturday and Sunday schedule survived is **unconfirmed**.
-3. 🟠 **`sleep_goal` is hardcoded to `""`.** Harmless in `EXACT_TIME`, but if he ever selects Sleep
+3. 🔴 **Whoop still has its days rewritten, and structurally so.** Whoop holds one schedule per
+   account, so it cannot express two routines the way Eight Sleep can. OneAlarm therefore writes the
+   day list of whichever routine covers tonight, which means a Friday sync replaces a Monday to
+   Friday list with Saturday and Sunday. Same shape as problem 2, but by design rather than by
+   accident, and not yet fixed. Filed as `E12`.
+4. 🟠 **`sleep_goal` is hardcoded to `""`.** Harmless in `EXACT_TIME`, but if he ever selects Sleep
    Goal mode, the next write wipes his 100/85/70 percentage.
-4. 🟠 **The strap may not know.** `PUT /smart-alarm-service/v1/strap-status` is what pushes a time
+5. 🟠 **The strap may not know.** `PUT /smart-alarm-service/v1/strap-status` is what pushes a time
    into strap firmware and the Whoop app sends it after an edit. We do not, and it is outside the
    allowlist. Whoop's server holding the new time and the wrist buzzing at the new time are still two
    different claims, and only the first is verified.
-5. 🟠 **The Whoop write sends up to three body shapes** and stops at the first accepted. Which one was
+6. 🟠 **The Whoop write sends up to three body shapes** and stops at the first accepted. Which one was
    accepted is printed in the green text on the row and has not been read back yet. Pinning it drops
    the write from three requests to one.
-6. 🟡 **No snooze.** Apple's sleep alarm has a nine minute snooze; ours has none. Needs a widget
+7. 🟡 **No snooze.** Apple's sleep alarm has a nine minute snooze; ours has none. Needs a widget
    extension.
-7. 🟡 **The test suite has never run.** No Swift toolchain here. The tests are written and are code
+8. 🟡 **The test suite has never run.** No Swift toolchain here. The tests are written and are code
    shaped text until Xcode says otherwise.
 
 ## Next, in order

@@ -256,6 +256,47 @@ Expected is not observed, and this one was recommended to him already.
 
 ---
 
+---
+
+## E11 🔴 Does Eight Sleep's `skipNext` do what its name says?
+
+**Why.** A skip is one of Alex's three verbs: *"maybe to don't use the routine today."* On the phone
+it is expressible. On Eight Sleep the only candidate is `skipNext`, a field on every alarm object
+that this app reads, echoes, and has never written. Its behaviour is known from its name and nothing
+else, and reasoning about a field name is what cost five hours on Whoop. So a skip is currently
+**stated on screen and not propagated**, which means the bed still warms and vibrates on a morning
+Alex asked to skip.
+
+**Test.** Switch one alarm's skip on inside the Eight Sleep app. Read `GET /v2/users/{id}/alarms`
+before and after and diff the object. Then look at whether `skippedUntil` moves with it, and whether
+it clears itself after the skipped morning.
+
+**Prediction.** `skipNext` goes true and `skippedUntil` is set to the instant of the occurrence being
+skipped, and both clear once it passes. If that holds, a skip becomes one boolean on one matched
+alarm and needs no new endpoint. Written before the test, on purpose.
+
+**Whose.** Alex, one toggle in their app, then one tap of Set in OneAlarm to capture the diff.
+
+---
+
+## E12 🟠 Does Whoop's single schedule mean his weekend days get overwritten?
+
+**Why.** Eight Sleep holds one alarm per day set, so OneAlarm can now drive a whole week there
+without ever writing days. Whoop holds **one** schedule. Its `day_of_week_list` therefore has to be
+written, and it can only carry the routine covering tonight, which means a Friday night sync writes
+`SATURDAY, SUNDAY` over a Monday to Friday list. That is the same shape as the damage already done
+on 15 August, and this time it is structural rather than accidental.
+
+**Test.** With a Monday to Friday routine and a weekend routine both set, sync on a Thursday and read
+the Whoop app, then sync on a Friday and read it again.
+
+**Prediction.** The Friday sync leaves Whoop showing Saturday and Sunday only, and Monday morning has
+no Whoop alarm. If so, the honest options are: write the routine covering tonight and say on screen
+that Whoop holds one schedule, or stop writing Whoop days at all and only ever move its time.
+
+**Whose.** The build, plus two screenshots from Alex.
+
+
 ## Completed
 
 | | Question | Answer | Date |

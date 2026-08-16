@@ -92,6 +92,63 @@ enum RulesEngine {
         .min()
     }
 
+    /// Every routine, projected onto one device's clock.
+    ///
+    /// The other `resolve` answers "what is the next alarm for this device". This one answers "what
+    /// does this device's whole week look like", which is the question a service holding one alarm
+    /// per routine actually needs answered. Without it the only way to express two routines on one
+    /// remote alarm is to rewrite that alarm's days every time the week turns over, which is the bug
+    /// that rewrote a real Monday to Friday schedule into every day.
+    ///
+    /// The offset can walk a routine's alarm onto the previous or next day, exactly as it can for a
+    /// single target, so the day set is shifted the same way. A weekday routine at 00:05 with a Pod
+    /// lead of ten minutes is a Sunday to Thursday alarm at 23:55, and matching it against a
+    /// Monday to Friday alarm on the service would be wrong.
+    static func plan(
+        for rule: DeviceRule,
+        in schedule: WakeSchedule,
+        calendar: Calendar,
+        now: Date
+    ) -> RoutinePlan {
+        let today = CalendarDay(now, in: calendar)
+        let override = schedule.override.flatMap { $0.day >= today ? $0 : nil }
+
+        // Which routine a bend displaces. Resolved by the day it falls on rather than by a stored
+        // id, because the routine's days can change between arming a bend and applying it.
+        var bentRoutineID: String?
+        if let override, let date = override.day.date(in: calendar) {
+            let weekday = Locale.Weekday.from(calendarIndex: calendar.component(.weekday, from: date))
+            bentRoutineID = schedule.routine(covering: weekday)?.id
+        }
+
+        let entries = schedule.routines
+            .filter { $0.isOn && !$0.weekdays.isEmpty }
+            .map { routine -> RoutinePlan.Entry in
+                let shifted = routine.time.minutesSinceMidnight + rule.offsetMinutes
+                let dayShift = Int(floor(Double(shifted) / 1440.0))
+
+                var bent: WallClockTime?
+                if routine.id == bentRoutineID, let bentTime = override?.time {
+                    let bentShifted = bentTime.minutesSinceMidnight + rule.offsetMinutes
+                    bent = WallClockTime(minutesSinceMidnight: bentShifted)
+                }
+
+                return RoutinePlan.Entry(
+                    routineID: routine.id,
+                    routineName: routine.displayName,
+                    weekdays: Set(routine.weekdays.map { $0.shifted(by: dayShift) }),
+                    localTime: WallClockTime(minutesSinceMidnight: shifted),
+                    bentTo: bent
+                )
+            }
+
+        return RoutinePlan(
+            device: rule.device,
+            entries: entries,
+            skipsNextMorning: override?.isSkip == true
+        )
+    }
+
     /// The gap between the first device to fire and the master time, for the summary line.
     static func leadMinutes(for targets: [ResolvedTarget], masterDevice: DeviceID = .iphone) -> Int? {
         guard

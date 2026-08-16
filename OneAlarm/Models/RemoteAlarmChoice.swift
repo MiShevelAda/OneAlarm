@@ -8,6 +8,11 @@ import Foundation
 /// server happens to list is a coin flip, and a coin flip that silently moves the wrong alarm is the
 /// worst kind of bug this app can have.
 ///
+/// **The Eight Sleep leg no longer asks anybody to pick one.** As of 2026-08-16 it matches routines
+/// to alarms by their day sets, so this type is a description there rather than a choice: it feeds
+/// the screen that says which routine drives which alarm. Whoop still picks, because a Whoop account
+/// holds one schedule and the ambiguity there is real. See `RoutinePlan`.
+///
 /// Neither service puts a bed or a room **on the alarm object**, so a row is identified by time and
 /// days. That is a fact about the object, not about the service: Eight Sleep does name its Pods, in
 /// `/v1/household/users/{id}/summary`, and the account's current bed and side are stated once above
@@ -36,6 +41,19 @@ struct RemoteAlarmChoice: Identifiable, Equatable, Sendable {
     var rawKeys: [String] = []
 
     var parsedCleanly: Bool { time != nil }
+
+    /// This alarm as the matcher sees it.
+    ///
+    /// One conversion in one place. The screen and the write have to agree about which alarm has
+    /// which days, and two hand written conversions is how they stop agreeing.
+    var candidate: RoutinePlan.CandidateAlarm {
+        RoutinePlan.CandidateAlarm(
+            id: id,
+            weekdays: weekdays,
+            isEnabled: isEnabled,
+            label: "\(timeLabel), \(daysLabel)"
+        )
+    }
 
     /// Whether this alarm can ever go off.
     ///

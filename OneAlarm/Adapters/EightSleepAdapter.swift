@@ -11,9 +11,13 @@ import Foundation
 /// its documented read shape disagree about field names, `vibration.powerLevel` against
 /// `vibration.level` and `thermal.level` against `thermal.temperature`, thirty lines apart in the
 /// same file. Rather than gamble on which is right, this adapter reads the existing alarm as a raw
-/// dictionary, changes only `time`, `enabled` and `repeat`, and sends everything else back exactly
-/// as the server gave it. Unknown fields survive untouched, so the contradiction cannot bite us and
-/// neither can any field added upstream later.
+/// dictionary, changes **only `time`**, and sends everything else back exactly as the server gave
+/// it. Unknown fields survive untouched, so the contradiction cannot bite us and neither can any
+/// field added upstream later.
+///
+/// It used to also write `enabled` and the whole `repeat` block. Both are gone as of 2026-08-16.
+/// Days are now the key a routine is **matched on** rather than a field that gets written: OneAlarm
+/// finds the alarm that already has a routine's days and moves that alarm's time. See `write`.
 actor EightSleepAdapter: DeviceAdapter {
 
     nonisolated let device: DeviceID = .eightSleep
@@ -108,13 +112,34 @@ actor EightSleepAdapter: DeviceAdapter {
     /// Signing in only proves the password is right. It does not prove the subscription is active,
     /// and it does not prove there is an alarm to move. Both of those fail later, in the dark, when
     /// nothing is watching. So they are checked here, while somebody is looking at the screen.
-    func readiness() async throws -> String {
+    /// - Parameter plan: the week as OneAlarm has it, so the answer can name which routines this
+    ///   account can actually carry. Passing an empty plan asks the weaker question, "is there an
+    ///   alarm at all", which is all that can be checked before any routine exists.
+    func readiness(against plan: RoutinePlan? = nil) async throws -> String {
         let choices = try await availableAlarms()
-        guard let chosen = RemoteAlarmSelection.resolve(choices, for: .eightSleep) else {
-            if choices.isEmpty { throw AdapterError.noAlarmToUpdate }
-            throw AdapterError.alarmChoiceNeeded(count: choices.count)
+        guard !choices.isEmpty else { throw AdapterError.noAlarmToUpdate }
+
+        let bed = await currentBed()
+        let place = bed?.label.map { "on \($0)" } ?? "on this account"
+
+        guard let plan, !plan.entries.isEmpty else {
+            let live = choices.filter(\.canFire).count
+            return "Connected. \(live) alarm\(live == 1 ? "" : "s") \(place)."
         }
-        return "Connected. Will move the alarm at \(chosen.summary)."
+
+        let report = RoutinePlan.match(entries: plan.entries, against: choices.map(\.candidate))
+        guard !report.pairs.isEmpty else {
+            throw AdapterError.noMatchingDays(
+                routines: report.routinesWithNoAlarm,
+                alarms: choices.filter { !$0.weekdays.isEmpty }.map { "\($0.timeLabel) \($0.daysLabel)" }
+            )
+        }
+        let matched = report.pairs.map(\.routineName).joined(separator: " and ")
+        var line = "Connected \(place). \(matched) will follow OneAlarm."
+        if !report.routinesWithNoAlarm.isEmpty {
+            line += " No alarm here covers \(report.routinesWithNoAlarm.joined(separator: " or "))."
+        }
+        return line
     }
 
     /// Every alarm on the account, described well enough to pick from.
@@ -128,17 +153,12 @@ actor EightSleepAdapter: DeviceAdapter {
             let parts = (alarm["time"] as? String)?.split(separator: ":").compactMap { Int($0) } ?? []
             let time = parts.count >= 2 ? WallClockTime(hour: parts[0], minute: parts[1]) : nil
 
-            var days: Set<Locale.Weekday> = []
-            if let week = (alarm["repeat"] as? [String: Any])?["weekDays"] as? [String: Any] {
-                for day in Locale.Weekday.displayOrder where (week[day.eightSleepKey] as? Bool) == true {
-                    days.insert(day)
-                }
-            }
-
             return RemoteAlarmChoice(
                 id: id,
                 time: time,
-                weekdays: days,
+                // The same reader the matcher uses. Two parsers for one field is how a screen and a
+                // write end up disagreeing about which alarm is which.
+                weekdays: Self.weekdays(of: alarm),
                 isEnabled: (alarm["enabled"] as? Bool) ?? true,
                 detail: Self.describeSettings(alarm),
                 rawKeys: Self.describe(alarm),
@@ -392,46 +412,51 @@ actor EightSleepAdapter: DeviceAdapter {
         "nextTimestamp", "startTimestamp", "endTimestamp", "dismissedUntil", "snoozedUntil",
     ]
 
-    // Internal rather than private so the test suite can assert that unknown fields survive.
-    static func mutate(_ alarm: [String: Any], to target: ResolvedTarget) -> [String: Any] {
+    /// Change the time. Nothing else.
+    ///
+    /// This used to also write `enabled = true` and rebuild the whole `repeat.weekDays` block from
+    /// the target. Both are gone, and both were doing real damage.
+    ///
+    /// **Days.** With one alarm chosen by hand, the app had no way to express two routines, so when
+    /// the weekend routine came round it rewrote the weekday alarm's days to Saturday and Sunday.
+    /// Alex, 2026-08-16: *"picking one routine can break the entire thing."* Days are now the key
+    /// the routine is matched on rather than a field that gets written, so the alarm being moved
+    /// already has the right days by definition and there is nothing to set.
+    ///
+    /// **`enabled`.** Forcing it on switched an alarm back on that he had switched off in the Eight
+    /// Sleep app, which is authoring a decision rather than syncing a time. The time is still
+    /// written to a switched-off alarm, so turning it back on gives today's time rather than an old
+    /// one, and the receipt says out loud that it will not fire.
+    ///
+    /// Internal rather than private so the test suite can assert that unknown fields survive.
+    static func mutate(_ alarm: [String: Any], to time: WallClockTime) -> [String: Any] {
         var payload = alarm
         for field in computedFields {
             payload.removeValue(forKey: field)
         }
-
-        payload["time"] = target.localTime.hhmmss
-        payload["enabled"] = true
-
-        // Weekdays are seven lowercase named booleans, not a bitmask and not an array.
-        var weekDays: [String: Bool] = [:]
-        for day in Locale.Weekday.displayOrder {
-            weekDays[day.eightSleepKey] = target.weekdays.contains(day)
-        }
-        var repeatBlock = (payload["repeat"] as? [String: Any]) ?? [:]
-        repeatBlock["enabled"] = true
-        repeatBlock["weekDays"] = weekDays
-        payload["repeat"] = repeatBlock
-
+        payload["time"] = time.hhmmss
         return payload
     }
 
     nonisolated func preview(_ target: ResolvedTarget) -> WritePreview {
-        var weekDays: [String: Bool] = [:]
-        for day in Locale.Weekday.displayOrder {
-            weekDays[day.eightSleepKey] = target.weekdays.contains(day)
-        }
-        var repeatBlock: [String: Any] = [:]
-        repeatBlock["enabled"] = true
-        repeatBlock["weekDays"] = weekDays
+        preview(target, plan: RoutinePlan(device: .eightSleep, entries: [], skipsNextMorning: false))
+    }
 
-        var sketch: [String: Any] = [:]
-        sketch["time"] = target.localTime.hhmmss
-        sketch["enabled"] = true
-        sketch["repeat"] = repeatBlock
+    nonisolated func preview(_ target: ResolvedTarget, plan: RoutinePlan) -> WritePreview {
+        let sketch: [String: Any] = ["time": target.localTime.hhmmss]
+
+        let lines: String
+        if plan.entries.isEmpty {
+            lines = "one PUT, setting time to \(target.localTime.hhmm)"
+        } else {
+            lines = plan.entries
+                .map { "\($0.routineName) (\($0.weekdays.count) days) to \($0.timeToWrite.hhmm)" }
+                .joined(separator: ", ")
+        }
 
         return WritePreview(
             device: .eightSleep,
-            summary: "Update the existing alarm to \(target.localTime.hhmm) local, keeping its vibration and thermal settings untouched.",
+            summary: "One PUT per routine, each carrying a single changed field, `time`. \(lines). Days, vibration, thermal and the on switch are echoed back exactly as the server gave them.",
             method: "PUT",
             url: "\(Self.appHost)/v1/users/{userId}/alarms/{alarmId}",
             body: HTTPClient.redactedPreview(sketch, showing: Self.previewKeys),
@@ -545,76 +570,160 @@ actor EightSleepAdapter: DeviceAdapter {
         return lines
     }
 
-    /// The allowlist recurses, so the weekday keys inside `weekDays` have to be named too or the
-    /// preview shows seven redactions instead of the schedule.
-    private static let previewKeys: Set<String> = Set(["time", "enabled", "repeat", "weekDays"])
-        .union(Locale.Weekday.displayOrder.map(\.eightSleepKey))
+    /// One key, because one key is now the entire diff. It used to have to name every weekday too,
+    /// because the write rebuilt the whole `repeat` block; that write is gone.
+    private static let previewKeys: Set<String> = ["time"]
 
     func write(_ target: ResolvedTarget) async throws -> WriteReceipt {
+        // A plan with no entries. Every routine-aware caller goes through the overload; this exists
+        // so the protocol stays satisfiable and so a single-target write still has one meaning.
+        try await write(target, plan: RoutinePlan(device: .eightSleep, entries: [], skipsNextMorning: false))
+    }
+
+    /// Match every routine to the alarm that already has its days, and change that alarm's time.
+    ///
+    /// No alarm is chosen by hand any more, because there is nothing to choose: a routine's days
+    /// name exactly one alarm, or they name none and the app says so. What the user picks is the
+    /// bed, which is the thing the account can genuinely be ambiguous about and the thing he
+    /// actually recognises.
+    ///
+    /// Everything that does not line up is reported rather than resolved. A routine with no matching
+    /// alarm is not written anywhere, and an alarm no routine describes is not touched.
+    func write(_ target: ResolvedTarget, plan: RoutinePlan) async throws -> WriteReceipt {
         let alarms = try await fetchAlarms()
-
-        // Never guess when the account holds more than one. Moving the wrong alarm is silent and
-        // only discovered by not waking up.
-        let chosenID: String?
-        if let id = RemoteAlarmSelection.selected(for: .eightSleep),
-           alarms.contains(where: { Self.alarmID($0) == id }) {
-            chosenID = id
-        } else if alarms.count == 1 {
-            chosenID = alarms.first.flatMap(Self.alarmID)
-        } else if alarms.count > 1 {
-            throw AdapterError.alarmChoiceNeeded(count: alarms.count)
-        } else {
-            chosenID = nil
-        }
-
-        guard
-            let alarmID = chosenID,
-            let existing = alarms.first(where: { Self.alarmID($0) == alarmID })
-        else {
+        guard !alarms.isEmpty else {
             // Creating one is possible, but the create payload is exactly where the field name
             // contradiction lives. Better to tell the user to make one alarm in the Eight Sleep app
             // once than to guess at a payload and silently set the wrong thing.
             throw AdapterError.noAlarmToUpdate
         }
 
+        // Fall back to the single target when no plan came in, so this path has one behaviour rather
+        // than two. A one-entry plan is just a plan with one routine in it.
+        let entries = plan.entries.isEmpty
+            ? [RoutinePlan.Entry(routineID: "target", routineName: "your alarm",
+                                 weekdays: target.weekdays, localTime: target.localTime, bentTo: nil)]
+            : plan.entries
+
+        let described = alarms.compactMap { alarm -> RoutinePlan.CandidateAlarm? in
+            guard let id = Self.alarmID(alarm) else { return nil }
+            return RoutinePlan.CandidateAlarm(
+                id: id,
+                weekdays: Self.weekdays(of: alarm),
+                isEnabled: (alarm["enabled"] as? Bool) ?? true,
+                label: Self.shortLabel(alarm)
+            )
+        }
+
+        let report = RoutinePlan.match(entries: entries, against: described)
+        guard !report.pairs.isEmpty else {
+            throw AdapterError.noMatchingDays(
+                routines: report.routinesWithNoAlarm,
+                alarms: described.filter { !$0.weekdays.isEmpty }.map(\.label)
+            )
+        }
+
         let (token, user) = try await currentToken()
-        guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms/\(alarmID)") else {
-            throw AdapterError.transport("Bad alarm update URL.")
+
+        // Which alarm `verify` should read back: the one covering the morning the target is for.
+        // That is the only pair whose `nextTimestamp` can be compared against an instant we meant.
+        // Nothing else is verifiable, and verifying the wrong one would confirm a write we were not
+        // asked about while saying nothing about the one that matters tonight.
+        let nextWeekday = Locale.Weekday.from(
+            calendarIndex: Calendar(identifier: .gregorian).component(.weekday, from: target.nextOccurrence)
+        )
+        let verifiableID = report.pairs.first { pair in
+            entries.first { $0.routineID == pair.routineID }?.weekdays.contains(nextWeekday) == true
+        }?.alarmID
+
+        // Sequential rather than concurrent. Two or three requests against a personal account stays
+        // well inside a single-digit rate, and one at a time means a failure names which routine
+        // failed instead of arriving as a race.
+        var failures: [String] = []
+        var written = Set<String>()
+        for pair in report.pairs {
+            guard let existing = alarms.first(where: { Self.alarmID($0) == pair.alarmID }),
+                  let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms/\(pair.alarmID)")
+            else {
+                failures.append(pair.routineName)
+                continue
+            }
+
+            let body = try HTTPClient.json(Self.mutate(existing, to: pair.time))
+            let response = try await http.send("PUT", url, headers: Self.baseHeaders(token: token), body: body)
+
+            if response.status == 403 { throw AdapterError.subscriptionRequired }
+            if response.status == 429 {
+                backOff()
+                throw AdapterError.rateLimited
+            }
+            if response.status == 401 {
+                accessToken = nil
+                throw AdapterError.authenticationFailed("Token was rejected.")
+            }
+            guard response.isSuccess else {
+                failures.append("\(pair.routineName) (HTTP \(response.status))")
+                continue
+            }
+            written.insert(pair.alarmID)
         }
 
-        let payload = Self.mutate(existing, to: target)
-        let body = try HTTPClient.json(payload)
-        let response = try await http.send("PUT", url, headers: Self.baseHeaders(token: token), body: body)
-
-        if response.status == 403 { throw AdapterError.subscriptionRequired }
-        if response.status == 429 {
-            backOff()
-            throw AdapterError.rateLimited
-        }
-        if response.status == 401 {
-            accessToken = nil
-            throw AdapterError.authenticationFailed("Token was rejected.")
-        }
-        guard response.isSuccess else {
-            throw AdapterError.unexpectedResponse("HTTP \(response.status) updating the alarm.")
+        guard failures.count < report.pairs.count else {
+            throw AdapterError.unexpectedResponse("Every routine failed to write: \(failures.joined(separator: ", ")).")
         }
 
         authState = .connected
-        // Which alarm was moved is worth saying out loud when there is more than one, because the
-        // choice is the server's list order and nothing else.
-        let previous = (existing["time"] as? String) ?? "an existing alarm"
-        // Named rather than positional. It said "the first of 3" while moving the chosen one, which
-        // is the class of sentence that gets believed later and is wrong at the worst moment.
-        let note = alarms.count > 1
-            ? "Moved your chosen alarm of \(alarms.count), previously \(previous)."
-            : "Updated the existing alarm, previously \(previous)."
+
+        var note = report.note
+        if !failures.isEmpty {
+            note += " Failed: \(failures.joined(separator: ", "))."
+        }
+        if let bent = entries.first(where: \.isBent) {
+            // Named because it is a real liability. Eight Sleep has no one-day override, so a bend is
+            // held in the routine's own alarm and put back on the next sync after the morning. If
+            // the app never runs again, the bed keeps the bent time.
+            note += " \(bent.routineName) is holding \(bent.timeToWrite.hhmm) for one morning, and goes back to \(bent.localTime.hhmm) on the next sync."
+        }
+        if plan.skipsNextMorning {
+            // Eight Sleep has a `skipNext` field this app has never written. Reasoning about a field
+            // from its name is what cost five hours on Whoop, so it is stated rather than sent.
+            note += " Your bed is not skipped: OneAlarm does not switch off an Eight Sleep alarm. Skip it in their app if you do not want the bed to react."
+        }
 
         return WriteReceipt(
             device: .eightSleep,
             succeededAt: Date(),
-            remoteID: alarmID,
-            note: note
+            // `nil` when the morning's own alarm is not among the ones that landed. `verify` then
+            // reports unavailable, which is the honest answer, rather than confirming a different
+            // alarm and calling tonight verified.
+            remoteID: verifiableID.flatMap { written.contains($0) ? $0 : nil },
+            note: note,
+            isPartial: !report.isComplete || !failures.isEmpty
         )
+    }
+
+    /// The seven named booleans, as a set.
+    static func weekdays(of alarm: [String: Any]) -> Set<Locale.Weekday> {
+        guard let week = (alarm["repeat"] as? [String: Any])?["weekDays"] as? [String: Any] else {
+            return []
+        }
+        // `repeat.enabled` off means a one-shot alarm, whatever the day flags say. Treating it as a
+        // recurring day set would match it to a routine and move it every week.
+        if let repeating = (alarm["repeat"] as? [String: Any])?["enabled"] as? Bool, !repeating {
+            return []
+        }
+        return Set(Locale.Weekday.displayOrder.filter { (week[$0.eightSleepKey] as? Bool) == true })
+    }
+
+    /// "07:00 Mon Tue Wed Thu Fri", for naming an alarm the app is deliberately not touching.
+    static func shortLabel(_ alarm: [String: Any]) -> String {
+        let time = (alarm["time"] as? String).map { String($0.prefix(5)) } ?? "unknown time"
+        let days = weekdays(of: alarm)
+        if days.isEmpty { return "\(time), no days" }
+        if days == Locale.Weekday.everyDay { return "\(time) every day" }
+        if days == Locale.Weekday.weekdaysOnly { return "\(time) weekdays" }
+        return time + " " + Locale.Weekday.displayOrder.filter { days.contains($0) }
+            .map(\.shortLabel).joined(separator: " ")
     }
 
     /// The read back that makes this leg trustworthy.
@@ -624,6 +733,14 @@ actor EightSleepAdapter: DeviceAdapter {
     /// the wrong absolute moment and the write still returns 200. The returned `nextTimestamp` is
     /// UTC, so comparing it against the instant we intended is the only way to catch it.
     func verify(_ receipt: WriteReceipt, against target: ResolvedTarget) async throws -> Verification {
+        // No id means the routine covering tonight was not one of the ones that landed, so there is
+        // nothing here that can be checked against the instant we intended. Saying so is the point:
+        // reading back a different routine's alarm would return a confirmed instant for a morning
+        // nobody asked about.
+        guard receipt.remoteID != nil else {
+            return .unavailable(reason: "no alarm on your bed covers the next morning.")
+        }
+
         // Two attempts, because the server may not have recomputed `nextTimestamp` by the time the
         // PUT returns. Reading it too early gets the pre write value and raises a mismatch, which
         // is the loudest warning the app has, for a write that was actually fine.

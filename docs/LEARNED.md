@@ -125,6 +125,26 @@ otherwise, and check, because checking is free: both legs already read before ev
 not degraded routine users, and "no alarm" is a chosen setting rather than an empty state.
 `[2026-08-16]`
 
+> *"I shouldn't actually pick routines. The routine should be updated accordingly. So if I'm
+> updating a routine Monday to Friday, they should override the Eight Sleep routine Monday to
+> Friday. And if I update the routine Friday, Saturday, it should update the Friday, Saturday
+> routine automatically. This should be happening in the background. So the one app should override
+> the routines I have in Eight Sleep, for instance, because picking one routine can break the entire
+> thing. So what I should be able to pick is just the bed, and I should not pick a routine. This
+> doesn't make sense to me."*
+
+**Days are a key to match on, never a field to write.** He is right, and it also names damage that
+had already happened. With one alarm chosen by hand, the app had no way to express two routines, so
+each time the week turned over it rewrote the chosen alarm's **days**. That is how a real Monday to
+Friday Whoop schedule became `EVERY DAY`. Matching by day set deletes the destructive operation
+rather than guarding it: a routine drives the alarm that already has its days, and only the `time`
+field is ever sent. What he picks is the **bed**, because that is the only thing on the account
+genuinely ambiguous. `[2026-08-16]`
+
+**A partial write is not a done write.** A leg holding one alarm per routine can half-succeed: two
+routines match and a third has no alarm with its days. A green tick over that is a week with a hole
+in it, and the hole is a morning nobody is woken on. `[2026-08-16]`
+
 > *"Identify the eight sleep pod by name not only alarm times, group them by name in the setting."*
 
 **Name the device, group by it.** Two alarms at the same time on two pods are indistinguishable, and
@@ -189,3 +209,5 @@ See `docs/RESEARCH.md` for the full record. The short version, with evidence mar
 | `/v1/devices/{id}` carries a model, a serial and a firmware version, and **no name** | `[observed]` in two public captures |
 | An alarm's `tags` holds a `routine-<uuid>`, linking it to a bedtime pairing, **not to a Pod** | `[observed]` 16 Aug |
 | Eight Sleep's smart alarm has **no window length field anywhere in the API** | `[observed]`. The 30 minutes came from a sentence in their UI |
+| Eight Sleep holds one alarm **per day set**, so a week with two routines is two alarms | `[observed]` 16 Aug, live account |
+| Whoop holds **one** schedule per account, so its days genuinely cannot express two routines | `[observed]` its own UI, and the mutually exclusive one-off dialog |
