@@ -152,16 +152,38 @@ enum RulesEngine {
                 var overrideDay: RoutinePlan.OverrideDay?
                 if routine.id == bentRoutineID || (skippedWeekday != nil && routine.id == overriddenRoutineID),
                    let override, let date = override.day.date(in: calendar) {
-                    // Shifted by this device's own lead, exactly as the routine's day set is. An
-                    // override on Saturday morning for a bed that fires the night before is a
-                    // Friday alarm, and writing it to Saturday would ring a day late.
-                    let landed = Locale.Weekday
-                        .from(calendarIndex: calendar.component(.weekday, from: date))
-                        .shifted(by: dayShift)
-                    overrideDay = RoutinePlan.OverrideDay(date: override.day, weekday: landed)
+                    let chosen = Locale.Weekday.from(calendarIndex: calendar.component(.weekday, from: date))
+
+                    // **A bend and a skip land on different days, and using one shift for both is a
+                    // wrong alarm rather than a wrong label.**
+                    //
+                    // The user picks a calendar morning. Which weekday **this device** arms for it
+                    // depends on which time is being armed, because the lead can walk either one
+                    // across midnight:
+                    //
+                    // - a **skip** suppresses the routine's own alarm for that morning, which fires
+                    //   at the routine's time, so it moves by the routine's shift.
+                    // - a **bend** arms a different time entirely, so it moves by that time's shift.
+                    //   A routine at 07:00 bent to 00:05, on a bed with a ten minute lead, is an
+                    //   alarm at 23:55 the evening **before**. Its day is one back; the routine's is
+                    //   not.
+                    //
+                    // Until 18 August both used the routine's shift, which was filed as a known
+                    // defect worth only a wrong day set. It stopped being cosmetic the moment this
+                    // day started deciding which single morning gets a real alarm created on his bed
+                    // and which morning is taken off the phone's weekly alarm. A defect's severity is
+                    // a property of what reads it, not of the defect.
                     if let bentTime = override.time {
                         let bentShifted = bentTime.minutesSinceMidnight + rule.offsetMinutes
                         bent = WallClockTime(minutesSinceMidnight: bentShifted)
+                        let bendShift = Int(floor(Double(bentShifted) / 1440.0))
+                        overrideDay = RoutinePlan.OverrideDay(
+                            date: override.day, weekday: chosen.shifted(by: bendShift)
+                        )
+                    } else {
+                        overrideDay = RoutinePlan.OverrideDay(
+                            date: override.day, weekday: chosen.shifted(by: dayShift)
+                        )
                     }
                 }
                 return RoutinePlan.Entry(

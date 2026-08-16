@@ -15,9 +15,19 @@ import XCTest
 /// every day, and Eight Sleep was confirmed working hours before this was found. So the behaviour is
 /// pinned rather than changed, and the test documents the bug instead of hiding it.
 ///
-/// **When it is fixed**, `testABendAcrossMidnightDoesNotShiftItsDays` is the test that must flip, and
-/// `testTheRoutinesOwnMidnightCrossingStillShifts` is the one that must not. Both are here so that
-/// whoever fixes it can tell those two apart, which is the thing a bare bug report never gives you.
+/// **Closed 18 August, and not the way this file expected.** The fix it described, deriving the day
+/// set from the bent time, was never made, because the bend stopped touching the routine's alarm at
+/// all. It gets its own alarm on both legs now, so the routine's days were never the thing that had
+/// to change.
+///
+/// What did have to change is `overrideDay.weekday`: which single morning the override arms. That
+/// takes the **bend's** shift, while a skip takes the **routine's**, because a skip suppresses an
+/// alarm that fires at the routine's time. One shift for both was the bug, and it went from cosmetic
+/// to real the moment that field started creating alarms.
+///
+/// Kept in full rather than rewritten, including the reasoning that turned out to be answering the
+/// wrong question. It was correct reasoning about the design as it stood, and knowing that a
+/// carefully argued fix can be dissolved by a change somewhere else is worth more than a tidy file.
 final class OverrideDayShiftTests: XCTestCase {
 
     private var calendar: Calendar {
@@ -78,12 +88,22 @@ final class OverrideDayShiftTests: XCTestCase {
                        "an alarm at 23:55 on Sunday is Monday's alarm")
     }
 
-    /// **Pins the defect.** A bend across midnight keeps the routine's unshifted days.
+    /// **The defect, resolved rather than fixed.** A bend across midnight leaves the routine alone.
     ///
-    /// Routine at 07:00, so `dayShift` is 0 and the days stay Monday to Friday. Bent to 00:05, which
-    /// the bed's ten minute lead makes 23:55, an evening alarm. The correct day set for 23:55 is the
-    /// evening before, Sunday to Thursday. It is not what comes out.
-    func testABendAcrossMidnightDoesNotShiftItsDays() throws {
+    /// This asserted the wrong answer on purpose until 18 August, and the reasoning was sound at the
+    /// time: deriving the day set from the bent time meant a bend would **rewrite a remote alarm's
+    /// days** for one morning, and something had to put them back. Writing days to a remote alarm is
+    /// what turned Alex's real Monday to Friday schedule into every day.
+    ///
+    /// What changed is that a bend no longer touches the routine's alarm at all, on either leg. It
+    /// gets its own alarm. So the routine's day set is not in the question any more, and
+    /// `entry.weekdays` staying Monday to Friday is now **correct** rather than a known wrong answer,
+    /// because it describes the routine and nothing else. The hard half went away instead of being
+    /// solved.
+    ///
+    /// What has to be right instead is `overrideDay.weekday`, a different field with a different
+    /// shift, asserted directly below.
+    func testABendAcrossMidnightLeavesTheRoutineDaysAlone() throws {
         let plan = RulesEngine.plan(
             for: bedLead,
             in: schedule(routineAt: WallClockTime(hour: 7, minute: 0),
@@ -94,16 +114,59 @@ final class OverrideDayShiftTests: XCTestCase {
 
         let entry = try XCTUnwrap(plan.entries.first)
         XCTAssertEqual(entry.timeToWrite.hhmm, "23:55", "the bent time crosses midnight correctly")
-        XCTAssertEqual(
-            entry.weekdays,
-            Locale.Weekday.weekdaysOnly,
-            """
-            KNOWN DEFECT, docs/STATUS.md problem 1. The days follow the routine's 07:00, not the \
-            23:55 actually being written, so the bed is armed about a day early. When this is fixed \
-            this assertion flips to Sunday to Thursday and the fix must also put the days back once \
-            the bend expires, which is the hard half.
-            """
+        XCTAssertEqual(entry.weekdays, Locale.Weekday.weekdaysOnly,
+                       "the routine's own days, untouched, because the bend has its own alarm now")
+    }
+
+    /// A bend across midnight is armed on the evening before, not on the morning he picked.
+    ///
+    /// **The half that stopped being cosmetic.** The override's weekday was shifted by the
+    /// **routine's** lead for both a bend and a skip, and that was filed as a defect worth only a
+    /// wrong day set. Then this field started deciding which single morning gets a real alarm created
+    /// on his bed, and which morning is taken off the phone's weekly alarm. A defect's severity is a
+    /// property of what reads it, not of the defect.
+    ///
+    /// The override is on Monday the 18th. The bed's ten minute lead makes a 00:05 bend an alarm at
+    /// 23:55, which is **Sunday** evening. Arming Monday would ring a day late, and on a bed the
+    /// heating would start a day late with it.
+    func testABendAcrossMidnightIsArmedTheEveningBefore() throws {
+        let plan = RulesEngine.plan(
+            for: bedLead,
+            in: schedule(routineAt: WallClockTime(hour: 7, minute: 0),
+                         bentTo: WallClockTime(hour: 0, minute: 5)),
+            calendar: calendar,
+            now: now
         )
+
+        let bend = try XCTUnwrap(try XCTUnwrap(plan.entries.first).overrideDay)
+        XCTAssertEqual(bend.date, CalendarDay(year: 2027, month: 1, day: 18),
+                       "the date is the morning he chose, and never moves")
+        XCTAssertEqual(bend.weekday, .sunday,
+                       "but the alarm for it fires on Sunday evening, so that is the day to arm")
+    }
+
+    /// A skip across midnight follows the **routine's** shift, not the bend's. The pair to the above.
+    ///
+    /// A skip suppresses the routine's own alarm for that morning, and that alarm fires at the
+    /// routine's time. A routine at 00:05 on a bed with a ten minute lead is a 23:55 alarm the
+    /// evening before, so skipping Monday the 18th has to remove Sunday.
+    ///
+    /// Both tests exist because using one shift for both cases is exactly the bug above, and a single
+    /// test cannot tell a correct answer from a coincidence on a fixture where the two shifts agree.
+    func testASkipAcrossMidnightFollowsTheRoutinesShift() throws {
+        let plan = RulesEngine.plan(
+            for: bedLead,
+            in: schedule(routineAt: WallClockTime(hour: 0, minute: 5), bentTo: nil),
+            calendar: calendar,
+            now: now
+        )
+
+        let entry = try XCTUnwrap(plan.entries.first)
+        XCTAssertEqual(entry.localTime.hhmm, "23:55")
+        let skip = try XCTUnwrap(entry.overrideDay,
+                                 "a skip carries its day too, or a leg can only stand the whole routine down")
+        XCTAssertEqual(skip.weekday, .sunday, "Monday's alarm is armed on Sunday evening")
+        XCTAssertTrue(entry.isSkippedNextMorning)
     }
 
     /// A bend carries the date and weekday it falls on, not just a time.
@@ -132,19 +195,31 @@ final class OverrideDayShiftTests: XCTestCase {
                        "the key an override's own alarm is filed under, and what expires it")
     }
 
-    /// A routine with no bend carries no day. The control for the one above.
+    /// A routine with **no override at all** carries no day. The control for the two above.
     ///
-    /// If this ever fails, every routine looks bent and the Eight Sleep leg starts adding an override
-    /// alarm on every sync.
-    func testAnUnbentRoutineCarriesNoDay() throws {
-        let plan = RulesEngine.plan(
-            for: bedLead,
-            in: schedule(routineAt: WallClockTime(hour: 6, minute: 5), bentTo: nil),
-            calendar: calendar,
-            now: now
-        )
+    /// It used to pass `bentTo: nil` to the fixture, which does not remove the override, it makes it
+    /// a **skip**. So it asserted that a skip carries no day, which was true until 18 August and is
+    /// now exactly backwards: a skip needs its day as much as a bend does, or a leg can only stand
+    /// the whole routine down for the night. Caught by the assertion flipping, which is the only
+    /// reason it is not still passing while testing the wrong thing.
+    ///
+    /// If this ever fails, every routine looks overridden and both legs start carving a day out of
+    /// their weekly alarm on every sync.
+    func testARoutineWithNoOverrideCarriesNoDay() throws {
+        var schedule = WakeSchedule.default
+        schedule.routines = [
+            Routine(id: "weekdays", name: "Weekdays",
+                    weekdayIndices: WeekdaySetCoding.encode(Locale.Weekday.weekdaysOnly),
+                    time: WallClockTime(hour: 6, minute: 5)),
+        ]
+        schedule.override = nil
 
-        XCTAssertNil(try XCTUnwrap(plan.entries.first).overrideDay)
+        let plan = RulesEngine.plan(for: bedLead, in: schedule, calendar: calendar, now: now)
+
+        let entry = try XCTUnwrap(plan.entries.first)
+        XCTAssertNil(entry.overrideDay)
+        XCTAssertNil(entry.bentTo)
+        XCTAssertFalse(entry.isSkippedNextMorning)
     }
 
     /// An ordinary bend, nowhere near midnight, is unaffected. The control.

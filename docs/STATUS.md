@@ -162,26 +162,30 @@ evidence about that morning's design and not about this code.
    authoritative leg beats no alarm at all on four mornings, and the expiry now raises "Changed since
    last set" so the correction is one press away. **Not yet confirmed on his strap.**
 
-2. 🔴 **A bend across midnight arms the remote legs on the wrong day.** Found by reading on
-   17 August, not by a failure. `RulesEngine` computes `dayShift` from the **routine's** time plus the
-   device lead, and uses it to shift the day set. The bent time is computed separately, with no day
-   shift of its own. So whenever the bend and the routine fall on different sides of midnight for
-   that device, the days written no longer belong to the time written.
+2. ✅ **FIXED 18 August, and the fix that was planned was never the right one.** A bend across
+   midnight armed the remote legs on the wrong day. `RulesEngine` computed `dayShift` from the
+   **routine's** time plus the device lead and used it for the override too, while the bent time had
+   no shift of its own. A routine at 07:00 bent to 00:05, with Eight Sleep's ten minute lead, is an
+   alarm at 23:55 the **previous** evening, and the bed was armed roughly a day early.
 
-   Reproduce: a routine at 07:00 bent to 00:05. Eight Sleep's lead of 10 minutes makes the bent time
-   23:55, which is the **previous** evening, but the day set is still the routine's unshifted one. The
-   bed is armed roughly 24 hours early. It runs the other way too: a routine already at 00:05 has its
-   days shifted back one, and bending it later into the same day leaves them shifted.
+   The plan on 17 August was to derive the day set from the bent time, and that was deliberately not
+   done, for a good reason: it means a bend **rewrites the alarm's days** for one morning and
+   something has to put them back, and writing days to a remote alarm is what turned a real Monday to
+   Friday schedule into every day.
 
-   **Not reachable from the home screen.** The −15 and +15 buttons cannot walk a 06:05 routine
-   anywhere near midnight; it needs the picker and a deliberate near-midnight time.
+   That fix was never needed. The bend stopped touching the routine's alarm at all: on both legs it
+   gets its own single day alarm now, so the routine's day set was never the thing that had to
+   change. What had to change was one field, `Entry.overrideDay.weekday`, which now takes the
+   **bend's** shift while a skip takes the **routine's**, because a skip suppresses an alarm that
+   fires at the routine's time.
 
-   **Deliberately not fixed on 17 August**, and the reason is a rule this project has paid for twice.
-   The obvious fix, deriving the shift from the bent time, means a bend **rewrites the alarm's days**
-   for one morning and something has to put them back. Writing days to a remote alarm is what turned
-   a real Monday to Friday schedule into every day, and Eight Sleep was confirmed working hours
-   earlier. One change at a time, and this one goes in with a compiler and a test in front of it,
-   not at the end of the day that fixed the leg.
+   **It also stopped being cosmetic on the way.** Filed as worth only a wrong day set, it became the
+   field that decides which single morning gets an alarm created on his bed and which morning is
+   taken off the phone's weekly alarm. A defect's severity is a property of what reads it.
+
+   `BendDayShiftTests` carries three tests for it, including a skip and a bend on the same fixture,
+   because one shift for both cases was the bug and a single test cannot tell a right answer from a
+   coincidence. **Not yet run on his hardware.**
 
 3. 🔴 **The phone leg creates a second alarm.** OneAlarm's alarm sits beside the iOS Sleep Schedule
    alarm, which still fires at its own time. iOS exposes no way to read or change a Clock alarm or a
