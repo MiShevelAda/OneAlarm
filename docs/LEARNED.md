@@ -15,6 +15,23 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**Half the one-off problem was fixable from data already on the table.** `[18 August]` The bend needs
+a field nobody has seen yet, so it is blocked on a capture. The **skip** did not: `skipNext` and
+`skippedUntil` are in every raw dump Alex has sent, sitting unused, while OneAlarm expressed a skip by
+switching his weekly alarm off and repairing it later.
+
+Normally this project bans acting on a field whose behaviour is known only from its name, and that ban
+is why `E11` sat open since 16 August. What changed is not the confidence, it is **the check**:
+`nextTimestamp` is an absolute instant, so "did this morning actually get skipped" is answerable
+without trusting the name at all. If the instant moves, it worked. If it does not, the old behaviour
+runs and the row says so.
+
+**The general form, which is more useful than the fix:** a rule against guessing is really a rule
+against *unfalsifiable* guessing. When a guess can be checked against something the server cannot fake,
+it stops being a guess and becomes a test with a fallback. Two things had to be true here and both were
+already available: a way to express the intent, and an instant that proves it landed.
+
+
 **A one-off overwrote the Whoop week too, and the fix there is a refusal rather than a write.**
 `[observed, 17 August]` Alex: *"Tomorrow only also overwrite the routine in whoop."*
 

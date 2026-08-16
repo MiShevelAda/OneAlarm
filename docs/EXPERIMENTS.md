@@ -258,7 +258,28 @@ Expected is not observed, and this one was recommended to him already.
 
 ---
 
-## E11 🔴 Does Eight Sleep's `skipNext` do what its name says?
+## E11 🟠 Does Eight Sleep's `skipNext` do what its name says? BUILT, awaiting one run.
+
+> **Shipped 18 August with a fallback, which is what makes it safe to ship at all.** A skip now sends
+> `skipNext: true` on the alarm his routine owns, echoing everything else including `enabled`, so the
+> weekly alarm stays **on**. That is the whole point: the old behaviour switched his real weekly alarm
+> off and repaired it later, which is the same edit-and-repair shape as the bend, and on 17 August he
+> watched the bend version move his entire Monday to Friday series.
+>
+> **Judged on an absolute instant, never on the status code or the echoed field.** `nextTimestamp`
+> says when the alarm next fires. If the skip took, that instant moves past the morning. If it comes
+> back unmoved, the field was stored and not acted on, OneAlarm falls back to `enabled: false`
+> exactly as before, and the receipt says which happened. A server that accepts a field it ignores is
+> the failure that would let him sleep through a morning he thought was handled, so it is the one the
+> check is built around rather than the one it trusts.
+>
+> Three tests: the skip working, the skip being accepted and ignored, and a direct check that an
+> echoed `skipNext: true` with an unmoved instant counts as failure.
+>
+> **What is still unknown**, and it is only answerable on his account: whether their server acts on it
+> at all. One press of Skip then Set all alarms answers it, and the row will say which path ran.
+
+## E11-old 🔴 Does Eight Sleep's `skipNext` do what its name says?
 
 **Why.** A skip is one of Alex's three verbs: *"maybe to don't use the routine today."* On the phone
 it is expressible. On Eight Sleep the only candidate is `skipNext`, a field on every alarm object

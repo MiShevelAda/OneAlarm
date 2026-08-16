@@ -851,6 +851,115 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertEqual(otherBody["enabled"] as? Bool, true, "the other routine still rings")
     }
 
+    // MARK: Skip, through Eight Sleep's own field
+
+    /// A skip uses `skipNext` and leaves the weekly alarm switched on.
+    ///
+    /// `E11`. Their object has carried `skipNext` and `skippedUntil` in every dump Alex has sent,
+    /// unused, while OneAlarm switched the weekly alarm off and repaired it later. That is the same
+    /// edit-and-repair shape as the bend, and on 17 August he watched the bend version move his whole
+    /// Monday to Friday series on the bed.
+    func testASkipUsesEightSleepsOwnSkipAndLeavesTheAlarmOn() async throws {
+        let before = alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil)
+        var after = before
+        // The server moved the next firing a week on, which is what a skip looks like from outside.
+        after["nextTimestamp"] = "2027-01-25T05:51:00Z"
+
+        StubServer.sequences = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): [
+                (200, ["alarms": [before]] as [String: Any]),
+                (200, ["alarms": [after]] as [String: Any]),
+            ],
+        ]
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let plain = entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 5, minute: 51)
+        let skipped = RoutinePlan.Entry(
+            routineID: plain.routineID, routineName: plain.routineName, weekdays: plain.weekdays,
+            localTime: plain.localTime, bentTo: nil,
+            isOn: true, isSkippedNextMorning: true
+        )
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [skipped], skipsNextMorning: true)
+        )
+
+        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")])
+        XCTAssertEqual(body["skipNext"] as? Bool, true, "the skip goes through their own field")
+        XCTAssertNotEqual(body["enabled"] as? Bool, false,
+                          "and the weekly alarm is NOT switched off, which is the whole point")
+        XCTAssertTrue((receipt.note ?? "").contains("Eight Sleep's own skip"))
+    }
+
+    /// **The case that must never read as success.** The server accepts `skipNext` and does nothing.
+    ///
+    /// A 200 with an unmoved `nextTimestamp` means the field was stored and not acted on. Treating
+    /// that as a skip would let him sleep through a morning he thought was handled, which is the
+    /// worst outcome this app has. So the check is the absolute instant, never the status code, and
+    /// the old behaviour runs instead.
+    func testASkipThatDoesNotMoveTheNextFiringFallsBackToSwitchingOff() async throws {
+        let unchanged = alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil)
+
+        StubServer.sequences = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): [
+                (200, ["alarms": [unchanged]] as [String: Any]),
+                // Same object back, so `nextTimestamp` has not moved.
+                (200, ["alarms": [unchanged]] as [String: Any]),
+            ],
+        ]
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let plain = entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 5, minute: 51)
+        let skipped = RoutinePlan.Entry(
+            routineID: plain.routineID, routineName: plain.routineName, weekdays: plain.weekdays,
+            localTime: plain.localTime, bentTo: nil,
+            isOn: true, isSkippedNextMorning: true
+        )
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [skipped], skipsNextMorning: true)
+        )
+
+        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")])
+        XCTAssertEqual(body["enabled"] as? Bool, false, "it falls back to switching the alarm off")
+        let note = try XCTUnwrap(receipt.note)
+        XCTAssertTrue(note.contains("did not move"), "and says why, rather than claiming a skip")
+        XCTAssertFalse(note.contains("Eight Sleep's own skip"), "never both stories at once")
+    }
+
+    /// Only the instant decides. A `skipNext` echoed back as true proves nothing.
+    func testSkipIsJudgedOnTheInstantNotOnTheEchoedField() {
+        var before = alarm(id: "a", time: "05:51:00", days: weekdayNames, routine: nil)
+        before["nextTimestamp"] = "2027-01-18T05:51:00Z"
+
+        var storedButIgnored = before
+        storedButIgnored["skipNext"] = true
+
+        XCTAssertFalse(
+            EightSleepAdapter.skipTookEffect(before: before, after: storedButIgnored),
+            "the field came back set and the alarm still fires at the same moment, so nothing was skipped"
+        )
+
+        var moved = before
+        moved["skipNext"] = false
+        moved["nextTimestamp"] = "2027-01-25T05:51:00Z"
+
+        XCTAssertTrue(
+            EightSleepAdapter.skipTookEffect(before: before, after: moved),
+            "the next firing moved, which is the only thing that proves a morning is off"
+        )
+    }
+
     // MARK: Alarms his own app hides
 
     /// A created alarm never carries the tags that hide it.

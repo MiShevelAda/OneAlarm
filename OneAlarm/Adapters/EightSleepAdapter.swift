@@ -600,6 +600,53 @@ actor EightSleepAdapter: DeviceAdapter {
     /// deleted because this app deletes only alarms it created itself, which this is not, and because
     /// off is something he can undo in the Eight Sleep app in one tap. Leaving it alone is not an
     /// option: an abandoned alarm goes on firing on a morning he deleted the routine for.
+    /// Skip the next occurrence, using Eight Sleep's own field, leaving the weekly alarm switched on.
+    ///
+    /// **`E11`, and it is the half of the one-off problem that can be fixed from what his account
+    /// already returns.** Every raw dump he has sent carries `skipNext = 0` and
+    /// `skippedUntil = 1970-01-01T00:00:00Z`. That pair is a native skip, sitting in the object,
+    /// unused, while OneAlarm expresses a skip as `enabled: false` on the recurring alarm and repairs
+    /// it on the next sync.
+    ///
+    /// Same shape of mistake as the bend, and the same cost: OneAlarm edits his real weekly alarm to
+    /// express something about one morning, and if the repair never runs, his week stays switched
+    /// off. On 17 August he watched the bend version of this move his whole Monday to Friday series.
+    ///
+    /// **Why this is safe to try when reasoning about a field name is normally banned here.** It is
+    /// not being reasoned about, it is being **checked against an absolute instant**, which is this
+    /// project's own standard for the one thing a 200 cannot tell you. `nextTimestamp` says when the
+    /// alarm next fires. If `skipNext` does what its name says, that instant moves past the morning
+    /// being skipped. If it does not move, the write did nothing and the caller falls back to
+    /// `enabled: false`, exactly as before. A wrong guess costs one request and changes nothing.
+    ///
+    /// `skippedUntil` is echoed rather than authored. The server issues it, and the difference
+    /// between "I am telling you to skip" and "I am telling you until when" is the difference between
+    /// a request and a guess.
+    static func skipNextOccurrence(_ alarm: [String: Any]) -> [String: Any] {
+        var payload = alarm
+        for field in computedFields { payload.removeValue(forKey: field) }
+        payload["skipNext"] = true
+        return payload
+    }
+
+    /// Whether an alarm's next firing has moved past a morning, which is how a skip is confirmed.
+    ///
+    /// Compares two absolute instants and nothing else. Deliberately not "did `skipNext` come back as
+    /// 1": a server that stores a field it does not act on would pass that check and let him sleep
+    /// through a morning he thought was handled.
+    static func skipTookEffect(before: [String: Any], after: [String: Any]) -> Bool {
+        guard let wasText = before["nextTimestamp"] as? String,
+              let nowText = after["nextTimestamp"] as? String,
+              let was = ISO8601DateFormatter.parseFlexible(wasText),
+              let now = ISO8601DateFormatter.parseFlexible(nowText)
+        else { return false }
+        // Strictly later. Equal means the server took the field and did nothing with it, which is
+        // the outcome that must NOT read as success: he would think a morning was handled and be
+        // woken by it. The same parser `verify` uses, because two readers of one field is how a
+        // check and a write end up disagreeing about what the server said.
+        return now > was
+    }
+
     static func silence(_ alarm: [String: Any]) -> [String: Any] {
         var payload = alarm
         for field in computedFields { payload.removeValue(forKey: field) }
@@ -1288,6 +1335,12 @@ actor EightSleepAdapter: DeviceAdapter {
         // failed instead of arriving as a race.
         var failures: [String] = []
         var written = Set<String>()
+        // Declared before the loop that fills them, because Swift has no forward reference and the
+        // first version of this put them below it. Same slip as `created` on the Whoop leg an hour
+        // earlier, and the same fix.
+        var skippedNatively: [String] = []
+        var skipNotes: [String] = []
+
         for pair in report.pairs {
             // A freshly created alarm already carries the right time, and it is not in `alarms`,
             // which was fetched before the create. Running it through the update loop would look it
@@ -1302,6 +1355,38 @@ actor EightSleepAdapter: DeviceAdapter {
             else {
                 failures.append(pair.routineName)
                 continue
+            }
+
+            // **A skip goes through Eight Sleep's own `skipNext`, and falls back if it does nothing.**
+            //
+            // `E11`. Their alarm object has carried `skipNext` and `skippedUntil` in every dump Alex
+            // has sent, unused, while OneAlarm expressed a skip by switching the weekly alarm off and
+            // repairing it later. Same edit-and-repair shape as the bend, and on 17 August he watched
+            // the bend version move his entire Monday to Friday series.
+            //
+            // Checked against an absolute instant rather than a status code, which is this project's
+            // own standard: if `skipNext` does what its name says, `nextTimestamp` moves past the
+            // morning being skipped. If it does not move, nothing was skipped, and the old behaviour
+            // runs instead. A wrong guess costs one request and changes nothing on his bed.
+            let wantsSkip = !pair.shouldBeEnabled
+                && entries.first { $0.routineID == pair.routineID }?.isSkippedNextMorning == true
+                && (existing["enabled"] as? Bool) != false
+
+            if wantsSkip {
+                let skipBody = try HTTPClient.json(Self.skipNextOccurrence(existing))
+                let attempt = try await http.send("PUT", url, headers: Self.baseHeaders(token: token), body: skipBody)
+                if attempt.isSuccess {
+                    let after = (try? await fetchAlarms()) ?? []
+                    let reread = after.first { Self.alarmID($0) == pair.alarmID }
+                    if let reread, Self.skipTookEffect(before: existing, after: reread) {
+                        skippedNatively.append(pair.routineName)
+                        written.insert(pair.alarmID)
+                        continue
+                    }
+                    skipNotes.append("Eight Sleep took the skip for \(pair.routineName) and its next alarm did not move, so OneAlarm switched the alarm off for the morning instead.")
+                } else {
+                    skipNotes.append("Eight Sleep refused the skip for \(pair.routineName) (HTTP \(attempt.status)), so OneAlarm switched the alarm off for the morning instead.")
+                }
             }
 
             let body = try HTTPClient.json(
@@ -1476,12 +1561,16 @@ actor EightSleepAdapter: DeviceAdapter {
         if !silenced.isEmpty {
             note += " Switched off \(silenced.joined(separator: ", ")) on your bed, because the routine that owned it is gone. Yours are switched off rather than deleted, so you can turn it back on in the Eight Sleep app if that was not what you wanted."
         }
-        if let skipped = entries.first(where: \.isSkippedNextMorning) {
-            // A skip now reaches the bed. It is expressed as `enabled: false` on the alarm this
-            // routine owns, which is a field this adapter has read and written since the first
-            // build, rather than as `skipNext`, whose behaviour is known from its name and nothing
-            // else. Reasoning about a field name is what cost five hours on Whoop. `skipNext` is
-            // the better long term answer and is filed as E11.
+        // **Two different things can have happened and he needs to know which**, because only one of
+        // them leaves his weekly alarm switched on. `E11`.
+        if !skippedNatively.isEmpty {
+            note += " \(skippedNatively.joined(separator: " and ")) is skipped for one morning using Eight Sleep's own skip, so the weekly alarm stays on and nothing has to be put back."
+        }
+        if !skipNotes.isEmpty {
+            note += " " + skipNotes.joined(separator: " ")
+        }
+        let fellBack = entries.filter { $0.isSkippedNextMorning && !skippedNatively.contains($0.routineName) }
+        if let skipped = fellBack.first {
             note += " \(skipped.routineName) is switched off on your bed for one morning and comes back on the next sync."
         }
 

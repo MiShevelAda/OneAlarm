@@ -8,8 +8,9 @@ import XCTest
 /// was that it could not create, and the reason it could not create is that **no public source
 /// documents the address**. Research on 17 August found that every public capture of the Whoop app
 /// records a schedule **update** and no create and no delete, which points at the update being an
-/// upsert. So the ladder tries a PUT to an id it mints first, then three inferred POST paths, and
-/// reports what each one was told.
+/// upsert. So the ladder tries a PUT to an id it mints first, then two inferred POST paths, and
+/// reports what each one was told. A third POST rung was removed the same day: `POST /schedule/all`
+/// is the one candidate where "a create cannot destroy anything" is false.
 ///
 /// A ladder against an unknown endpoint is only as good as its stopping rules, and those are pure
 /// logic that needs no network to check. Which is the point: until today this adapter had no seam at
