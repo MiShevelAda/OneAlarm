@@ -233,6 +233,28 @@ final class WhoopMutationTests: XCTestCase {
                        "the next sync with no override turns the strap back on")
     }
 
+    /// A deliberate outcome is its own verification case, not "could not confirm".
+    ///
+    /// **From Alex's row, 19 August.** His strap had been switched off for one morning exactly as
+    /// designed, and read back to prove it, and the row said *"Written. Could not confirm: ..."* in
+    /// warning yellow. A warning that fires on a correct outcome is how somebody learns to scroll
+    /// past warnings.
+    func testADeliberateOutcomeIsNotAnUnconfirmedOne() {
+        let byDesign = Verification.byDesign("Your strap is switched off for that one morning.")
+        let unknown = Verification.unavailable(reason: "Whoop did not return the updated schedule.")
+
+        XCTAssertNotEqual(byDesign, unknown, "these are different outcomes and must render differently")
+        XCTAssertFalse(byDesign.isConfirmed, "it is not a confirmed instant either, and must not claim to be")
+
+        // And the sentence stands alone. The row does not render the receipt note, so a reason that
+        // says "see the note above" points at nothing he can read.
+        if case .byDesign(let text) = byDesign {
+            XCTAssertFalse(text.contains("above"), "the reason has to carry its own explanation: \(text)")
+        } else {
+            XCTFail("expected byDesign")
+        }
+    }
+
     /// **Silencing must not carry the bend with it.**
     ///
     /// From Alex's account an hour after the silencing shipped: his Whoop read `MON TUE WED THU FRI

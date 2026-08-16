@@ -1582,7 +1582,7 @@ actor WhoopAdapter: DeviceAdapter {
         // updated schedule" about a write that never happened would be the fourth screen today
         // describing a state the device is not in. A deliberate skip reports itself as one.
         guard let id = receipt.remoteID else {
-            return .unavailable(reason: "Nothing was written, on purpose. See the note above.")
+            return .unavailable(reason: "Nothing was written to your strap, on purpose.")
         }
 
         // **A write that deliberately sent a different time is checked against that time.**
@@ -1629,7 +1629,17 @@ actor WhoopAdapter: DeviceAdapter {
         // a time he did not ask for would be its own small lie, and the note above says why the
         // strap is where it is.
         if receipt.wroteInstead != nil {
-            return .unavailable(reason: "Your strap is on the routine time, on purpose. See the note above.")
+            // **Self contained, and describing what the strap will actually do.**
+            //
+            // This said "Your strap is on the routine time, on purpose. See the note above." Two
+            // problems, both visible in Alex's screenshot on 19 August. It was written before the
+            // silencing landed, so it described the old behaviour: the strap is not on the routine
+            // time that morning, it is switched **off**. And "see the note above" pointed at a
+            // sentence the row does not render, so the only line he could read was the one that did
+            // not say what happens.
+            //
+            // A row that defers to text he cannot see is the same defect as a row that says nothing.
+            return .byDesign("Your strap is switched off for that one morning, so it will not buzz early. It comes back on by itself the next time you press Set all alarms.")
         }
         return .confirmed(at: target.nextOccurrence)
     }

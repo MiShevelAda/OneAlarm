@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "20 Aug, 01:05 · the Whoop card stops claiming your days are gone"
+    static let marker = "20 Aug, 01:40 · the strap row is green when it worked"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Your Whoop card said Switched off, and no days set, directly above a dump listing Monday to Friday. The days are fine. It now says only what is actually true. Press Set all alarms once and send me the Whoop row: it will name which request shape Whoop accepted."
+    static let whatIsNew = "The Whoop row said Could not confirm in yellow for something that worked exactly as designed, and pointed you at a note the row does not show. It is now green and says the whole thing: your strap is off for that one morning so it cannot buzz early, and it comes back on next sync."
 }

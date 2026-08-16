@@ -148,6 +148,16 @@ enum Verification: Equatable, Sendable {
     case mismatch(expected: Date, actual: Date)
     /// The write succeeded but the leg offers nothing to read back against.
     case unavailable(reason: String)
+    /// The leg deliberately did something other than the target, and it worked.
+    ///
+    /// **Not the same thing as `unavailable`, which is where this used to land.** That case renders
+    /// as *"Written. Could not confirm: ..."* in yellow, which is right for a leg that cannot be read
+    /// back and wrong for one that did exactly what it meant to. On 19 August Alex's Whoop row
+    /// carried a warning colour and the words "could not confirm" for a strap that had been switched
+    /// off for one morning entirely on purpose, and read back to prove it.
+    ///
+    /// A warning that fires on a correct outcome is how somebody learns to scroll past warnings.
+    case byDesign(String)
 
     var isConfirmed: Bool {
         if case .confirmed = self { return true }

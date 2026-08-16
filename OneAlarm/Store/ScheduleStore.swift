@@ -825,6 +825,16 @@ final class ScheduleStore {
                     head += " " + receipt.highlights.joined(separator: " ")
                 }
                 status[target.device] = .warning("\(head) Could not confirm: \(reason)")
+
+            case .byDesign(let what):
+                // Green, because it worked. The sentence carries the whole explanation, so this
+                // never defers to a note the row does not render.
+                highlights[target.device] = receipt.highlights
+                var head = receipt.isPartial ? (receipt.note ?? "") : ""
+                if !receipt.highlights.isEmpty {
+                    head += (head.isEmpty ? "" : " ") + receipt.highlights.joined(separator: " ")
+                }
+                status[target.device] = .done(head.isEmpty ? what : "\(head) \(what)")
             }
         } catch let error as AdapterError {
             status[target.device] = .failed(error.errorDescription ?? "Failed.")
