@@ -15,6 +15,22 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**Eight Sleep now follows a routine being split and merged, both ways, confirmed on his bed.**
+`[observed, 17 August 15:42 and 15:44, in his own Eight Sleep app]` He split Weekend into two
+routines and then merged them back, and the bed tracked both:
+
+| In OneAlarm | In the Eight Sleep app, minus the 10 minute lead |
+|---|---|
+| Weekdays 07:00, Sas 09:00 (Sa), Sus 10:00 (Su) | `EVERY WEEKDAY 06:50`, `EVERY SAT 08:50`, `EVERY SUN 09:50` |
+| Weekdays 07:00, Weekend 10:45 | `EVERY WEEKDAY 06:50`, `EVERY WEEKEND 10:35` |
+
+That is the whole loop, not just a time write: a routine that did not exist got an alarm created for
+it, two routines collapsing into one left a single alarm behind rather than two, and the lead was
+applied correctly on every row. His vibration setting came through on each one.
+
+**Alex's own summary:** *"in Eight Sleep, it got updated correctly. So there, it worked perfectly."*
+
+
 **OneAlarm must be able to delete, and the no-delete rule is overruled.** `[Alex, 17 August]`
 *"the one alarm app should be able to delete alarms if there are changes because right now for
 whatever reason I had three alarms in my sleep app and I had to delete all the alarms in the eight
