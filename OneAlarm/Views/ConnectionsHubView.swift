@@ -780,9 +780,12 @@ struct AlarmPickerScreen: View {
             QuietButton(title: "Leave it as it is", action: onBack)
         }
         .onAppear {
-            // Pre-select whatever was chosen before, so re-opening this is a confirmation rather
-            // than a fresh decision.
-            selected = RemoteAlarmSelection.selected(for: device)
+            // Only when the account holds one alarm, or when a choice was already made. Otherwise
+            // a highlighted row is a recommendation the app cannot justify, and it turns a fresh
+            // decision into the confirmation of a guess.
+            selected = choices.count == 1
+                ? choices.first?.id
+                : RemoteAlarmSelection.selected(for: device)
         }
     }
 }

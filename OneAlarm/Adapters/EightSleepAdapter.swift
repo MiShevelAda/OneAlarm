@@ -489,8 +489,10 @@ actor EightSleepAdapter: DeviceAdapter {
         // Which alarm was moved is worth saying out loud when there is more than one, because the
         // choice is the server's list order and nothing else.
         let previous = (existing["time"] as? String) ?? "an existing alarm"
+        // Named rather than positional. It said "the first of 3" while moving the chosen one, which
+        // is the class of sentence that gets believed later and is wrong at the worst moment.
         let note = alarms.count > 1
-            ? "Moved the first of \(alarms.count) alarms, previously \(previous)."
+            ? "Moved your chosen alarm of \(alarms.count), previously \(previous)."
             : "Updated the existing alarm, previously \(previous)."
 
         return WriteReceipt(
