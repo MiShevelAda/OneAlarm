@@ -55,6 +55,12 @@ had to be rephrased rather than answered.
 
 ## 2. Method: what did not work
 
+**Trusting a single source for a payload shape.** `[observed, three times]` The Whoop field names,
+the Whoop read shape, and on 16 August the Eight Sleep routine payload, where `dayOffset` was read as
+the number `0` off one capture and is a string enum, `"Zero"`, in both implementations that spell it.
+Each time the cost was hours and the fix was ten minutes of looking for a second source. **Two
+sources, or it is not a capture.**
+
 **Trusting a write-up that claimed to be a capture.** `[observed, twice]` The reference project
 described its PUT body as a captured request. Its field names were right and its read shape was
 wrong, and both were believed at the wrong times. Cost: five hours.

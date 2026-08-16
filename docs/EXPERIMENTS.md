@@ -452,6 +452,36 @@ his app shows rather than what the alarm's `repeat.weekDays` says.
 **Whose.** Alex, one screenshot of that panel. Then the build, against his shape.
 
 
+---
+
+## E18 ✅ `dayOffset` is a string enum, and the first payload had it as a number
+
+**Found before the test rather than by it**, which is the only entry in this file that can say so.
+
+The routine `alarmsToCreate` shape was built from **one** public capture. A search for a second
+implementation found `blacktop/clim8`, which spells the same request independently. They agree, and
+they disagree with what this app was about to send:
+
+| Field | Both sources | What OneAlarm had |
+|---|---|---|
+| `timeWithOffset.dayOffset` | `"Zero"`, a string | `0`, an integer |
+| `bedtime.dayOffset` | `"MinusOne"` | echoed, so correct by accident |
+| `dismissedUntil` | `"1970-01-01T00:00:00Z"` | absent |
+| `snoozedUntil` | `"1970-01-01T00:00:00Z"` | absent |
+
+**Why it matters more than it looks.** A type error in one field comes back as a bare 400 with an
+empty body, which is indistinguishable from a wrong endpoint, a wrong version or a wrong object. That
+is exactly the failure shape that has consumed this evening, and it would have been blamed on the
+routines endpoint rather than on one integer.
+
+**The rule this proves again.** Two sources, or it is not a capture. This project has now been burned
+three times by a single write-up: the Whoop field names, the Whoop read shape, and this. The cost
+each time was hours, and the fix each time was ten minutes of looking for a second implementation.
+
+**Whose.** Fixed in the build, with a test asserting the string and asserting it is not an integer.
+Still needs one real run to confirm the server agrees with both sources.
+
+
 ## Completed
 
 | | Question | Answer | Date |

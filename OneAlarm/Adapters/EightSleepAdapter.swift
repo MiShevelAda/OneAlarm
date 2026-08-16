@@ -1410,11 +1410,22 @@ actor EightSleepAdapter: DeviceAdapter {
         return [
             "enabled": true,
             "disabledIndividually": false,
-            // Annotated on purpose. A nested literal mixing a String and an Int is a hard error in
-            // Swift, "heterogeneous collection literal could only be inferred to [String : Any]",
-            // not a warning, and there is no compiler in the session that would have caught it.
-            "timeWithOffset": ["time": time.hhmmss, "dayOffset": 0] as [String: Any],
+            // `dayOffset` is a **string enum**, not a number.
+            //
+            // The first version of this sent `0`, taken from one public capture read too quickly. A
+            // second independent implementation settles it: both spell it `"MinusOne"` for a bedtime
+            // and `"Zero"` for an alarm. An integer here is the kind of type error that comes back
+            // as a bare 400 with an empty body, which is precisely the failure that has been eating
+            // this evening, and it would have been blamed on the endpoint rather than the payload.
+            //
+            // The annotation is separate and also required: a nested literal mixing a String and an
+            // Int is a hard Swift error, not a warning.
+            "timeWithOffset": ["time": time.hhmmss, "dayOffset": "Zero"] as [String: Any],
             "settings": settings,
+            // Both sources send these, both as the epoch. Absent, they are two fields the server
+            // expects and does not get, and this API replaces rather than merges.
+            "dismissedUntil": "1970-01-01T00:00:00Z",
+            "snoozedUntil": "1970-01-01T00:00:00Z",
         ]
     }
 

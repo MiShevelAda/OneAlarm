@@ -216,6 +216,22 @@ final class EightSleepWritePathTests: XCTestCase {
         let timeWithOffset = pending[0]["timeWithOffset"] as? [String: Any]
         XCTAssertEqual(timeWithOffset?["time"] as? String, "08:50:00")
 
+        // `dayOffset` is a string enum, not a number. The first version of this payload sent `0`,
+        // read too quickly off one public capture; two independent implementations spell it
+        // `"Zero"`. An integer here comes back as a bare 400 and gets blamed on the endpoint.
+        XCTAssertEqual(timeWithOffset?["dayOffset"] as? String, "Zero")
+        XCTAssertNil(timeWithOffset?["dayOffset"] as? Int)
+
+        // Both sources send these as the epoch. This API replaces rather than merges, so a field
+        // the server expects and does not get is a field it loses.
+        XCTAssertEqual(pending[0]["dismissedUntil"] as? String, "1970-01-01T00:00:00Z")
+        XCTAssertEqual(pending[0]["snoozedUntil"] as? String, "1970-01-01T00:00:00Z")
+
+        // His vibration and thermal, copied from a real alarm rather than composed.
+        let settings = pending[0]["settings"] as? [String: Any]
+        let vibration = settings?["vibration"] as? [String: Any]
+        XCTAssertEqual(vibration?["powerLevel"] as? Int, 50)
+
         XCTAssertFalse(
             StubServer.calls.contains { $0.method == "POST" },
             "a standalone POST creates an alarm belonging to no routine, which is the bug"
