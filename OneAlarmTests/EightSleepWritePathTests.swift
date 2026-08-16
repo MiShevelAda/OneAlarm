@@ -1484,6 +1484,34 @@ final class EightSleepWritePathTests: XCTestCase {
         )
     }
 
+    /// The receipt names which rung of the create ladder was accepted.
+    ///
+    /// **The single most valuable fact the first run on hardware can produce.** The ladder used to
+    /// record only its refusals, so a create that worked said "added a one time alarm" and nothing
+    /// about how. One-shot and single-day-repeating have different consequences: the first may clear
+    /// itself, the second definitely needs deleting. Not knowing which is on the bed means not
+    /// knowing whether the cleanup matters at all.
+    func testTheReceiptNamesWhichCreateRungLanded() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["id": "oneoff-1"] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20)],
+                              skipsNextMorning: false)
+        )
+
+        XCTAssertTrue(receipt.note.contains("one-shot, no repeat"),
+                      "the first rung is what the v1 stub accepts, and the row has to say so: \(receipt.note)")
+    }
+
     // MARK: The baseline diff, which answers E23 without anybody reading a dump
 
     /// A field that appears between two reads is named, which is the whole point.

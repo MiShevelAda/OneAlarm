@@ -2078,6 +2078,17 @@ actor EightSleepAdapter: DeviceAdapter {
                     }
                     var outcome: CreateOutcome = .refused("not attempted")
                     var attempts: [String] = []
+                    // **Which rung landed, reported on success as well as on failure.**
+                    //
+                    // The ladder recorded only its refusals, so a create that worked said "added a
+                    // one time alarm" and nothing about how. That throws away the single most
+                    // valuable fact the first run can produce: whether Eight Sleep's own one-shot
+                    // was accepted, or whether it fell back to the single day repeating alarm.
+                    //
+                    // Those two have different consequences. A one-shot may clear itself; the
+                    // fallback definitely needs deleting. Not knowing which is on the bed means not
+                    // knowing whether the cleanup matters, which is the release-blocking question.
+                    var acceptedRung: String?
                     outer: for variant in Self.oneOffVariants(template, day: bend.weekday, time: bentTime) {
                         for version in Self.createPaths {
                             outcome = try await postAlarm(variant.payload, version: version,
@@ -2086,6 +2097,7 @@ actor EightSleepAdapter: DeviceAdapter {
                                 attempts.append("\(version) \(variant.name): \(why)")
                                 continue
                             }
+                            acceptedRung = "\(variant.name) on \(version)"
                             break outer
                         }
                     }
@@ -2094,7 +2106,7 @@ actor EightSleepAdapter: DeviceAdapter {
                         overrideAlarmID = newID
                         RemoteAlarmLink.link(routine: key, to: newID, on: .eightSleep)
                         RemoteAlarmLink.markCreated(newID, on: .eightSleep)
-                        oneOffNotes.append("Added a one time \(when) alarm to your bed for \(entry.routineName), and it goes away by itself after that morning.")
+                        oneOffNotes.append("Added a one time \(when) alarm to your bed for \(entry.routineName) using \(acceptedRung ?? "the create"), and it goes away by itself after that morning.")
                     case .createdUnknownID:
                         // **The alarm is real and its id is not in the response, so go and find it.**
                         //
@@ -2116,7 +2128,7 @@ actor EightSleepAdapter: DeviceAdapter {
                             overrideAlarmID = newID
                             RemoteAlarmLink.link(routine: key, to: newID, on: .eightSleep)
                             RemoteAlarmLink.markCreated(newID, on: .eightSleep)
-                            oneOffNotes.append("Added a one time \(when) alarm to your bed for \(entry.routineName), and it goes away by itself after that morning.")
+                            oneOffNotes.append("Added a one time \(when) alarm to your bed for \(entry.routineName) using \(acceptedRung ?? "the create"), and it goes away by itself after that morning.")
                         } else {
                             // Named rather than swallowed, because this is now the only path that
                             // leaves him something to tidy by hand, and he is the only one who can
