@@ -1,10 +1,14 @@
 # Status
 
-Updated 2026-08-16, after the first night of real use.
+Updated 2026-08-17. **All three legs are confirmed at the layer Alex sees.**
 
 ## Where this is
 
-The app is installed on Alex's iPhone and rings. One leg of three is confirmed at the layer he sees.
+Alex, 2026-08-17, closing the Eight Sleep work: *"Ok eightsleep is save remember the changes and
+write them down as working."*
+
+The app is installed on his iPhone and rings, his bed carries both his routines, and his strap
+follows. This is the first day that sentence has been true.
 
 | Leg | State | How it was verified |
 |---|---|---|
@@ -17,12 +21,26 @@ of them was not.** It was written on the morning of 16 August and was already co
 table by that evening. Kept as a correction rather than a silent edit, because a status file that
 overstates is worse than none: it is the thing you read to decide whether to go looking.
 
-The evening of 16 August is a further step back. Everything written after 18:00, the routine
-ownership model, the routine write and the create, is **committed and never executed**. There is no
-Swift toolchain in the session environment and `download.swift.org`, `github.com` releases and
-`objects.githubusercontent.com` are all refused by the proxy, checked rather than assumed. Four
-defects were found by hand and by grep in that code, two of them compile errors, which is a good
-argument for how much is likely still in there.
+**What is settled, and it is not to be reopened without evidence.** The Eight Sleep write is done.
+An alarm OneAlarm creates appears in the Eight Sleep app, with his own temperature and vibration on
+it. The cause of the fortnight before that is `E14`: `clone` copied the template's `tags`, which
+carried `oneOff-napMode`, and their app does not list nap timers under Alarms. **`clone` must never
+copy `tags` again.** `testACreatedAlarmCarriesNoTags` fails if it does.
+
+Three things are still true and none of them is the Eight Sleep write:
+
+1. **Two hidden alarms remain on his account**, at `05:55` weekdays and `09:56` Sa Su, both enabled,
+   both ringing, both invisible in the Eight Sleep app so he cannot switch them off there. OneAlarm
+   made them before the fix and leaves them alone. Switching them off is offered and **awaiting his
+   yes**, because it writes to his bed.
+2. **The routine read and write are committed and unexecuted.** His account has no routines, so
+   nothing reaches that code. It is correct for an account that has them and is not the mechanism for
+   anything today. See `E17`.
+3. **Nothing in this repo has been compiled by a session.** There is no Swift toolchain in the
+   session environment and `download.swift.org`, `github.com` releases and
+   `objects.githubusercontent.com` are all refused by the proxy, checked rather than assumed. Six
+   distinct classes of error have now shipped that a parse cannot catch. Two of them, argument order
+   and a type declared twice, are checked by `tools/check_arg_order.js` as of today.
 
 ## What the app actually does today
 

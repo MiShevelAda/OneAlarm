@@ -15,7 +15,11 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
-**The Eight Sleep leg works, and the cause of two weeks of failure was one copied field.**
+**The Eight Sleep leg works. Settled by Alex, 17 August:** *"Ok eightsleep is save remember the
+changes and write them down as working."* Not to be reopened without evidence, and the one line that
+must never come back is `clone` copying `tags`. `testACreatedAlarmCarriesNoTags` fails if it does.
+
+**The cause of two weeks of failure was one copied field.**
 `[observed, 17 August 14:21, in his own Eight Sleep app]` His app now lists `EVERY WEEKDAY 05:51` and
 `EVERY WEEKEND 09:55`. The weekend alarm is the first one OneAlarm has ever created that he can see.
 
