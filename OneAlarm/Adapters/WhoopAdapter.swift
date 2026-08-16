@@ -380,7 +380,13 @@ actor WhoopAdapter: DeviceAdapter {
                 id: id,
                 time: time,
                 weekdays: days,
-                isEnabled: (schedule["alarm_on"] as? Bool) ?? true,
+                // **`as? Bool` was wrong here and this file already knew it.** A note two hundred
+                // lines below says *"This envelope already returns alarm_on as 1 rather than true, so
+                // a `as? Bool` cast fails"*, and `isFalse` exists for exactly that. The cast returned
+                // nil for `alarm_on = 0`, fell through to `?? true`, and reported a switched off
+                // schedule as on. Same object, two readers, two answers: the picker used `isFalse`
+                // and said "switched off" while this said it was fine.
+                isEnabled: !Self.isFalse(schedule["alarm_on"] ?? true),
                 detail: mode,
                 rawKeys: Self.describe(schedule)
             )
@@ -1667,6 +1673,16 @@ actor WhoopAdapter: DeviceAdapter {
             let wanted = Self.instant(matching: expected, offset: echoedOffset, near: target.nextOccurrence)
             return .mismatch(expected: wanted ?? target.nextOccurrence, actual: actual ?? target.nextOccurrence)
         }
+        // **An alarm at the right time with its switch off is not a confirmed alarm.**
+        //
+        // From Alex's strap, 19 August. His schedule read `MON TUE WED THU FRI 08:50 ALARM OFF`,
+        // which is the correct time and a silent wrist. This checked only `latest_wake_time`, so it
+        // would have reported that as moved and done. The whole point of reading back is to catch a
+        // morning that will not happen, and a switch is as capable of costing him one as a time is.
+        if Self.isFalse(updated["alarm_on"] ?? true) {
+            return .byDesign("Whoop has this schedule at \(echoed.hhmm), which is right, but its alarm is switched off so your wrist will not buzz. Turn the alarm on for that schedule in the Whoop app.")
+        }
+
         // A refusal that landed exactly as intended is `unavailable`, not `confirmed`. Green next to
         // a time he did not ask for would be its own small lie, and the note above says why the
         // strap is where it is.

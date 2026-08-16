@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "20 Aug, 02:10 · a small or earlier change keeps your strap on"
+    static let marker = "20 Aug, 02:45 · the row tells you when your wrist will not buzz"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "You were right that switching the strap off for a plus fifteen nudge is wrong. It now only switches off when leaving it alone would wake you EARLY. Moving a morning earlier, or a small nudge, keeps the strap on: it buzzes at its usual time, which is after you are already up."
+    static let whatIsNew = "OneAlarm checked only the time on your strap and never the on switch, so it called ALARM OFF a success. It now says plainly when the schedule is at the right time but switched off, and what to tap. If it stays off after a Set all alarms with no one time change, tell me: that means the app cannot switch it back on and the whole switch off feature has to go."
 }

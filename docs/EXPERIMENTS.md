@@ -1139,6 +1139,35 @@ no raw block at all.
 
 
 
+## E30 🔴 Can OneAlarm switch a Whoop schedule back **on**? **Silencing depends on it.**
+
+**Raised by Alex's strap on 19 August, and it makes the silencing feature conditional.** His schedule
+read `MON TUE WED THU FRI 08:50 ALARM OFF` after a run that should have restored it. The time is
+right, so a write landed. The switch did not come back.
+
+**What has actually been confirmed on this endpoint is narrower than it looked.** The captured,
+working `PUT /schedule/{id}` changed a **time** on a schedule that was **already on**. Nobody has ever
+observed `enabled: true` turning a schedule from off to on, here or in any public source. The write
+body uses `enabled` while the read returns `alarm_on`, and this leg has already lost five hours to
+exactly that kind of vocabulary split.
+
+| Outcome | Reading | What follows |
+|---|---|---|
+| it comes back on | `enabled` is the switch, both ways | silencing is safe and stays |
+| time changes, switch does not | `enabled` is accepted and ignored, or only ever turns things **off** | **silencing is a one way door and must go**, because it would cost him the strap until he noticed by hand |
+| the write is refused outright | the schedule cannot be written while off | same conclusion, and worse |
+
+**Why this outranks `E29`.** `E29` would make one time changes nicer. This decides whether a feature
+already shipped is safe. A door that only opens one way, on the leg that silently stops working, is
+the shape of every missed morning this project has caused.
+
+**Interim, shipped 20 August rather than waiting.** Verification now reads `alarm_on` back and says
+plainly that the wrist will not buzz, with the one tap needed to fix it. Until this experiment
+answers, **the strap being off is a thing OneAlarm tells him about rather than a thing it can fix.**
+
+**Whose:** one press of Set all alarms on a run with no override in force, then a look at the Whoop
+app. If it is still off, the answer is negative and the silencing comes out.
+
 ## E29 🔴 Does `strap-status` move the next firing on its own? **Blocked on Alex's ruling.**
 
 **Not scheduled, not coded, and not to be called until he says so.** `CLAUDE.md` bans the whole
