@@ -358,7 +358,52 @@ by hand there, because OneAlarm has no delete and is not getting one.
 
 ---
 
-## E15 🟠 Are some alarms on this account invisible in the Eight Sleep app?
+## E15 ✅ Yes, and the difference is `tags`, but not the tag anyone predicted
+
+**Answered 17 August, 12:10, from Alex's own account.** The first hard data this project has had about
+why an alarm exists on the API and not in his app. It confirms E15's prediction and **refutes the
+mechanism E14 and E17 were built on.**
+
+What his bed returns, against what his app lists:
+
+| time | days | `tags` | in the Eight Sleep app |
+|---|---|---|---|
+| 06:55 | weekdays | `()` **empty** | **yes** |
+| 10:55 | Sa Su | `("temporary-mode", "oneOff-napMode")` | no |
+| 06:55 | weekdays | `("temporary-mode", "oneOff-napMode")` | no |
+
+Three alarms on the API, one in the app. So E15's prediction holds: invisible alarms exist and the
+difference is in `tags`.
+
+**But it runs the opposite way from the theory.** E14 and E17 both assume `tags` carries a
+`routine-<uuid>` and that routine membership is what makes an alarm visible. **Not one alarm on this
+account carries a routine tag**, and the alarm that IS visible is the one with no tags at all. If
+routine membership were the qualification, the visible alarm would be the tagged one. It is the
+reverse.
+
+**What the data supports instead.** The two hidden alarms are tagged `oneOff-napMode` and
+`temporary-mode`. `docs/RESEARCH.md` §1.5 documents `POST /v1/users/{id}/alarms` under the heading
+"Create a one-off". That is the endpoint OneAlarm used to create both of them. So the most economical
+reading is that **the create endpoint produces one-off nap alarms, and their app deliberately does not
+list nap timers among alarms.** The create was never refused and never silently failed. It did
+exactly what that endpoint does, and that turns out not to be the thing wanted.
+
+It also explains the duplicate: a second 06:55 weekday alarm is an earlier clone of his real one,
+made the same way, hidden the same way.
+
+**What this does not tell us**, and the honest limit of it: it does not say how their app creates a
+**recurring** alarm, and it does not say whether this account has routines at all. The routines panel
+has still never been opened. Until it is, the routine write in `authorRoutine` is aimed at an object
+nobody has confirmed exists here.
+
+**Consequence to fix, and it is a harm this app caused.** Those two alarms cannot be seen in the Eight
+Sleep app, so Alex cannot delete them there, and OneAlarm has no delete on any service by design. The
+account is capped at 8. Every further create through this endpoint adds another one he cannot see or
+remove. **The create path must not run again until the routines question is answered.**
+
+---
+
+## E15-old 🟠 Are some alarms on this account invisible in the Eight Sleep app?
 
 **Why.** On 16 Aug at 11:51 OneAlarm read a Monday to Friday alarm at 08:55 off the API. At 11:52 the
 Eight Sleep app showed **no alarms at all**, only a greyed suggestion at 07:00. Then Alex created a
