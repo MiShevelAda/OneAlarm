@@ -9,7 +9,7 @@ The app is installed on Alex's iPhone and rings. One leg of three is confirmed a
 | Leg | State | How it was verified |
 |---|---|---|
 | iPhone | **working** | rang through Silent, through Focus, phone locked and face down |
-| Eight Sleep | **unconfirmed at the layer he sees** | written and read back at the API, absolute instant compared. Never once confirmed in the Eight Sleep app, and on 16 Aug he reported it not showing there. See `E13` and `E17` |
+| Eight Sleep | **works, confirmed in his own app 17 Aug 14:21** | his Eight Sleep app now lists `EVERY WEEKDAY 05:51` and `EVERY WEEKEND 09:55`, both created or moved by OneAlarm. The weekend one is the first alarm this app has ever made that he can actually see. Cause of the two weeks before it: `E14` |
 | Whoop | **working** | written, and the new time confirmed in the Whoop app |
 
 **This header used to say "It works. All three legs were verified", directly above a table saying one
@@ -38,6 +38,12 @@ decision of what to hold and what to cancel is `AlarmKitReconciler`, which is pu
 tests; `AlarmManager.shared` is an Apple singleton with no seam, so the adapter is a shell that
 schedules what it is told. A bend still arms one weekday and stands the routines down, because
 AlarmKit offers `.never` and `.weekly` and nothing between.
+
+> **17 August: this section's premise is wrong for his account and is kept because the code it
+> describes is still correct for an account that has routines.** His returns none:
+> `GET /v2/users/{id}/routines` answers 200 with an empty list. Their app was never hiding his alarms
+> because of routines. It was hiding them because OneAlarm copied a `oneOff-napMode` tag onto every
+> alarm it created. One line removed, and both alarms are now visible in his app. `E14` and `E17`.
 
 **OneAlarm writes Eight Sleep routines, not just alarms** as of 16 August, evening. Their app models
 alarms **inside** routines, and the routine carries the `days`. So a OneAlarm routine now drives both:

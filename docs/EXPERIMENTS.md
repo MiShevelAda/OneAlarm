@@ -332,7 +332,21 @@ a capture.
 
 ---
 
-## E14 ✅ No, and carrying the tag is what hid it. Answered 17 August, prediction inverted.
+## E14 ✅ No, and carrying the tag is what hid it. **Fix confirmed on his bed, 17 Aug 14:21.**
+
+> **CONFIRMED IN HIS OWN APP.** After `clone` stopped copying `tags`, the Eight Sleep app lists:
+>
+> ```
+> EVERY WEEKDAY   05:51    36C  Heavy
+> EVERY WEEKEND   09:55    36C  Heavy
+> ```
+>
+> The weekend alarm is the first alarm OneAlarm has ever created that Alex can see. His temperature
+> and vibration came across untouched, which is the other half of the result: stripping `tags` did not
+> cost him any setting he chose.
+>
+> This is the layer that counts. Two weeks of green rows, matching read-backs and verified absolute
+> instants never once meant the feature worked.
 
 **The answer, from Alex's own bed.** No alarm on his account carries a `routine-` tag **now**. One did
 on 16 August, printed in the E3 follow-up above as

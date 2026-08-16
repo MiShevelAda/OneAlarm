@@ -15,6 +15,38 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**The Eight Sleep leg works, and the cause of two weeks of failure was one copied field.**
+`[observed, 17 August 14:21, in his own Eight Sleep app]` His app now lists `EVERY WEEKDAY 05:51` and
+`EVERY WEEKEND 09:55`. The weekend alarm is the first one OneAlarm has ever created that he can see.
+
+The chain of wrong explanations is worth keeping, because each was reasonable and each was wrong:
+
+1. *"It only moves alarms that exist, and he has no weekend alarm."* True, and fixed by adding a
+   create. The create worked. Nothing appeared.
+2. *"The create is being refused."* It was not. It returned success every time.
+3. *"Their app renders alarms through routines, so an alarm in no routine is invisible."* Built a
+   whole routine read and write on this. His account has **no routines at all**.
+4. The actual cause: `clone` copied the template's `tags`, which carried `temporary-mode` and
+   `oneOff-napMode`. Their app does not list nap timers under Alarms. Every alarm OneAlarm created
+   was marked a nap timer at birth, and each new clone inherited the mark from the last.
+
+**One line removed it.** `payload.removeValue(forKey: "tags")`.
+
+Three lessons, and the third is the one that would have saved the fortnight:
+
+- **Never infer presence from an object you did not look at, either.** The rule already ran the other
+  way, do not infer absence. The `routine-<uuid>` that theory 3 rested on came from a stranger's
+  capture. One read of his own account settled it in ten seconds.
+- **"Echo what you do not understand" has a limit, and the limit is fields the server owns.**
+  Echoing unknown fields is right for an **update**, where dropping one destroys a setting of his. On
+  a **create** it copies bookkeeping that describes the old object, not the new one. `tags` was never
+  a setting Alex chose. Vibration, thermal and audio are, and they are still echoed untouched.
+- **The layer he sees is the only layer that counts.** The write returned 200, the read-back matched
+  the exact instant, and the row was green, for two weeks, while his app showed nothing. Every one of
+  those checks was true and the feature did not work. `CLAUDE.md` already says a 200 is not a moved
+  alarm; this says the same about a verified read-back.
+
+
 **Extracting an inline `let` into a function can break the build, because the annotation loses its
 inference.** `[observed]` 17 August. `AlarmManager.AlarmConfiguration` is generic over
 `Metadata: AlarmMetadata`. As a `let` inside `write`, Swift inferred `Metadata` from the `attributes`
