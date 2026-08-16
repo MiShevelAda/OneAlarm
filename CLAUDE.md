@@ -65,6 +65,11 @@ finished.
   he set the line himself: *"only the modifications of temperature, vibration etc should be done in
   the respective app."* OneAlarm authors exactly three fields on an alarm it owns: `time`,
   `repeat.weekDays`, `enabled`.
+- Author a routine's `bedtime`, or any routine field other than `days` and `enabled`. When he goes to
+  bed is not an alarm setting. The routine object is read, two fields are replaced, and the whole
+  rest of it is sent back exactly as it came, unknown fields included.
+- Open a routine OneAlarm has no relationship with. Only a routine that owns an alarm a OneAlarm
+  routine owns is ever written to.
 - Write anything at all to an alarm OneAlarm does not own. Ownership means a `RemoteAlarmLink` entry
   or an exact day set adoption recorded in the same run. Writing days to an unowned alarm is what
   turned a real Monday to Friday schedule into every day.

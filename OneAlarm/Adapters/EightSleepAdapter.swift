@@ -86,6 +86,11 @@ actor EightSleepAdapter: DeviceAdapter {
         // has ever been read, and composing a write against a shape taken from somebody else's
         // capture is the mistake that cost five hours on Whoop. Read first, print it, then write.
         #"^GET https://app-api\.8slp\.net/v2/users/[^/]+/routines$"#,
+        // The routine write. Read modify write, exactly like the alarm write, and for exactly the
+        // same reason: the shape is only partly understood, so the object the server sent comes back
+        // untouched apart from the two fields OneAlarm owns. `bedtime` in particular is his and is
+        // never authored. See `authorRoutine`.
+        #"^PUT https://app-api\.8slp\.net/v2/users/[^/]+/routines/[^/]+$"#,
         #"^GET https://client-api\.8slp\.net/v1/users/me$"#,
         #"^GET https://app-api\.8slp\.net/v1/household/users/[^/]+/summary$"#,
     ])
@@ -859,6 +864,10 @@ actor EightSleepAdapter: DeviceAdapter {
             guard let template = Self.template(from: alarms) else {
                 throw AdapterError.noAlarmToUpdate
             }
+            // Fetched once, before the loop. A create needs to know whether a routine on his bed
+            // already covers these days, because adding the alarm there is the difference between
+            // an alarm he can see and one only the API knows about.
+            let existingRoutines = (try? await fetchRoutines()) ?? []
             for entry in entries where report.routinesWithNoAlarm.contains(entry.routineName) {
                 guard !entry.weekdays.isEmpty, entry.isOn else { continue }
                 guard alarms.count + created.count < Self.alarmCeiling else {
@@ -871,6 +880,34 @@ actor EightSleepAdapter: DeviceAdapter {
                 // problem instead of producing another "it still does not create them".
                 var outcome: CreateOutcome = .refused("not attempted")
                 var attempts: [String] = []
+
+                // First, the routine the alarm should live in.
+                //
+                // A standalone POST creates an alarm that belongs to no routine, and their app
+                // renders alarms through routines, so it exists on the API and shows up nowhere.
+                // That is the best explanation of what Alex has been reporting for two rounds: the
+                // account returned a Monday to Friday alarm at 08:55 and his app listed none.
+                //
+                // So when a routine on his bed already has these days, the new alarm is added to it
+                // through `alarmsToCreate`, which is the field their own client uses. Only when no
+                // routine matches does this fall back to the standalone POST, and it says so.
+                if let host = existingRoutines.first(where: { Self.days(of: $0) == entry.weekdays }),
+                   let hostID = Self.routineIdentifier(host) {
+                    var payload = host
+                    var pending = (payload["alarmsToCreate"] as? [[String: Any]]) ?? []
+                    pending.append(Self.newRoutineAlarm(like: template, at: entry.timeToWrite))
+                    payload["alarmsToCreate"] = pending
+                    payload["enabled"] = entry.shouldBeEnabled
+
+                    if let why = try await putRoutine(payload, id: hostID, token: token, user: user) {
+                        attempts.append("routine \(hostID.prefix(8)): \(why)")
+                    } else {
+                        attempts.append("routine \(hostID.prefix(8)): accepted")
+                        created.append(entry.routineName)
+                        createNotes.append("Added the \(entry.routineName) alarm to a routine that already runs on those days, so it shows up in the Eight Sleep app.")
+                        continue
+                    }
+                }
 
                 // Shape outer, path inner, so the **full** clone is tried on both paths before any
                 // field is dropped. If the path is the problem, that shows up in two requests and no
@@ -989,6 +1026,44 @@ actor EightSleepAdapter: DeviceAdapter {
             written.insert(pair.alarmID)
         }
 
+        // The routine each owned alarm belongs to, brought into line.
+        //
+        // This is the half that was missing, and it is the half Alex asked for by name: *"be able to
+        // also write routines inside the 8sleep app."* Their app models alarms **inside** routines,
+        // and the routine carries the `days`. Writing `repeat.weekDays` on the alarm alone may well
+        // be writing to a field their UI never reads, which would make "change Monday to Friday into
+        // Monday to Wednesday" impossible through the alarm object no matter how correct the write.
+        //
+        // Read modify write, same as everywhere else here. Two fields are replaced, `days` and
+        // `enabled`, and the entire rest of the object is echoed back, `bedtime` included: when he
+        // goes to bed is not an alarm setting and is not OneAlarm's.
+        //
+        // Only routines that own an alarm OneAlarm owns are touched. A routine with no relationship
+        // to any OneAlarm routine is never opened.
+        var routineNotes: [String] = []
+        if !plan.entries.isEmpty, !report.pairs.isEmpty {
+            let routines = (try? await fetchRoutines()) ?? []
+            for pair in report.pairs {
+                guard let alarm = alarms.first(where: { Self.alarmID($0) == pair.alarmID }),
+                      let routineID = Self.routineID(of: alarm),
+                      let routine = routines.first(where: { Self.routineIdentifier($0) == routineID })
+                else { continue }
+
+                let current = Self.days(of: routine)
+                let currentlyOn = (routine["enabled"] as? Bool) ?? true
+                // Only when it actually disagrees. A PUT that changes nothing is still a write to a
+                // live account, and this endpoint has never been exercised before today.
+                guard current != pair.weekdays || currentlyOn != pair.shouldBeEnabled else { continue }
+
+                let body = Self.authorRoutine(routine, days: pair.weekdays, enabled: pair.shouldBeEnabled)
+                if let why = try await putRoutine(body, id: routineID, token: token, user: user) {
+                    routineNotes.append("Could not update the \(pair.routineName) routine on your bed: \(why)")
+                } else {
+                    routineNotes.append("Set the \(pair.routineName) routine on your bed to \(pair.weekdays.count) days.")
+                }
+            }
+        }
+
         // A routine deleted in OneAlarm leaves a real alarm on his bed. Switching it off is the
         // other half of being the source of truth: without this, deleting a routine here changes
         // nothing there and the bed goes on waking him on a morning he removed.
@@ -1047,6 +1122,9 @@ actor EightSleepAdapter: DeviceAdapter {
             // the app never runs again, the bed keeps the bent time.
             note += " \(bent.routineName) is holding \(bent.timeToWrite.hhmm) for one morning, and goes back to \(bent.localTime.hhmm) on the next sync."
         }
+        if !routineNotes.isEmpty {
+            note += " " + routineNotes.joined(separator: " ")
+        }
         if !silenced.isEmpty {
             note += " Switched off \(silenced.joined(separator: ", ")) on your bed, because the routine that owned it is gone. It is switched off rather than deleted, so you can turn it back on in the Eight Sleep app if that was not what you wanted."
         }
@@ -1068,6 +1146,7 @@ actor EightSleepAdapter: DeviceAdapter {
             remoteID: verifiableID.flatMap { written.contains($0) ? $0 : nil },
             note: note,
             isPartial: !report.isComplete || !failures.isEmpty || !createNotes.isEmpty
+                || routineNotes.contains { $0.hasPrefix("Could not") }
         )
     }
 
@@ -1188,6 +1267,133 @@ actor EightSleepAdapter: DeviceAdapter {
             }
         }
         return lines
+    }
+
+    // MARK: Routines
+
+    /// Every routine on the account, raw.
+    ///
+    /// Their app models alarms **inside** routines, so this is the object that decides what he
+    /// actually sees. Returned as raw dictionaries for the same reason the alarms are: this adapter
+    /// writes back what it does not understand rather than dropping it.
+    func fetchRoutines() async throws -> [[String: Any]] {
+        let (token, user) = try await currentToken()
+        guard let url = URL(string: "\(Self.appHost)/v2/users/\(user)/routines") else { return [] }
+
+        let response = try await http.send("GET", url, headers: Self.baseHeaders(token: token))
+        if response.status == 403 { throw AdapterError.subscriptionRequired }
+        if response.status == 401 {
+            accessToken = nil
+            throw AdapterError.authenticationFailed("Token was rejected.")
+        }
+        guard response.isSuccess, let json = try? HTTPClient.dictionary(response.data) else { return [] }
+
+        // Two envelope shapes, because nobody has seen this account's yet and guessing one would
+        // return empty and read as "you have no routines".
+        return (json["routines"] as? [[String: Any]])
+            ?? (json["settings"] as? [String: Any])?["routines"] as? [[String: Any]]
+            ?? []
+    }
+
+    /// The routine an alarm belongs to, from its own `tags`.
+    ///
+    /// `tags` holds entries like `routine-94b49169-...`. That string has been printed in the
+    /// diagnostics since 16 August with nobody able to say what it referenced. It references this.
+    static func routineID(of alarm: [String: Any]) -> String? {
+        guard let tags = alarm["tags"] as? [Any] else { return nil }
+        for tag in tags {
+            guard let text = tag as? String, text.hasPrefix("routine-") else { continue }
+            return String(text.dropFirst("routine-".count))
+        }
+        return nil
+    }
+
+    static func routineIdentifier(_ routine: [String: Any]) -> String? {
+        for key in ["id", "routineId", "routine_id"] {
+            if let text = routine[key] as? String, !text.isEmpty { return text }
+        }
+        return nil
+    }
+
+    /// A routine's days, as their app spells them: lowercase names in a flat array.
+    static func days(of routine: [String: Any]) -> Set<Locale.Weekday> {
+        guard let days = routine["days"] as? [Any] else { return [] }
+        let names = Set(days.compactMap { ($0 as? String)?.lowercased() })
+        return Set(Locale.Weekday.displayOrder.filter { names.contains($0.eightSleepKey) })
+    }
+
+    /// Change a routine's days and its switch. Nothing else, and `bedtime` above all.
+    ///
+    /// Alex, 2026-08-16: *"OneAlarm is my one single source of truth for alarm setting... only the
+    /// modifications of temperature, vibration etc should be done in the respective app."* A
+    /// routine's **days** are alarm setting, so they are OneAlarm's. A routine's **bedtime** is not
+    /// an alarm at all, it is when he goes to bed, and it is his. It is echoed back exactly as the
+    /// server sent it, along with every other field on the object including the ones with no known
+    /// meaning.
+    ///
+    /// This is the same read modify write the alarm side uses, and it is what makes writing to an
+    /// object this project has never fully seen defensible: nothing is composed, one field is
+    /// replaced, everything else is a copy.
+    static func authorRoutine(
+        _ routine: [String: Any],
+        days: Set<Locale.Weekday>,
+        enabled: Bool
+    ) -> [String: Any] {
+        var payload = routine
+        // Flat lowercase names, matching the shape the server sends, rather than the seven named
+        // booleans an alarm uses. Two spellings of a weekday on one API, which is exactly why this
+        // is read off the object rather than assumed.
+        payload["days"] = Locale.Weekday.displayOrder
+            .filter { days.contains($0) }
+            .map(\.eightSleepKey)
+        payload["enabled"] = enabled
+        return payload
+    }
+
+    /// One entry for a routine's `alarmsToCreate`, built from an alarm he already has.
+    ///
+    /// The routine object spells an alarm differently from the alarm object: `timeWithOffset` rather
+    /// than `time`, and `settings` wrapping `vibration` and `thermal`. Two spellings on one API,
+    /// which is the whole reason this project reads before it writes.
+    ///
+    /// His vibration and thermal blocks are copied across verbatim from a real alarm rather than
+    /// composed. The reference library's create payload and its own documented read shape disagree
+    /// about those field names thirty lines apart, and the difference lands in the bed's temperature
+    /// at 6am.
+    static func newRoutineAlarm(like template: [String: Any], at time: WallClockTime) -> [String: Any] {
+        var settings: [String: Any] = [:]
+        if let vibration = template["vibration"] { settings["vibration"] = vibration }
+        if let thermal = template["thermal"] { settings["thermal"] = thermal }
+
+        return [
+            "enabled": true,
+            "disabledIndividually": false,
+            "timeWithOffset": ["time": time.hhmmss, "dayOffset": 0],
+            "settings": settings,
+        ]
+    }
+
+    /// Push a routine back. Returns nil on success, or the reason it was refused.
+    private func putRoutine(_ routine: [String: Any], id: String, token: String, user: String) async throws -> String? {
+        guard let url = URL(string: "\(Self.appHost)/v2/users/\(user)/routines/\(id)") else {
+            return "bad routine URL"
+        }
+        let response = try await http.send(
+            "PUT", url, headers: Self.baseHeaders(token: token), body: try HTTPClient.json(routine)
+        )
+        if response.status == 403 { throw AdapterError.subscriptionRequired }
+        if response.status == 429 {
+            backOff()
+            throw AdapterError.rateLimited
+        }
+        if response.status == 401 {
+            accessToken = nil
+            throw AdapterError.authenticationFailed("Token was rejected.")
+        }
+        guard response.isSuccess else {
+            return "HTTP \(response.status), \(Self.serverMessage(response.data))"
+        }
+        return nil
     }
 
     /// The seven named booleans, as a set.

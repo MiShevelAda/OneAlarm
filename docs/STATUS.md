@@ -22,6 +22,14 @@ Routines, one per day set, each with its own time. Eight Sleep is written at mas
 at master minus 5, the iPhone at master. Each row reports what happened, and the two remote legs are
 read back rather than trusted.
 
+**OneAlarm writes Eight Sleep routines, not just alarms** as of 16 August, evening. Their app models
+alarms **inside** routines, and the routine carries the `days`. So a OneAlarm routine now drives both:
+the alarm's time through `PUT /v1/users/{id}/alarms/{alarmId}`, and the routine's days and switch
+through `PUT /v2/users/{id}/routines/{routineId}`. A routine with no alarm gets one added **inside** a
+routine whose days already match, through `alarmsToCreate`, rather than as a standalone alarm that
+belongs to no routine and that their app appears never to list. His `bedtime` is read and sent back
+untouched, and a routine unrelated to any OneAlarm routine is never opened.
+
 **OneAlarm is the source of truth for the Eight Sleep schedule** as of 16 August. Each routine owns
 one alarm on the bed, recorded in `RemoteAlarmLink` rather than re-guessed from days each time.
 OneAlarm authors that alarm's `time`, its `repeat.weekDays` and its `enabled`. A routine with no

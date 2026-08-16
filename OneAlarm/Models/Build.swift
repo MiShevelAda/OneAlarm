@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "16 Aug, 20:15 · reads your Eight Sleep routines"
+    static let marker = "16 Aug, 20:55 · writes Eight Sleep routines"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Connections, Eight Sleep, \"Your Eight Sleep routines, raw\". Send me what it shows: it is the object that decides whether a new alarm ever appears in their app."
+    static let whatIsNew = "OneAlarm now writes your Eight Sleep routines, not just their alarms: the routine's days, its switch, and a new alarm added inside it so their app actually shows it. Your bedtime is never touched."
 }
