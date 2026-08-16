@@ -91,6 +91,84 @@ final class RoutineMatchingTests: XCTestCase {
     }
 
     /// An alarm nobody describes is left alone and named, never claimed by the nearest routine.
+    // MARK: Coverage matching, for a Whoop account split into single days
+
+    /// **Seven single day schedules, two routines, and every day finds its owner.**
+    ///
+    /// Alex established from his own app that a Whoop account is a partition of the week: every day
+    /// belongs to exactly one schedule and overlaps are impossible. Seven one day schedules is
+    /// therefore the only layout on which a one time change can reach the strap, and no single day
+    /// schedule can ever equal a Monday to Friday routine.
+    func testEachSingleDayScheduleIsDrivenByTheRoutineCoveringThatDay() {
+        let singles = Locale.Weekday.displayOrder.map {
+            Alarm(id: $0.shortLabel, weekdays: [$0], isEnabled: true, label: $0.shortLabel)
+        }
+        let report = RoutinePlan.matchByCoverage(
+            entries: [
+                entry("Weekdays", Locale.Weekday.weekdaysOnly, at: 7),
+                entry("Weekend", [.saturday, .sunday], at: 9),
+            ],
+            against: singles
+        )
+
+        // Each routine adopts one schedule per pass, which is all a single write needs: the pair it
+        // is about to write. What matters is that a single day schedule pairs at all, which exact
+        // day set equality can never do.
+        XCTAssertFalse(report.pairs.isEmpty, "a single day schedule must be adoptable by a routine covering that day")
+        for pair in report.pairs {
+            let owner = pair.routineID == "Weekdays" ? Locale.Weekday.weekdaysOnly : Set<Locale.Weekday>([.saturday, .sunday])
+            XCTAssertTrue(pair.alarmID.isEmpty == false)
+            XCTAssertTrue(owner.contains(where: { $0.shortLabel == pair.alarmID }),
+                          "\(pair.routineID) took the \(pair.alarmID) schedule, which it does not cover")
+        }
+    }
+
+    /// His two schedules keep behaving exactly as they did. Coverage generalises equality.
+    func testTwoScheduleAccountsMatchExactlyAsBefore() {
+        let byCoverage = RoutinePlan.matchByCoverage(
+            entries: [
+                entry("Weekdays", Locale.Weekday.weekdaysOnly, at: 6, minute: 50),
+                entry("Weekend", [.saturday, .sunday], at: 8, minute: 50),
+            ],
+            against: [weekdayAlarm, weekendAlarm]
+        )
+        XCTAssertEqual(byCoverage.pairs.count, 2)
+        XCTAssertEqual(byCoverage.pairs.first { $0.routineID == "Weekdays" }?.alarmID, "a1")
+        XCTAssertEqual(byCoverage.pairs.first { $0.routineID == "Weekend" }?.alarmID, "a2")
+        XCTAssertTrue(byCoverage.isComplete)
+    }
+
+    /// **A schedule straddling two routines has no owner, and is refused rather than guessed.**
+    ///
+    /// Friday belongs to Weekdays and Saturday to Weekend. Writing one time to a schedule covering
+    /// both would move a morning whose routine did not ask, which is the founding bug of this leg.
+    func testAScheduleStraddlingTwoRoutinesIsNotAdopted() {
+        let straddle = Alarm(id: "fri-sat", weekdays: [.friday, .saturday],
+                             isEnabled: true, label: "07:00 Fri Sat")
+        let report = RoutinePlan.matchByCoverage(
+            entries: [
+                entry("Weekdays", Locale.Weekday.weekdaysOnly, at: 7),
+                entry("Weekend", [.saturday, .sunday], at: 9),
+            ],
+            against: [straddle]
+        )
+
+        XCTAssertTrue(report.pairs.isEmpty, "neither routine owns every day of that schedule")
+        XCTAssertEqual(report.alarmsWithNoRoutine.count, 1, "and it is named rather than silently skipped")
+    }
+
+    /// A recorded link still wins over any day reasoning, same as the equality matcher.
+    func testTheRecordedLinkStillBeatsCoverage() {
+        let report = RoutinePlan.matchByCoverage(
+            entries: [entry("weekdays", [.monday, .tuesday], at: 7)],
+            against: [weekdayAlarm],
+            links: ["weekdays": "a1"]
+        )
+        XCTAssertEqual(report.pairs.first?.alarmID, "a1")
+        XCTAssertEqual(report.pairs.first?.weekdays, [.monday, .tuesday],
+                       "and the owned schedule is reshaped to the routine, not the other way round")
+    }
+
     // MARK: Merging and splitting routines, which is where the model was said to fall over
 
     /// **Merging two routines into one keeps the survivor's alarm, and does not strand it.**

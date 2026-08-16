@@ -1304,7 +1304,16 @@ actor WhoopAdapter: DeviceAdapter {
         }
 
         let links = RemoteAlarmLink.all(for: .whoop)
-        let report = RoutinePlan.match(entries: plan.entries, against: candidates, links: links)
+        // **Coverage, not equality, because a Whoop account is a partition of the week.**
+        //
+        // Alex established from his own app on 20 August: every day belongs to exactly one schedule,
+        // overlaps are impossible, and splitting is allowed. So the only layout on which a one time
+        // change can reach the strap is seven single day schedules, and no single day schedule can
+        // ever equal a Monday to Friday routine. Coverage pairs them; equality cannot.
+        //
+        // On his current two schedules this returns exactly what equality returned, because Monday to
+        // Friday is covered by the Weekdays routine and by nothing else.
+        let report = RoutinePlan.matchByCoverage(entries: plan.entries, against: candidates, links: links)
 
         // Recorded before anything is written, so from here on a routine's schedule is identified by
         // the link rather than by its days. That is what lets the days change without the routine
@@ -1347,6 +1356,8 @@ actor WhoopAdapter: DeviceAdapter {
         /// Bent routines left running at the routine time, where that time is **before** the new one
         /// and the strap will therefore wake him early. The only one of the two that costs him a
         /// morning, and the only one worth a warning.
+        /// Bent mornings that actually reached the strap, because a schedule covered exactly that day.
+        var oneOffMoved: [String] = []
         var oneOffEarly: [String] = []
         /// Bent routines left running at the routine time, where that time is after the new one and
         /// the buzz lands harmlessly once he is already up.
@@ -1375,6 +1386,37 @@ actor WhoopAdapter: DeviceAdapter {
             // A bent morning therefore leaves the strap at the routine time and **says so**, which is
             // the behaviour before 19 August 22:45, kept deliberately rather than by omission. If
             // `E30` ever answers positive, this comes back.
+            // **A bend may only be written to a schedule that covers exactly the bent morning.**
+            //
+            // This is the whole reason the seven day layout is worth anything, and the whole reason
+            // it is safe. A Whoop schedule carries one time for all its days, so writing a bent time
+            // to his Monday to Friday schedule moves five mornings: the founding bug of this leg.
+            // Writing it to a schedule whose only day is that Monday moves one.
+            //
+            // Backwards compatible without a flag or a setting. On two schedules this is never true,
+            // so nothing bends and the behaviour is exactly what it was. Split the week in his Whoop
+            // app and it starts being true, one day at a time.
+            //
+            // Set equality, not `contains`. A Saturday and Sunday schedule contains the bent Saturday
+            // and would drag Sunday with it.
+            if let entry, entry.isBent, let bent = entry.bentTo, let day = entry.overrideDay?.weekday,
+               pair.weekdays == [day] {
+                let bentRoutine = ResolvedTarget(
+                    device: .whoop,
+                    localTime: bent,
+                    weekdays: pair.weekdays,
+                    dayShift: target.dayShift,
+                    nextOccurrence: target.nextOccurrence,
+                    utcOffsetSeconds: target.utcOffsetSeconds
+                )
+                do {
+                    let result = try await putSchedule(existing, id: pair.alarmID, to: bentRoutine, token: token)
+                    oneOffMoved.append("\(entry.routineName) \(day.shortLabel) to \(bent.hhmm) via \(result.shape)")
+                } catch {
+                    failures.append("\(entry.routineName): could not move the \(day.shortLabel) schedule to \(bent.hhmm). \((error as? AdapterError)?.errorDescription ?? "refused")")
+                }
+                continue
+            }
             if let entry, entry.isBent, let bent = entry.bentTo {
                 // Fifteen minutes of grace, because the strap already sits five minutes ahead of the
                 // phone by design and a nudge that small is inside the noise of a wrist alarm.
@@ -1511,6 +1553,9 @@ actor WhoopAdapter: DeviceAdapter {
         // Nothing can be done about it on this leg, which makes saying it accurately the entire job.
         // He can switch that schedule off in Whoop's app if he wants the morning quiet, and OneAlarm
         // says so rather than pretending the problem is not there.
+        if !oneOffMoved.isEmpty {
+            note += " Your one time change reached the strap: \(oneOffMoved.joined(separator: ", ")). Only that day's schedule moved, and the next sync puts it back."
+        }
         if !oneOffEarly.isEmpty {
             note += " Careful: your strap still buzzes at its usual time on the \(oneOffEarly.joined(separator: " and ")) morning you moved, which is BEFORE your new time, so it will wake you early. A Whoop schedule has one time for all its days, so the one-off cannot go on it. Switch that schedule off in the Whoop app if you want that morning quiet."
         }

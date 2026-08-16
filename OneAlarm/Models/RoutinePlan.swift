@@ -282,4 +282,91 @@ extension RoutinePlan {
 
         return report
     }
+
+    /// Pair each remote alarm with the routine that **covers** its days, rather than one whose day
+    /// set is identical.
+    ///
+    /// **For Whoop, and specifically for the seven single day layout.** Alex established from his own
+    /// app on 20 August that a Whoop account holds a **partition of the week**: every day belongs to
+    /// exactly one schedule, no overlaps, and splitting is allowed. So an account can carry seven one
+    /// day schedules, and that is the only structure on which a one time change can reach the strap,
+    /// because moving one schedule then moves exactly one morning.
+    ///
+    /// Exact day set equality cannot pair that layout with his two routines: no single day schedule
+    /// equals Monday to Friday. Coverage can. A `MONDAY` schedule is driven by whichever routine runs
+    /// on Monday.
+    ///
+    /// **Backwards compatible by construction.** With his current two schedules, Monday to Friday is
+    /// covered by the Weekdays routine and nothing else, so this returns exactly what equality
+    /// returned. Equality is the special case where a schedule's days happen to be all of a routine's.
+    ///
+    /// **Ambiguity is refused rather than guessed.** A schedule spanning Friday and Saturday, with
+    /// Friday on one routine and Saturday on another, has no single owner. Writing one time to it
+    /// would move a morning belonging to a routine that did not ask, which is the founding bug of
+    /// this leg. It is reported unmatched, which is the honest answer and the one that leaves him
+    /// able to fix it by splitting.
+    static func matchByCoverage(
+        entries: [Entry],
+        against alarms: [CandidateAlarm],
+        links: [String: String] = [:]
+    ) -> AlarmMatchReport {
+        var report = AlarmMatchReport()
+        var claimed = Set<String>()
+
+        // The recorded link wins, exactly as in `match`. Ownership is a fact we wrote down, and
+        // re-deriving it from days is what let a changed routine strand its alarm.
+        var linked: [String: CandidateAlarm] = [:]
+        for entry in entries {
+            guard let id = links[entry.routineID],
+                  let alarm = alarms.first(where: { $0.id == id }) else { continue }
+            linked[entry.routineID] = alarm
+            claimed.insert(alarm.id)
+        }
+        for owned in links.values { claimed.insert(owned) }
+
+        for entry in entries {
+            if let alarm = linked[entry.routineID] {
+                report.pairs.append(pairing(entry, alarm, adopted: false))
+                continue
+            }
+            guard !entry.weekdays.isEmpty else { continue }
+
+            // Every day this alarm covers must belong to this routine, and to no other.
+            let hit = alarms.first { alarm in
+                !alarm.weekdays.isEmpty
+                    && !claimed.contains(alarm.id)
+                    && alarm.weekdays.isSubset(of: entry.weekdays)
+                    && entries.allSatisfy { other in
+                        other.routineID == entry.routineID
+                            || !other.isOn
+                            || alarm.weekdays.isDisjoint(with: other.weekdays)
+                    }
+            }
+            if let hit {
+                claimed.insert(hit.id)
+                report.pairs.append(pairing(entry, hit, adopted: true))
+            } else {
+                report.routinesWithNoAlarm.append(entry.routineName)
+            }
+        }
+
+        report.alarmsWithNoRoutine = alarms
+            .filter { !claimed.contains($0.id) && !$0.weekdays.isEmpty }
+            .map(\.label)
+
+        return report
+    }
+
+    /// One pairing, built the same way for both matchers so the two cannot drift apart.
+    private static func pairing(_ entry: Entry, _ alarm: CandidateAlarm, adopted: Bool) -> AlarmMatchReport.Pair {
+        AlarmMatchReport.Pair(
+            routineID: entry.routineID,
+            routineName: entry.routineName,
+            alarmID: alarm.id,
+            time: entry.timeToWrite,
+            weekdays: entry.weekdays,
+            shouldBeEnabled: entry.shouldBeEnabled,
+            isAdoption: adopted
+        )
+    }
 }
