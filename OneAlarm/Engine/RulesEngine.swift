@@ -113,13 +113,17 @@ enum RulesEngine {
         let today = CalendarDay(now, in: calendar)
         let override = schedule.override.flatMap { $0.day >= today ? $0 : nil }
 
-        // Which routine a bend displaces. Resolved by the day it falls on rather than by a stored
-        // id, because the routine's days can change between arming a bend and applying it.
-        var bentRoutineID: String?
+        // Which routine an override displaces, bend or skip. Resolved by the day it falls on rather
+        // than by a stored id, because the routine's days can change between arming one and applying
+        // it.
+        var overriddenRoutineID: String?
         if let override, let date = override.day.date(in: calendar) {
             let weekday = Locale.Weekday.from(calendarIndex: calendar.component(.weekday, from: date))
-            bentRoutineID = schedule.routine(covering: weekday)?.id
+            overriddenRoutineID = schedule.routine(covering: weekday)?.id
         }
+        // A bend is an override that names a time. A skip names none, and the two are handled
+        // separately below because only one of them arms anything.
+        let bentRoutineID: String? = override?.time == nil ? nil : overriddenRoutineID
 
         // Which weekday a skip falls on, so only the routine covering it is suppressed.
         let skippedWeekday: Locale.Weekday? = {
@@ -136,19 +140,29 @@ enum RulesEngine {
 
                 let days = Set(routine.weekdays.map { $0.shifted(by: dayShift) })
 
+                // The one morning an override touches, for **this** device, whether it is a bend or
+                // a skip.
+                //
+                // Set for both, which is why it is not called `bendDay`. A skip needs the day just as
+                // much: without it a leg can only express "this routine is suppressed" and has to
+                // stand the whole routine down, when what was asked for was one morning off. The
+                // Eight Sleep leg reads it only when there is also a time, so a skip changes nothing
+                // there.
                 var bent: WallClockTime?
-                var bendDay: RoutinePlan.BendDay?
-                if routine.id == bentRoutineID, let override, let bentTime = override.time,
-                   let date = override.day.date(in: calendar) {
-                    let bentShifted = bentTime.minutesSinceMidnight + rule.offsetMinutes
-                    bent = WallClockTime(minutesSinceMidnight: bentShifted)
+                var overrideDay: RoutinePlan.OverrideDay?
+                if routine.id == bentRoutineID || (skippedWeekday != nil && routine.id == overriddenRoutineID),
+                   let override, let date = override.day.date(in: calendar) {
                     // Shifted by this device's own lead, exactly as the routine's day set is. An
                     // override on Saturday morning for a bed that fires the night before is a
                     // Friday alarm, and writing it to Saturday would ring a day late.
                     let landed = Locale.Weekday
                         .from(calendarIndex: calendar.component(.weekday, from: date))
                         .shifted(by: dayShift)
-                    bendDay = RoutinePlan.BendDay(date: override.day, weekday: landed)
+                    overrideDay = RoutinePlan.OverrideDay(date: override.day, weekday: landed)
+                    if let bentTime = override.time {
+                        let bentShifted = bentTime.minutesSinceMidnight + rule.offsetMinutes
+                        bent = WallClockTime(minutesSinceMidnight: bentShifted)
+                    }
                 }
                 return RoutinePlan.Entry(
                     routineID: routine.id,
@@ -164,7 +178,7 @@ enum RulesEngine {
                     isSkippedNextMorning: skippedWeekday.map {
                         days.contains($0.shifted(by: dayShift))
                     } ?? false,
-                    bendDay: bendDay
+                    overrideDay: overrideDay
                 )
             }
 

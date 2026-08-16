@@ -204,7 +204,7 @@ final class EightSleepWritePathTests: XCTestCase {
     /// morning, which is precisely why this leg could only ever rewrite the routine's own alarm.
     private func bent(onDay day: Int, at hour: Int, _ minute: Int) -> RoutinePlan.Entry {
         var base = entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)
-        base.bendDay = RoutinePlan.BendDay(
+        base.overrideDay = RoutinePlan.OverrideDay(
             date: CalendarDay(year: 2027, month: 1, day: day),
             weekday: Locale.Weekday.from(
                 calendarIndex: Calendar(identifier: .gregorian).component(
@@ -217,7 +217,7 @@ final class EightSleepWritePathTests: XCTestCase {
         return RoutinePlan.Entry(
             routineID: base.routineID, routineName: base.routineName, weekdays: base.weekdays,
             localTime: base.localTime, bentTo: WallClockTime(hour: hour, minute: minute),
-            isOn: base.isOn, isSkippedNextMorning: false, bendDay: base.bendDay
+            isOn: base.isOn, isSkippedNextMorning: false, overrideDay: base.overrideDay
         )
     }
 

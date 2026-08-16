@@ -18,7 +18,7 @@ import XCTest
 /// **When it is fixed**, `testABendAcrossMidnightDoesNotShiftItsDays` is the test that must flip, and
 /// `testTheRoutinesOwnMidnightCrossingStillShifts` is the one that must not. Both are here so that
 /// whoever fixes it can tell those two apart, which is the thing a bare bug report never gives you.
-final class BendDayShiftTests: XCTestCase {
+final class OverrideDayShiftTests: XCTestCase {
 
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
@@ -125,7 +125,7 @@ final class BendDayShiftTests: XCTestCase {
         )
 
         let entry = try XCTUnwrap(plan.entries.first)
-        let bend = try XCTUnwrap(entry.bendDay, "a bend with no day is a bend nothing can write")
+        let bend = try XCTUnwrap(entry.overrideDay, "a bend with no day is a bend nothing can write")
         XCTAssertEqual(bend.date, CalendarDay(year: 2027, month: 1, day: 18))
         XCTAssertEqual(bend.weekday, .monday, "the 18th of January 2027 is a Monday")
         XCTAssertEqual(bend.linkKey(routine: "weekdays"), "oneoff:weekdays:20270118",
@@ -144,7 +144,7 @@ final class BendDayShiftTests: XCTestCase {
             now: now
         )
 
-        XCTAssertNil(try XCTUnwrap(plan.entries.first).bendDay)
+        XCTAssertNil(try XCTUnwrap(plan.entries.first).overrideDay)
     }
 
     /// An ordinary bend, nowhere near midnight, is unaffected. The control.

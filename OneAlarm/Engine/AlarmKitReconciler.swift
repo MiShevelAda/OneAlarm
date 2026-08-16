@@ -47,35 +47,12 @@ enum AlarmKitReconciler {
     ) -> Outcome {
         var outcome = Outcome()
 
-        // A bend or a skip keeps the old single-alarm behaviour, deliberately.
+        // **An empty plan keeps the old single-alarm behaviour, and only an empty plan.**
         //
-        // AlarmKit offers `.never` and `.weekly` and nothing in between, so "this Saturday and not
-        // every Saturday" cannot be expressed. The existing answer is to arm the one weekday the
-        // bend falls on, which the rules engine has already reduced `target` to. Splitting a bent
-        // routine into "its other days at the routine time, plus this day at the bent time" is
-        // expressible as two weekly alarms and is the better answer, but it is a second change to
-        // the leg that must ring, and one change at a time is the rule this project keeps relearning.
-        //
-        // A skip is the same shape: nothing is armed for that morning, and `target` already points
-        // past it.
-        // An empty plan takes the same path, and that matters more than it looks. `write(_ target:)`
-        // with no plan is the protocol's own entry point, and before 17 August it armed the target.
-        // Making it throw instead would turn "no plan supplied" into no alarm at all on the leg that
-        // exists to always ring, which is a worse bug than the one being fixed.
-        // Deliberately over-broad, and named so nobody has to rediscover why.
-        //
-        // `isBent` is true for a routine that has a bend **anywhere ahead**, not only one falling on
-        // the next morning. So bending next Saturday from a Monday puts this whole leg back into
-        // single alarm mode for the rest of the week, and the weekend routine's own alarm stands
-        // down until the sync after the bend expires.
-        //
-        // That is not a regression: it is exactly what this leg did before 17 August, for every
-        // morning rather than only these. Narrowing it needs the plan to carry whether the override
-        // lands on the **next** morning specifically, which is a third structural change to the leg
-        // that must ring, on a night that has already produced two compile errors, a create loop and
-        // an untracked-alarm leak. One change at a time, and this one is written down instead.
-        let bendArmed = plan.entries.contains(where: \.isBent) || plan.skipsNextMorning
-        if bendArmed || plan.entries.isEmpty {
+        // `write(_ target:)` with no plan is the protocol's own entry point, and before 17 August it
+        // armed the target. Making it throw would turn "no plan supplied" into no alarm at all on the
+        // leg that exists to always ring, which is a worse bug than the one being fixed.
+        if plan.entries.isEmpty {
             if !target.weekdays.isEmpty {
                 outcome.schedule = [
                     Scheduled(key: overrideKey, time: target.localTime, weekdays: target.weekdays)
@@ -85,16 +62,58 @@ enum AlarmKitReconciler {
             return outcome
         }
 
-        // The ordinary case, and the fix: one alarm per routine, so every morning the week covers
-        // has something armed for it whether or not he syncs again before then.
-        let wanted = plan.entries.filter { $0.shouldBeEnabled }
-        outcome.schedule = wanted.map {
-            Scheduled(key: $0.routineID, time: $0.timeToWrite, weekdays: $0.weekdays)
+        // **A bend used to collapse this whole leg to one alarm. It does not any more.**
+        //
+        // The old behaviour armed a single alarm for the one morning the override falls on and stood
+        // every routine down until the next sync. `isBent` is true for an override **anywhere ahead**,
+        // so bending next Saturday from a Monday left Monday to Friday with no phone alarm at all.
+        // That was written down at the time as "not a regression, it is what this leg did before 17
+        // August", which was true and is not a defence: it is a silent missed morning on the leg that
+        // exists precisely because it needs no account, no network and no server.
+        //
+        // The comment there said what was missing: the plan had to carry **which** morning the
+        // override lands on. It does now, as `Entry.overrideDay`, added for the Eight Sleep one-off.
+        // So the answer that comment called better is now the answer:
+        //
+        //   the routine, on its other days, at its own time
+        //   plus that one day, at the override's time
+        //
+        // Two weekly alarms, which AlarmKit expresses fine. A skip is the same shape with the second
+        // half left off.
+        var wanted: [Scheduled] = []
+        var overrideSlot: Scheduled?
+
+        for entry in plan.entries where entry.isOn && !entry.weekdays.isEmpty {
+            // The morning this routine has an override on, if any. Only ever one.
+            let displaced = entry.overrideDay.map { $0.weekday }
+
+            // **Belt and braces.** A skip is expressed by removing its day below, which needs the day
+            // to be known. If a skip ever arrives without one, this falls back to standing the whole
+            // routine down for the night, which is the old behaviour: too much suppressed rather than
+            // a morning he cleared going off anyway. Wrong in the safe direction, and it is the only
+            // direction worth being wrong in here.
+            if entry.isSkippedNextMorning && displaced == nil { continue }
+            let ordinaryDays = displaced.map { entry.weekdays.subtracting([$0]) } ?? entry.weekdays
+
+            // A routine reduced to nothing by its own override arms nothing. A one day routine with
+            // a bend on that day is entirely expressed by the override alarm below.
+            if !ordinaryDays.isEmpty {
+                wanted.append(Scheduled(key: entry.routineID, time: entry.localTime, weekdays: ordinaryDays))
+            }
+
+            // The bent morning, at the bent time. A skip has no time and arms nothing, which is what
+            // a skip is: the day is already missing from `ordinaryDays` above.
+            if let day = displaced, let bentTo = entry.bentTo {
+                overrideSlot = Scheduled(key: overrideKey, time: bentTo, weekdays: [day])
+            }
         }
 
-        // Anything held that no live routine claims, including the bend key once the bend has
+        outcome.schedule = wanted
+        if let overrideSlot { outcome.schedule.append(overrideSlot) }
+
+        // Anything held that nothing above claims, including the override key once the override has
         // expired. Sorted so the order is deterministic and a test can assert it.
-        let keep = Set(wanted.map(\.routineID))
+        let keep = Set(outcome.schedule.map(\.key))
         outcome.cancel = held.filter { !keep.contains($0) }.sorted()
         return outcome
     }

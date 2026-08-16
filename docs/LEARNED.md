@@ -512,6 +512,24 @@ loud direction always had a witness. The silent one had none.
 Correct and redundant still costs attention, and attention on that row is what the dangerous finding
 needs.
 
+**"Known, written down, and deliberate" is not the same as "acceptable".** `[18 August]` The phone
+leg collapsed to a single alarm whenever any routine had an override anywhere ahead, so bending next
+Saturday from a Monday left Monday to Friday with no phone alarm at all. It carried a long comment
+saying so, and a test pinning it, and both said the same thing: this is what the leg did before 17
+August, so it is a narrowing rather than a regression. That was true.
+
+It was also a silent missed morning on **the leg that exists because it needs no account, no network
+and no server**, and it survived an extra day because it was documented. A comment explaining a
+defect reads, to the next person, as a decision that has already been weighed.
+
+The comment even named the missing piece: the plan had to carry which morning the override lands on.
+That piece arrived the next day for an unrelated reason, the Eight Sleep one-off, and closing this
+was then twenty lines.
+
+**The rule:** when you write down a defect instead of fixing it, write down **what would unblock it**
+in the same breath, and check that list whenever anything new lands. Otherwise the note becomes the
+resting place rather than the queue.
+
 ## 2. Method: what did not work
 
 **Trusting a single source for a payload shape.** `[observed, three times]` The Whoop field names,

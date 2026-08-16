@@ -777,7 +777,7 @@ actor EightSleepAdapter: DeviceAdapter {
             // A morning no routine covers is a morning off, and an alarm on it is his business. It is
             // not judged here at all.
             let expected = !covering.isEmpty
-                || overrides.contains { $0.bendDay?.weekday == day && $0.bentTo != nil }
+                || overrides.contains { $0.overrideDay?.weekday == day && $0.bentTo != nil }
             guard expected else { continue }
 
             let ringing = live.contains { weekdays(of: $0).contains(day) }
@@ -1309,7 +1309,7 @@ actor EightSleepAdapter: DeviceAdapter {
         // becomes its own single day alarm. Two alarms is how Eight Sleep can express "Tuesday at
         // 09:45 and the rest of the week at 07:45", and it is the shape their own app produces.
         let entries = planned.map { $0.withoutBend() }
-        let bends = planned.filter { $0.bentTo != nil && $0.bendDay != nil }
+        let bends = planned.filter { $0.bentTo != nil && $0.overrideDay != nil }
 
         // Alarms Eight Sleep's own app hides are not candidates for anything.
         //
@@ -1653,7 +1653,7 @@ actor EightSleepAdapter: DeviceAdapter {
             let owned = RemoteAlarmLink.all(for: .eightSleep)
 
             for entry in bends {
-                guard let bend = entry.bendDay, let bentTime = entry.bentTo else { continue }
+                guard let bend = entry.overrideDay, let bentTime = entry.bentTo else { continue }
                 let key = bend.linkKey(routine: entry.routineID)
                 // Added whatever happens below. A create that failed leaves no link and no alarm, and
                 // a key with nothing behind it costs nothing; a key missing while its alarm exists
@@ -1885,7 +1885,7 @@ actor EightSleepAdapter: DeviceAdapter {
         let settled = (try? await fetchAlarms()) ?? []
         if !settled.isEmpty {
             for entry in bends {
-                guard let bend = entry.bendDay, let bentTime = entry.bentTo,
+                guard let bend = entry.overrideDay, let bentTime = entry.bentTo,
                       let pair = report.pairs.first(where: { $0.routineID == entry.routineID })
                 else { continue }
                 oneOffVerdicts.append(Self.oneOffVerdict(

@@ -13,7 +13,7 @@ follows. This is the first day that sentence has been true.
 
 | Leg | State | How it was verified |
 |---|---|---|
-| iPhone | **working** | rang through Silent, through Focus, phone locked and face down |
+| iPhone | **working**. One-off handling rebuilt 18 Aug, not yet run | rang through Silent, through Focus, phone locked and face down. Setting a one time change used to stand every routine alarm down until it passed, so bending next Saturday left Monday to Friday with no phone alarm at all. It now splits the routine instead: its other mornings at its own time, that one morning at the override's |
 | Eight Sleep | **routines work, confirmed 17 Aug 14:21. One-offs were CONFIRMED BROKEN 17 Aug 17:02, and rebuilt 18 Aug. Not yet run on his bed** | his Eight Sleep app now lists `EVERY WEEKDAY 05:51` and `EVERY WEEKEND 09:55`, both created or moved by OneAlarm, and it follows a routine being split and merged. The one-off used to move the whole weekly series, because it was written into the recurring alarm's `time`. It is now its own single day alarm that deletes itself the morning after, and the routine's alarm is never touched. `E25` is the test |
 | Whoop | **working** | written, and the new time confirmed in the Whoop app |
 

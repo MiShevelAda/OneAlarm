@@ -37,7 +37,7 @@ struct RoutinePlan: Equatable, Sendable {
     /// correct as a pair: the weekday is what an alarm's day set is written from, the date is what
     /// tells a later sync that this override is over and its alarm can go. Two optionals that must
     /// agree is an invariant nobody can enforce.
-    struct BendDay: Equatable, Sendable {
+    struct OverrideDay: Equatable, Sendable {
         /// The calendar day the user chose.
         let date: CalendarDay
         /// The weekday it lands on **for this device**, after the lead has been applied. A bed
@@ -87,7 +87,7 @@ struct RoutinePlan: Equatable, Sendable {
         ///
         /// A `var` with a default rather than a `let`, so the twenty-seven places that build an
         /// `Entry` without a bend keep working. Both fields are set together or neither is.
-        var bendDay: BendDay? = nil
+        var overrideDay: OverrideDay? = nil
 
         var id: String { routineID }
         var timeToWrite: WallClockTime { bentTo ?? localTime }
@@ -107,7 +107,7 @@ struct RoutinePlan: Equatable, Sendable {
                 bentTo: nil,
                 isOn: isOn,
                 isSkippedNextMorning: isSkippedNextMorning,
-                bendDay: nil
+                overrideDay: nil
             )
         }
 
