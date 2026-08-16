@@ -161,7 +161,17 @@ final class EightSleepWritePathTests: XCTestCase {
             "enabled": true,
             "days": days,
             // The field that must survive untouched. When he goes to bed is not an alarm setting.
-            "bedtime": ["time": bedtime, "dayOffset": 0] as [String: Any],
+            //
+            // `dayOffset` is `"MinusOne"` here, a string, and it was `0` until 17 August. The echo
+            // test passed either way, because the adapter sends this back without looking at it,
+            // which is exactly why a wrong fixture was able to sit here. The harm is that a fixture
+            // is read as evidence: somebody comparing this against `RESEARCH.md` §1.5b, which says
+            // `dayOffset` is a string enum, would have found the project contradicting itself and
+            // had no way to tell which side was right. Fixtures are part of the record.
+            //
+            // `"MinusOne"` and not `"Zero"`: a bedtime belongs to the evening before the morning its
+            // routine wakes him on.
+            "bedtime": ["time": bedtime, "dayOffset": "MinusOne"] as [String: Any],
             "alarms": [Any](),
         ]
     }
@@ -314,6 +324,12 @@ final class EightSleepWritePathTests: XCTestCase {
                        "the routine's days follow OneAlarm")
         let bedtime = routineBody["bedtime"] as? [String: Any]
         XCTAssertEqual(bedtime?["time"] as? String, "22:45:00", "his bedtime is his")
+        // The whole sub-object comes back, not just the field the assertion above happens to name.
+        // `dayOffset` is the one most likely to be silently retyped on the way through, because a
+        // JSON round trip through a decoder that guesses would turn a string enum into something
+        // else, and the server replaces rather than merges.
+        XCTAssertEqual(bedtime?["dayOffset"] as? String, "MinusOne",
+                       "the bedtime object echoes whole, string enum included")
 
         let alarmBody = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1")])
         XCTAssertEqual(alarmBody["time"] as? String, "06:50:00")
