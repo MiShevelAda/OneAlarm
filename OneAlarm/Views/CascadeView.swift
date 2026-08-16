@@ -246,14 +246,21 @@ struct CascadeView: View {
             }
 
             VStack(spacing: 9) {
+                // A leg with no account is greyed, switched off and last, rather than sitting
+                // among the working rows showing a time it has no way to keep. `orderedTargets`
+                // already sorts them to the bottom, so this only decides how each one is drawn.
                 ForEach(store.orderedTargets, id: \.device) { target in
-                    CascadeRow(target: target) { store.makeAnchor(target.device) }
+                    if store.isConnected(target.device) {
+                        CascadeRow(target: target) { store.makeAnchor(target.device) }
+                    } else {
+                        DisabledRow(device: target.device, reason: "Not connected")
+                    }
                 }
 
-                // Disabled legs still show, greyed, so switching one off is visible rather than a
+                // Switched off by hand. Still shown, so turning one off is visible rather than a
                 // row that silently vanishes.
                 ForEach(store.schedule.rules.filter { !$0.isEnabled }, id: \.id) { rule in
-                    DisabledRow(device: rule.device)
+                    DisabledRow(device: rule.device, reason: "Off")
                 }
             }
         }
@@ -382,7 +389,7 @@ private struct CascadeRow: View {
             Spacer(minLength: 8)
 
             Toggle("", isOn: Binding(
-                get: { true },
+                get: { store.schedule.rule(for: target.device)?.isEnabled ?? true },
                 set: { store.setEnabled($0, for: target.device) }
             ))
             .labelsHidden()
@@ -443,18 +450,24 @@ private struct CascadeRow: View {
 private struct DisabledRow: View {
     @Environment(ScheduleStore.self) private var store
     let device: DeviceID
+    /// "Off" when he switched it off, "Not connected" when it has no account. Different problems
+    /// with different fixes, and a single greyed row that says neither is a puzzle.
+    let reason: String
 
     var body: some View {
         HStack(spacing: 14) {
             RoundedRectangle(cornerRadius: 2).fill(Theme.greyDim.opacity(0.4)).frame(width: 3)
             VStack(alignment: .leading, spacing: 4) {
                 Text(device.displayName).font(.system(size: 15, weight: .semibold))
-                Text("Off").themeLabel()
+                Text(reason).themeLabel()
             }
             Spacer()
             Toggle("", isOn: Binding(get: { false }, set: { store.setEnabled($0, for: device) }))
                 .labelsHidden()
                 .tint(Theme.State.confirmed)
+                // Switching on a leg with no account would report success and write nothing. The
+                // fix for this row is in Connections, not here.
+                .disabled(!store.isConnected(device))
         }
         .padding(15)
         .themeCard()

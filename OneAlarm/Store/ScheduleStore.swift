@@ -363,6 +363,17 @@ final class ScheduleStore {
         return names.dropLast().joined(separator: ", ") + " and " + last
     }
 
+    /// Whether this leg can actually do anything right now.
+    ///
+    /// The phone needs no account, so it is always usable. The other two are only usable once they
+    /// are signed in, and a leg that cannot be written is not a leg that is merely idle: it belongs
+    /// at the bottom of the list, greyed, with its switch off, rather than sitting among the
+    /// working ones showing a time it will never keep.
+    func isConnected(_ device: DeviceID) -> Bool {
+        guard device.requiresCredentials else { return true }
+        return authStates[device] == .connected
+    }
+
     /// The main alarm first, then everything else in the order it fires.
     ///
     /// Not pure firing order. The main alarm is the one the whole cascade is arranged around, and
@@ -373,6 +384,11 @@ final class ScheduleStore {
     var orderedTargets: [ResolvedTarget] {
         let anchor = schedule.anchorDevice
         return targets.sorted { lhs, rhs in
+            // Connected before not, ahead of everything else including the anchor. A greyed row at
+            // the top of the list would be the most prominent thing on the screen and the least
+            // able to act on it.
+            let l = isConnected(lhs.device), r = isConnected(rhs.device)
+            if l != r { return l }
             if lhs.device == anchor { return true }
             if rhs.device == anchor { return false }
             return lhs.nextOccurrence < rhs.nextOccurrence
