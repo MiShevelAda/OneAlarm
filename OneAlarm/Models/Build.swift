@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 13:05 · no false warning about the alarm it just made"
+    static let marker = "18 Aug, 13:50 · the right alarm gets checked back"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "The Eight Sleep row tells you whether your one time change landed, in one sentence, however the sync went. It no longer also tells you to delete the alarm it just made for you. This build number is at the bottom of the home screen."
+    static let whatIsNew = "On the morning a one time change is set for, OneAlarm now reads back the alarm that actually rings instead of the one it just skipped. Before this it would have told you the write did not land, on a write that went perfectly. This build number is at the bottom of the home screen."
 }

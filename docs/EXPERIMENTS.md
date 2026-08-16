@@ -945,6 +945,14 @@ state.
 3. **The override he had just set in the Eight Sleep app** moved the next firing, and the write reset
    it between the two attempts.
 
+> **A close cousin of 3 was found in OneAlarm's own code on 18 August and fixed.** `verify` always
+> read back the **routine's** alarm, and on the morning an override is armed that is the wrong alarm
+> twice over: it carries the routine's time while the target carries the override's, and it has just
+> been skipped so its `nextTimestamp` points a day further on. Two independent reasons to disagree,
+> producing a mismatch on a write that went perfectly. It now reads back the override's own alarm on
+> that morning. This does not close `E24`, whose observation had no override armed in OneAlarm, but
+> it removes one way of reproducing the same symptom.
+
 **Test.** Set all alarms twice in a row, mid-afternoon, with no override anywhere and nothing changed
 between. If the first is yellow and the second green, it is 1 or 2 and the timestamps in the raw panel
 say which. If both are green, it was 3, and this entry closes as a side effect of `E23`.

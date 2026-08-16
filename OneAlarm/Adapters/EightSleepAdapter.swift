@@ -1554,7 +1554,7 @@ actor EightSleepAdapter: DeviceAdapter {
         let nextWeekday = Locale.Weekday.from(
             calendarIndex: Calendar(identifier: .gregorian).component(.weekday, from: target.nextOccurrence)
         )
-        let verifiableID = report.pairs.first { pair in
+        var verifiableID = report.pairs.first { pair in
             entries.first { $0.routineID == pair.routineID }?.weekdays.contains(nextWeekday) == true
         }?.alarmID
 
@@ -1680,6 +1680,13 @@ actor EightSleepAdapter: DeviceAdapter {
 
                 var overrideAlarmID: String?
 
+                // **Whether this override is the alarm that rings next.**
+                //
+                // If it is, it is the only alarm on the bed whose `nextTimestamp` can be compared
+                // against the instant the target describes, because the target has been bent to the
+                // override's time. See where `verifiableID` is reassigned below.
+                let carriesNextMorning = bend.weekday == nextWeekday
+
                 if let existingID = owned[key],
                    let existing = current.first(where: { Self.alarmID($0) == existingID }),
                    let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms/\(existingID)") {
@@ -1757,6 +1764,28 @@ actor EightSleepAdapter: DeviceAdapter {
                 } else {
                     oneOffFailed = true
                     oneOffNotes.append("No alarm on your bed to copy, so the one time \(when) alarm was not made.")
+                }
+
+                // **Verify against the alarm that actually rings tomorrow.**
+                //
+                // Until now `verifiableID` was always the **routine's** alarm, and on the morning an
+                // override is armed that is the wrong one twice over: it carries the routine's time
+                // while the target carries the override's, and it has just been skipped so its
+                // `nextTimestamp` points a day further on. `verify` would compare a bent target
+                // against a skipped alarm and raise a mismatch, which is the loudest warning this app
+                // has, for a write that went perfectly.
+                //
+                // The row would then have read "Accepted, but it reads back as Wed 06:05 instead of
+                // Tue 08:05" on exactly the test Alex was asked to run, and the `.mismatch` branch
+                // does not carry highlights either, so the sentence saying it worked would have been
+                // dropped as well.
+                if let id = overrideAlarmID {
+                    // Counted as written, because it was: created or moved successfully in this run.
+                    // Without this the receipt's `written.contains` guard nils the id straight back
+                    // out and `verify` reports unavailable, and the stranded check three hundred
+                    // lines down would count it as an alarm nobody touched.
+                    written.insert(id)
+                    if carriesNextMorning { verifiableID = id }
                 }
 
                 // Step 3. Only once the override's own alarm actually exists: silencing the routine

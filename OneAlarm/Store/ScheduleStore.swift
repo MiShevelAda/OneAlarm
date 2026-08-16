@@ -793,8 +793,14 @@ final class ScheduleStore {
                 // alarm still landed somewhere else, almost always a time zone disagreement.
                 let formatter = DateFormatter()
                 formatter.dateFormat = "EEE HH:mm"
+                // Highlights here too. This branch is the loudest thing the app can say, so it is
+                // the last place that should also swallow the sentence explaining what happened.
+                let detail = receipt.highlights.isEmpty
+                    ? ""
+                    : " " + receipt.highlights.joined(separator: " ")
                 status[target.device] = .warning(
                     "Accepted, but it reads back as \(formatter.string(from: actual)) instead of \(formatter.string(from: expected))."
+                    + detail
                 )
             case .unavailable(let reason):
                 // Same rule here. This is the branch a Whoop write always takes, and the branch an

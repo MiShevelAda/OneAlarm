@@ -1223,6 +1223,68 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertTrue(receipt.note.contains("could not tell which one it is"), receipt.note)
     }
 
+    // MARK: What gets read back, on the morning an override is armed
+
+    /// The alarm checked back is the override's, not the routine's, when the override rings next.
+    ///
+    /// **This would have made his test report failure on a write that went perfectly.** `verify`
+    /// compares one alarm's `nextTimestamp` against the instant the target describes, and on the
+    /// morning an override is armed the target carries the **override's** time. The routine's alarm
+    /// carries the routine's time and has just been skipped, so it points a day further on. Two
+    /// reasons to disagree, and the result is `.mismatch`, which is the loudest warning this app has.
+    ///
+    /// The row would have read "Accepted, but it reads back as Wed 06:05 instead of Tue 08:05" on
+    /// exactly the test Alex was asked to run.
+    ///
+    /// `target.nextOccurrence` in this fixture is Friday 15 January 2027, so the override is put on
+    /// Friday to make it the morning being verified.
+    func testTheOverridesAlarmIsWhatGetsCheckedBackOnItsMorning() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["id": "oneoff-1"] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            // Friday 15 January 2027, which is the day `target.nextOccurrence` lands on.
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 15, at: 8, 5)],
+                              skipsNextMorning: false)
+        )
+
+        XCTAssertEqual(receipt.remoteID, "oneoff-1",
+                       "the alarm that actually rings that morning, not the one that was skipped")
+    }
+
+    /// An override on a different morning leaves the routine's alarm as the one checked back.
+    ///
+    /// The control. Bending next Tuesday from a Friday must not redirect tonight's verification onto
+    /// an alarm that does not ring tonight, which would confirm a morning nobody asked about.
+    func testAnOverrideOnAnotherMorningDoesNotRedirectVerification() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["id": "oneoff-1"] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            // Tuesday the 19th, while the target's next occurrence is Friday the 15th.
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 8, 5)],
+                              skipsNextMorning: false)
+        )
+
+        XCTAssertEqual(receipt.remoteID, "his", "tonight is still the routine's own alarm")
+    }
+
     // MARK: The gate has to describe what will actually be sent
 
     /// The preview shows the routine's own time, not the override's.
