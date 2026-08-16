@@ -505,7 +505,26 @@ actor EightSleepAdapter: DeviceAdapter {
            (thermal["enabled"] as? Bool) == true {
             parts.append("thermal on")
         }
+
+        // The Eight Sleep app showed one of these alarms switched off while OneAlarm showed it on.
+        // Rather than reason about which field their toggle reflects, print the ones that could
+        // plausibly drive it. `enabled` is what this adapter reads; `skipNext` and `skippedUntil`
+        // are the two nobody has interpreted, and one of them held a timestamp equal to that very
+        // alarm's next occurrence.
+        parts.append("enabled=\(Self.raw(alarm["enabled"]))")
+        if let skip = alarm["skipNext"], !(skip is NSNull) { parts.append("skipNext=\(Self.raw(skip))") }
+        if let until = alarm["skippedUntil"] as? String, !until.isEmpty,
+           !until.hasPrefix("1970") {
+            parts.append("skippedUntil=\(until)")
+        }
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
+    /// A value with its kind visible, so `true`, `1` and `"1"` are distinguishable on screen.
+    static func raw(_ value: Any?) -> String {
+        guard let value, !(value is NSNull) else { return "absent" }
+        if let text = value as? String { return "\"\(text)\"" }
+        return "\(value)"
     }
 
     /// Field names, plus the values of the few that decide which bed this is.
