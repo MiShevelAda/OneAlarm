@@ -754,6 +754,103 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertEqual(body["enabled"] as? Bool, true)
     }
 
+    /// A bend on one routine leaves the other routine's alarm completely alone.
+    ///
+    /// **The gap the three tests above leave, and it is the shape his real account has.** All of them
+    /// use a single routine, so none can catch a bend leaking sideways. His bed carries two alarms
+    /// driven by two routines, and the thing that makes this worth asserting is that a bend **does**
+    /// narrow the week upstream: `ScheduleStore.recompute` sets `schedule.weekdays = [next.weekday]`
+    /// while one is armed, because AlarmKit has no way to say "this Monday" otherwise.
+    ///
+    /// That narrowing already deleted four mornings of Whoop schedule on 17 August, because Whoop
+    /// holds one schedule for the whole account. This leg is supposed to be immune, since it takes
+    /// days from the plan rather than from the target and each routine owns its own alarm. Supposed
+    /// to be is not the same as tested, and the symptom would be a weekend alarm quietly moved to a
+    /// weekday time with nothing on any screen saying so.
+    func testABendOnOneRoutineDoesNotDisturbTheOther() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    alarm(id: "week", time: "05:51:00", days: weekdayNames, routine: nil),
+                    alarm(id: "wend", time: "10:45:00", days: ["saturday", "sunday"], routine: nil),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/week"): accepted,
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/wend"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "week", on: .eightSleep)
+        RemoteAlarmLink.link(routine: "weekend", to: "wend", on: .eightSleep)
+
+        let plain = entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 5, minute: 51)
+        let bent = RoutinePlan.Entry(
+            routineID: plain.routineID, routineName: plain.routineName, weekdays: plain.weekdays,
+            localTime: plain.localTime,
+            bentTo: WallClockTime(hour: 6, minute: 20),
+            isOn: true, isSkippedNextMorning: false
+        )
+        let weekend = entry("weekend", "Weekend", [.saturday, .sunday], hour: 10, minute: 45)
+
+        _ = try await adapter().write(
+            // `target` carries the collapsed single day a bend produces upstream. If this leg ever
+            // starts taking days from the target rather than the plan, this is where it shows.
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent, weekend], skipsNextMorning: false)
+        )
+
+        let bentBody = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/week")])
+        XCTAssertEqual(bentBody["time"] as? String, "06:20:00", "the bent routine follows the one-off")
+
+        let otherBody = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/wend")])
+        XCTAssertEqual(otherBody["time"] as? String, "10:45:00", "the other routine keeps its own time")
+        XCTAssertEqual(otherBody["enabled"] as? Bool, true, "and is not switched off by somebody else's bend")
+        let days = (otherBody["repeat"] as? [String: Any])?["weekDays"] as? [String: Bool]
+        XCTAssertEqual(days?["saturday"], true, "and keeps its own days, not the bend's single day")
+        XCTAssertEqual(days?["sunday"], true)
+        XCTAssertEqual(days?["monday"], false)
+    }
+
+    /// A skip on one routine leaves the other ringing.
+    ///
+    /// The dangerous direction of the same gap. A skip is expressed as `enabled: false`, and one
+    /// routine's skip reaching another routine's alarm is a silently missed morning: nothing fails,
+    /// nothing is reported, and it is only discovered by not waking up.
+    func testASkipOnOneRoutineLeavesTheOtherRinging() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    alarm(id: "week", time: "05:51:00", days: weekdayNames, routine: nil),
+                    alarm(id: "wend", time: "10:45:00", days: ["saturday", "sunday"], routine: nil),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/week"): accepted,
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/wend"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "week", on: .eightSleep)
+        RemoteAlarmLink.link(routine: "weekend", to: "wend", on: .eightSleep)
+
+        let plain = entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 5, minute: 51)
+        let skipped = RoutinePlan.Entry(
+            routineID: plain.routineID, routineName: plain.routineName, weekdays: plain.weekdays,
+            localTime: plain.localTime, bentTo: nil,
+            isOn: true, isSkippedNextMorning: true
+        )
+        let weekend = entry("weekend", "Weekend", [.saturday, .sunday], hour: 10, minute: 45)
+
+        _ = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [skipped, weekend], skipsNextMorning: true)
+        )
+
+        let skippedBody = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/week")])
+        XCTAssertEqual(skippedBody["enabled"] as? Bool, false, "the skipped routine's alarm goes quiet")
+        XCTAssertEqual(skippedBody["time"] as? String, "05:51:00", "and keeps its time, so clearing the skip is one field")
+
+        let otherBody = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/wend")])
+        XCTAssertEqual(otherBody["enabled"] as? Bool, true, "the other routine still rings")
+    }
+
     // MARK: Alarms his own app hides
 
     /// A created alarm never carries the tags that hide it.
