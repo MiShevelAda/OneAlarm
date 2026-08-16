@@ -155,6 +155,13 @@ final class EightSleepWritePathTests: XCTestCase {
         return object
     }
 
+    /// An alarm carrying the tags Eight Sleep's app uses to hide one, read off Alex's real account.
+    private func hiddenAlarm(id: String, time: String, days: [String]) -> [String: Any] {
+        var object = alarm(id: id, time: time, days: days, routine: nil)
+        object["tags"] = ["temporary-mode", "oneOff-napMode"]
+        return object
+    }
+
     private func routine(id: String, days: [String], bedtime: String = "23:00:00") -> [String: Any] {
         [
             "id": id,
@@ -630,5 +637,127 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertFalse(StubServer.calls.contains { $0.method == "POST" },
                        "its days changed, but it is still the same alarm")
         XCTAssertTrue(StubServer.calls.contains { $0.method == "PUT" && $0.path.hasSuffix("/alarms/a1") })
+    }
+
+    // MARK: Alarms his own app hides
+
+    /// A created alarm never carries the tags that hide it.
+    ///
+    /// **E14, answered on his account on 17 August in the opposite direction from the prediction.**
+    /// `clone` used to keep `tags`, on the reasoning that it pointed at a routine and copying it
+    /// would put the new alarm where their app could see it. His account carries no routine tag on
+    /// any alarm. What it carries is `temporary-mode` and `oneOff-napMode` on the two alarms OneAlarm
+    /// created, both invisible in the Eight Sleep app, while the one he made by hand has no tags and
+    /// is the only one listed.
+    ///
+    /// So the tag was not neutral cargo. It marked a real alarm as a nap timer, their app filtered it
+    /// out, and the next clone inherited the mark from the clone before it. That is how one hidden
+    /// alarm became two.
+    func testACreatedAlarmCarriesNoTags() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [hiddenAlarm(id: "ghost", time: "07:00:00", days: weekdayNames)],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (201, ["id": "fresh"]),
+        ]
+
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [entry("weekend", "Weekend", [.saturday, .sunday], hour: 8, minute: 50)],
+            skipsNextMorning: false
+        )
+
+        _ = try? await adapter().write(target, plan: plan)
+
+        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("POST", "/v1/users/\(userID)/alarms")])
+        XCTAssertNil(body["tags"], "the tag that hides an alarm is never copied onto a new one")
+        // The settings that ARE his still travel. Stripping tags is not licence to strip everything.
+        XCTAssertNotNil(body["vibration"], "his vibration is still copied from a real alarm")
+        XCTAssertNotNil(body["thermal"], "and his thermal")
+    }
+
+    /// A hidden alarm is never adopted, so his week is never bound to something he cannot see.
+    ///
+    /// The bed screen listed "Weekdays" twice on 17 August. Two alarms had identical weekday sets,
+    /// one visible and one hidden, and OneAlarm adopted whichever the server returned first. It then
+    /// maintained the invisible one while his real alarm drifted away from it.
+    func testAHiddenAlarmIsNeverAdopted() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    // Deliberately first, which is what made this happen on his account.
+                    hiddenAlarm(id: "ghost", time: "05:55:00", days: weekdayNames),
+                    alarm(id: "his", time: "05:57:00", days: weekdayNames, routine: nil),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/ghost"): accepted,
+        ]
+
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 50)],
+            skipsNextMorning: false
+        )
+
+        _ = try await adapter().write(target, plan: plan)
+
+        XCTAssertNotNil(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")],
+                        "the alarm he can see is the one that moves")
+        XCTAssertNil(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/ghost")],
+                     "nothing is ever written to an alarm his own app will not show him")
+        XCTAssertNil(RemoteAlarmLink.alarmID(for: "weekdays", on: .eightSleep).flatMap { $0 == "ghost" ? $0 : nil },
+                     "and it is not recorded as owned either")
+    }
+
+    /// A link already pointing at a hidden alarm is dropped rather than honoured.
+    ///
+    /// His account is already in this state, so the fix has to repair it rather than only prevent it.
+    /// Dropping the link lets the routine fall through to a visible alarm on the same run.
+    func testALinkToAHiddenAlarmIsDropped() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    hiddenAlarm(id: "ghost", time: "05:55:00", days: weekdayNames),
+                    alarm(id: "his", time: "05:57:00", days: weekdayNames, routine: nil),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/ghost"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "ghost", on: .eightSleep)
+
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 50)],
+            skipsNextMorning: false
+        )
+
+        _ = try await adapter().write(target, plan: plan)
+
+        XCTAssertNil(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/ghost")],
+                     "an old link is not a reason to keep writing to something he cannot see")
+        XCTAssertEqual(RemoteAlarmLink.alarmID(for: "weekdays", on: .eightSleep), "his",
+                       "the routine re-homes onto the alarm his app actually lists")
+    }
+
+    /// The template for a create is an alarm he can see, so the settings copied are ones he chose.
+    ///
+    /// Stripping `tags` breaks the inheritance loop on its own. This closes the other half: copying
+    /// a hidden alarm's vibration and thermal would copy whatever state made it a nap timer.
+    func testTheCreateTemplateIsAVisibleAlarm() {
+        let hidden = hiddenAlarm(id: "ghost", time: "05:55:00", days: weekdayNames)
+        let his = alarm(id: "his", time: "05:57:00", days: weekdayNames, routine: nil)
+
+        let chosen = EightSleepAdapter.template(from: [hidden, his])
+        XCTAssertEqual(chosen?["id"] as? String, "his", "a visible alarm wins even when listed second")
+
+        // With nothing visible there is still a template, because a real object from his account
+        // always beats one composed here. The tag is stripped by `clone` either way.
+        let onlyHidden = EightSleepAdapter.template(from: [hidden])
+        XCTAssertEqual(onlyHidden?["id"] as? String, "ghost", "and absence of a visible one is not a crash")
     }
 }

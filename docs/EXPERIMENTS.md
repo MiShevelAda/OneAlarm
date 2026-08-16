@@ -332,7 +332,41 @@ a capture.
 
 ---
 
-## E14 🔴 Does a cloned alarm carrying another alarm's `routine-` tag show up in their app?
+## E14 ✅ No, and carrying the tag is what hid it. Answered 17 August, prediction inverted.
+
+**The answer, from Alex's own bed.** No alarm on his account carries a `routine-` tag **now**. One did
+on 16 August, printed in the E3 follow-up above as
+`tags = ( "routine-94b49169-0ef4-4739-ae95-124e45473c97" )`, on an alarm that no longer exists. So
+routine tags are real on this account, and this entry must not be read as saying they are not.
+
+What it says is narrower and sharper: **a routine tag is not what decides whether their app shows an
+alarm.** The alarm his app lists today has no tags at all. The two it hides carry a nap tag. If
+routine membership were the qualification, the listed one would be the tagged one.
+
+| time | days | `tags` | listed in the Eight Sleep app |
+|---|---|---|---|
+| 05:57 | weekdays | `()` | **yes**, he made this one by hand |
+| 05:55 | weekdays | `temporary-mode`, `oneOff-napMode` | no |
+| 09:56 | Sa Su | `temporary-mode`, `oneOff-napMode` | no |
+
+So keeping `tags` was not neutral cargo. It stamped "this is a nap timer" onto a real alarm, their app
+filtered it out of the Alarms list, and the next clone inherited the stamp from the clone before it.
+One hidden alarm became two by exactly that route, and it would have continued to the cap of eight.
+
+`clone` now strips `tags`, and `template(from:)` prefers an alarm he can see, so the settings copied
+are ones he actually chose. Both are covered by tests, including the case where the hidden alarm is
+returned first, which is what happened on his account.
+
+**Why the prediction was wrong, which is the part worth keeping.** The `routine-<uuid>` in `tags` came
+from a public capture of somebody else's account and was treated as a fact about the API. It is not
+present here at all. The standing rule already says never infer absence from an object you did not
+look at; this is its mirror, and it needs saying too: **never infer presence from an object you did
+not look at either.** One read of his account settled in ten seconds what two days of reasoning got
+backwards.
+
+---
+
+## E14-old 🔴 Does a cloned alarm carrying another alarm's `routine-` tag show up in their app?
 
 **Why.** OneAlarm now creates a missing alarm by cloning one Alex already has. The clone keeps the
 template's `tags: ["routine-<uuid>"]`, which is a decision made by reasoning about a field name, and
@@ -456,7 +490,33 @@ out of the same search and is `E17`, below.
 
 ---
 
-## E17 🔴 Eight Sleep has a **routines** object, and alarms live inside it
+## E17 ❌ Refuted on his account. He has no routines at all.
+
+**17 August, 14:05.** "Your Eight Sleep routines, raw" printed:
+
+> This account returned no routines, and the read itself succeeded.
+
+That sentence is deliberately two facts, because they mean opposite things and look identical from
+outside. `GET /v2/users/{id}/routines` answered **200 with an empty list**. The address is right, the
+token works, the subscription is fine, and there are no routines.
+
+So the theory below is dead for this account. Their app is not rendering his alarms through routines,
+because he has none, and it still shows one of his three alarms. The thing that decides visibility is
+`tags`, which is `E14`.
+
+**What survives.** The routine read stays: it is a read, it costs one request, and it is the only
+thing that can tell a future session that this is still true. The routine write in `authorRoutine` is
+now unreachable on his account and stays unexecuted rather than deleted, because the code is correct
+for an account that has routines and deleting it would only mean rebuilding it from the same captures
+if he ever gets one. **It must not be described anywhere as the mechanism.**
+
+**What it cost.** A night. The write-up it came from is not wrong about the API in general, it is
+simply about a shape his account does not have, and nobody checked before building on it. `E14` says
+the rest.
+
+---
+
+## E17-old 🔴 Eight Sleep has a **routines** object, and alarms live inside it
 
 **The find.** `PUT https://app-api.8slp.net/v2/users/{userId}/routines/{routineId}`, from a public
 capture, carries:
@@ -529,7 +589,19 @@ Still needs one real run to confirm the server agrees with both sources.
 
 ---
 
-## E19 🔴 Which API version **reads** an Eight Sleep routine?
+## E19 ✅ `v2`, and the prediction revised mid-flight was the right one.
+
+`GET /v2/users/{id}/routines` returned **200 and an empty list** on 17 August. The v1 fallback had
+already been removed for being the retired Routines feature, and the v1 probe was never reached
+because it only runs after v2 fails, which v2 did not.
+
+Worth noting what a 200-and-empty proves and what it does not. It proves the address, the token and
+the subscription. It proves nothing about the shape of a routine, because none came back. Every field
+in `RESEARCH.md` §1.5b is still somebody else's capture.
+
+---
+
+## E19-old 🔴 Which API version **reads** an Eight Sleep routine?
 
 **Why.** The routine **write** is `PUT /v2/users/{id}/routines/{routineId}` in two independent
 captures. An OpenAPI description of this API documents a routine **read** as

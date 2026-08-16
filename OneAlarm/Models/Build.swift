@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "17 Aug, 06:40 · build fix, phone holds every routine"
+    static let marker = "17 Aug, 14:40 · created alarms are visible in the Eight Sleep app"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Your phone now holds one alarm per routine, so Monday is armed on a Friday night. Your bed follows its routines. Your strap still carries only the next morning, and the screen says so."
+    static let whatIsNew = "OneAlarm no longer copies the nap tag that made the alarms it creates invisible in the Eight Sleep app, and it will never again bind one of your routines to an alarm you cannot see."
 }

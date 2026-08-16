@@ -604,12 +604,38 @@ actor EightSleepAdapter: DeviceAdapter {
     /// known meaning, comes back exactly as Eight Sleep wrote it. The same principle that makes the
     /// update safe makes the create safe, and for the same reason.
     ///
-    /// `tags` is deliberately **kept**. It carries a `routine-<uuid>` pointing at a bedtime pairing
-    /// in their app, and their app appears to render alarms through those. An alarm created without
-    /// one may well be an alarm their app never shows, which is the exact failure being fixed here.
-    /// Carrying the template's tag puts the new alarm in the same place as the alarm it was copied
-    /// from. That is reasoning about a field, which this project has been burned by, so it is
-    /// written down as `E14` with a prediction rather than asserted.
+    /// `tags` is **stripped**, and getting that backwards is what caused the whole failure.
+    ///
+    /// **E14, answered on Alex's account 17 August, in the opposite direction from the prediction.**
+    /// This function used to keep `tags`, reasoning that it carried a `routine-<uuid>` and that
+    /// copying it would put the new alarm where their app could see it. Both halves were wrong.
+    ///
+    /// Careful with the claim, because the record contradicts a loose version of it. One alarm on his
+    /// account **did** carry `routine-94b49169-...` on 16 August, and it no longer exists. Routine
+    /// tags are real here. What is not real is the idea that one is required to be visible:
+    ///
+    /// | time | days | `tags` | in the Eight Sleep app |
+    /// |---|---|---|---|
+    /// | 05:57 | weekdays | `()` | **yes**, and he made it by hand in their app |
+    /// | 05:55 | weekdays | `temporary-mode`, `oneOff-napMode` | no |
+    /// | 09:56 | Sa Su | `temporary-mode`, `oneOff-napMode` | no |
+    ///
+    /// The alarm their app shows today has **no tags at all**. The two it hides are the two OneAlarm
+    /// created, and
+    /// both carry a nap tag. Their app does not list nap timers under Alarms, which is reasonable of
+    /// it. So keeping `tags` was not neutral: it copied a "this is a nap" marker onto a real alarm
+    /// and made it invisible, then every later clone inherited the marker from the clone before it.
+    /// One ghost became two by exactly this route.
+    ///
+    /// Stripping is also the more conservative act, which is worth saying because this adapter's
+    /// standing rule is to echo what it does not understand. `tags` is server bookkeeping, not a
+    /// setting of Alex's. Nothing he chose lives there. Vibration, thermal and audio are his and are
+    /// still echoed untouched.
+    ///
+    /// The `no tags` rung of `cloneVariants` is now the same payload as the full clone. That is left
+    /// in place deliberately rather than tidied away, because the ladder's job is to survive a
+    /// refusal, and collapsing two rungs into one is a change to make when something is known, not
+    /// while the create is being tested again.
     static func clone(
         _ template: [String: Any],
         days: Set<Locale.Weekday>,
@@ -620,6 +646,10 @@ actor EightSleepAdapter: DeviceAdapter {
         // The server issues these. Sending one back is either ignored or an overwrite of a different
         // alarm, and the second is the kind of mistake that has no symptom until a morning is missed.
         for identifier in ["id", "alarmId", "alarm_id"] { payload.removeValue(forKey: identifier) }
+
+        // See the note above. This one line is the difference between an alarm he can see in the
+        // Eight Sleep app and an alarm only this screen knows about.
+        payload.removeValue(forKey: "tags")
 
         payload["time"] = time.hhmmss
         payload["enabled"] = true
@@ -676,14 +706,44 @@ actor EightSleepAdapter: DeviceAdapter {
         return [("full", full), ("no tags", untagged), ("schedule only", minimal)]
     }
 
+    /// Tags Eight Sleep's own app uses to mean "this is not one of your alarms".
+    ///
+    /// Read off Alex's account rather than a write-up: the alarm their app lists carries no tags, and
+    /// the two it hides both carry these. Named as a set rather than matched loosely, because a
+    /// substring test on `tags` would eventually hide a real alarm and a hidden real alarm is a
+    /// missed morning.
+    static let hiddenTags: Set<String> = ["temporary-mode", "oneOff-napMode"]
+
+    /// Whether Eight Sleep's app will show this alarm to Alex.
+    ///
+    /// An alarm he cannot see is one he cannot check, cannot change and cannot switch off. OneAlarm
+    /// treating one as its own means his week is bound to something invisible, and the first symptom
+    /// is a morning that rings at the wrong time with nothing on any screen explaining why.
+    static func isVisibleToHim(_ alarm: [String: Any]) -> Bool {
+        guard let tags = alarm["tags"] as? [Any] else { return true }
+        return !tags.contains { hiddenTags.contains(($0 as? String) ?? "") }
+    }
+
     /// Which existing alarm to copy settings from.
     ///
-    /// Prefers one that can actually fire. An inert alarm, no days and switched off, is the one
-    /// Eight Sleep's own app hides, and copying its settings would clone whatever state made it
-    /// inert. Falls back to any alarm, because a template from his account always beats a payload
-    /// composed here.
+    /// Prefers one he can actually see, then one that can actually fire. An inert alarm, no days and
+    /// switched off, is the one Eight Sleep's own app hides, and copying its settings would clone
+    /// whatever state made it inert. Falls back to any alarm, because a template from his account
+    /// always beats a payload composed here.
+    ///
+    /// **Visibility comes first, and that ordering is the fix for a loop.** Before 17 August this
+    /// took the first alarm that could fire, which on his account was a nap-tagged one OneAlarm had
+    /// created earlier. Cloning it copied the nap tag onto the next alarm, which then became the
+    /// template for the one after. Two invisible alarms by that route, and it would have kept going
+    /// to the account's cap of eight. Stripping `tags` in `clone` breaks the loop on its own; this
+    /// makes the template a real alarm of his as well, so the vibration and thermal settings being
+    /// copied are the ones he actually chose.
     static func template(from alarms: [[String: Any]]) -> [String: Any]? {
-        alarms.first { !weekdays(of: $0).isEmpty && ($0["enabled"] as? Bool) != false }
+        let visible = alarms.filter(isVisibleToHim)
+        return visible.first { !weekdays(of: $0).isEmpty && ($0["enabled"] as? Bool) != false }
+            ?? visible.first { !weekdays(of: $0).isEmpty }
+            ?? visible.first
+            ?? alarms.first { !weekdays(of: $0).isEmpty && ($0["enabled"] as? Bool) != false }
             ?? alarms.first { !weekdays(of: $0).isEmpty }
             ?? alarms.first
     }
@@ -879,8 +939,21 @@ actor EightSleepAdapter: DeviceAdapter {
                                  bentTo: nil, isOn: true, isSkippedNextMorning: false)]
             : plan.entries
 
+        // Alarms Eight Sleep's own app hides are not candidates for anything.
+        //
+        // His account has three alarms and their app lists one. The two it hides carry a nap tag,
+        // and both were made by OneAlarm. Matching a routine to one of them is what produced the bed
+        // screen listing "Weekdays" twice: two alarms had identical weekday sets, OneAlarm adopted
+        // whichever the server happened to return first, and from then on it maintained an alarm he
+        // could not see while his real one drifted two minutes away from it.
+        //
+        // The rule underneath: **OneAlarm may only own an alarm Alex can look at.** An invisible
+        // alarm cannot be checked, changed or switched off by him, so binding his week to one means
+        // the first symptom of any mistake is a morning that rings wrong with nothing on any screen
+        // to explain it.
+        let hiddenIDs = Set(alarms.filter { !Self.isVisibleToHim($0) }.compactMap(Self.alarmID))
         let described = alarms.compactMap { alarm -> RoutinePlan.CandidateAlarm? in
-            guard let id = Self.alarmID(alarm) else { return nil }
+            guard let id = Self.alarmID(alarm), !hiddenIDs.contains(id) else { return nil }
             return RoutinePlan.CandidateAlarm(
                 id: id,
                 weekdays: Self.weekdays(of: alarm),
@@ -889,7 +962,16 @@ actor EightSleepAdapter: DeviceAdapter {
             )
         }
 
-        let links = RemoteAlarmLink.all(for: .eightSleep)
+        // A link already pointing at one of them is dropped, so the routine falls through to a
+        // visible alarm or to a create. Only for an alarm the read actually returned and showed to be
+        // hidden: forgetting a link because an alarm is merely absent would turn one bad read into a
+        // duplicate alarm on the next run.
+        var links = RemoteAlarmLink.all(for: .eightSleep)
+        for (routine, alarmID) in links where hiddenIDs.contains(alarmID) {
+            RemoteAlarmLink.unlink(routine: routine, on: .eightSleep)
+            links.removeValue(forKey: routine)
+        }
+
         var report = RoutinePlan.match(entries: entries, against: described, links: links)
         let (token, user) = try await currentToken()
 
