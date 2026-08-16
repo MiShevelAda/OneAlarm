@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "20 Aug, 00:05 · silencing the strap no longer moves its time"
+    static let marker = "20 Aug, 00:35 · the Whoop row names which body worked"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Fixes the bug you just found. Switching your strap off for a moved morning was also writing the new time into your Monday to Friday schedule. It now keeps 07:50 and only switches off. Press Undo then Set all alarms once and your Whoop schedule goes back to normal by itself."
+    static let whatIsNew = "The Whoop row now says which request shape Whoop accepted, and whether the time it echoed back matches the one we sent. Your strap says 09:36 when we send 07:50 and there was no way to see where that goes wrong. Press Set all alarms once and send me the Whoop row."
 }

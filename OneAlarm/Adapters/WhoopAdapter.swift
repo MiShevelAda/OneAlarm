@@ -1375,8 +1375,18 @@ actor WhoopAdapter: DeviceAdapter {
                 utcOffsetSeconds: target.utcOffsetSeconds
             )
             do {
-                _ = try await putSchedule(existing, id: pair.alarmID, to: perRoutine, token: token)
-                moved.append("\(entry?.routineName ?? pair.routineName) to \(pair.time.hhmm)")
+                // **Which rung was accepted, kept rather than discarded.**
+                //
+                // `putSchedule` has always returned the shape that worked and every caller threw it
+                // away. On 19 August Alex's row said his strap was moved to 07:50 and the read back
+                // said 09:36, and there was no way to tell from the screen whether the write had
+                // been accepted by the domain body or by the view model fallback, which are different
+                // enough that they are different bugs. This project's oldest rule is to print what
+                // the server did instead of reasoning about it.
+                let result = try await putSchedule(existing, id: pair.alarmID, to: perRoutine, token: token)
+                let echoed = Self.wakeTime(from: result.written["latest_wake_time"])
+                    ?? Self.wakeTime(from: (result.written["schedule"] as? [String: Any])?["latest_wake_time"])
+                moved.append("\(entry?.routineName ?? pair.routineName) to \(pair.time.hhmm) via \(result.shape)\(echoed.map { $0 == pair.time ? "" : " but it sent \($0.hhmm)" } ?? "")")
             } catch {
                 failures.append("\(pair.routineName): \((error as? AdapterError)?.errorDescription ?? "refused")")
             }
