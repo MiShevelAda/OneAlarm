@@ -225,7 +225,13 @@ actor EightSleepAdapter: DeviceAdapter {
             return "Connected. \(live) alarm\(live == 1 ? "" : "s") \(place)."
         }
 
-        let report = RoutinePlan.match(entries: plan.entries, against: choices.map(\.candidate))
+        // Hidden alarms are excluded here for the same reason the write excludes them, and keeping
+        // the two in step is the point. A screen or a status line that counts alarms the write will
+        // never touch describes a different account from the one being written to.
+        let report = RoutinePlan.match(
+            entries: plan.entries,
+            against: choices.filter { !$0.isHidden }.map(\.candidate)
+        )
         guard !report.pairs.isEmpty else {
             throw AdapterError.noMatchingDays(
                 routines: report.routinesWithNoAlarm,
@@ -264,7 +270,8 @@ actor EightSleepAdapter: DeviceAdapter {
                 // 'group' must precede argument 'rawKeys'", which is exact and still easy to walk
                 // past when the two lines read fine on their own.
                 group: Self.groupName(alarm),
-                rawKeys: Self.describe(alarm)
+                rawKeys: Self.describe(alarm),
+                isHidden: !Self.isVisibleToHim(alarm)
             )
         }
     }

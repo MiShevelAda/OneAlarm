@@ -39,6 +39,19 @@ struct RemoteAlarmChoice: Identifiable, Equatable, Sendable {
     /// from shipped no captured smart alarm response and its author hedged the shape in a comment.
     /// When the parse comes back empty, guessing again is worse than showing what arrived.
     var rawKeys: [String] = []
+    /// True when the device's own app will not show this alarm to Alex.
+    ///
+    /// Only Eight Sleep sets it, from the nap tags in `EightSleepAdapter.hiddenTags`. It exists
+    /// because two of these are sitting on his account, they ring, and until 17 August the bed screen
+    /// explained them with the sentence "no routine has these days, so OneAlarm never touches it",
+    /// which was false. Those alarms have exactly the days his routines have. The real reason they
+    /// are left alone is that he cannot see them, and a screen that gives the wrong reason is worse
+    /// than one that gives none: it is where somebody goes to rule a cause out.
+    ///
+    /// Declared last and defaulted, so no existing call site changes. Swift builds the memberwise
+    /// initialiser in declaration order and accepts no other, which `tools/check_arg_order.js` now
+    /// enforces after that exact mistake broke a build today.
+    var isHidden: Bool = false
 
     var parsedCleanly: Bool { time != nil }
 

@@ -702,7 +702,11 @@ struct BedConfirmScreen: View {
         // recorded ownership would draw a picture of a different account.
         return RoutinePlan.match(
             entries: plan.entries,
-            against: choices.map(\.candidate),
+            // Hidden alarms are excluded here too, and this is the same rule as the line above rather
+            // than a new one. The write stopped considering them on 17 August; a screen that still
+            // did would list them as "no routine has these days", which is false for both of the ones
+            // on his account and reads as a settled explanation.
+            against: choices.filter { !$0.isHidden }.map(\.candidate),
             links: RemoteAlarmLink.all(for: .eightSleep)
         )
     }
@@ -877,6 +881,20 @@ struct BedConfirmScreen: View {
             ForEach(report.alarmsWithNoRoutine, id: \.self) { label in
                 MatchRow(title: label, detail: "no routine has these days, so OneAlarm never touches it",
                          warning: nil, live: false)
+            }
+            // Alarms his own Eight Sleep app will not list.
+            //
+            // Kept separate from the rows above, and warned about rather than merely mentioned,
+            // because they are the one thing on this screen he cannot go and fix himself. They ring.
+            // They do not appear in the Eight Sleep app, so there is nothing there to switch off, and
+            // OneAlarm has no delete on any device on purpose.
+            ForEach(choices.filter(\.isHidden)) { choice in
+                MatchRow(
+                    title: choice.summary,
+                    detail: "OneAlarm made this before 17 August and left a nap tag on it, so the Eight Sleep app does not list it",
+                    warning: "This one still rings, and you cannot switch it off in the Eight Sleep app because it is not shown there. OneAlarm leaves it alone rather than quietly taking it over.",
+                    live: false
+                )
             }
         }
     }

@@ -744,6 +744,30 @@ final class EightSleepWritePathTests: XCTestCase {
                        "the routine re-homes onto the alarm his app actually lists")
     }
 
+    /// The picker marks a hidden alarm as hidden, so the screen can give the true reason.
+    ///
+    /// The bed screen said "no routine has these days, so OneAlarm never touches it" about both of
+    /// the hidden alarms on his account. That is false: `05:55, weekdays` has exactly the days his
+    /// Weekdays routine has. The true reason is that his Eight Sleep app will not show it. A screen
+    /// giving the wrong reason is worse than one giving none, because it is where somebody goes to
+    /// rule a cause out.
+    func testThePickerMarksAlarmsHisOwnAppWillNotShow() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    hiddenAlarm(id: "ghost", time: "05:55:00", days: weekdayNames),
+                    alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil),
+                ],
+            ]),
+        ]
+
+        let choices = try await adapter().availableAlarms()
+
+        XCTAssertEqual(choices.count, 2, "a hidden alarm is still listed, because he needs to know it exists")
+        XCTAssertEqual(choices.first { $0.id == "ghost" }?.isHidden, true)
+        XCTAssertEqual(choices.first { $0.id == "his" }?.isHidden, false)
+    }
+
     /// The template for a create is an alarm he can see, so the settings copied are ones he chose.
     ///
     /// Stripping `tags` breaks the inheritance loop on its own. This closes the other half: copying
