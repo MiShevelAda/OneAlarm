@@ -166,7 +166,7 @@ struct EightSleepLinkView: View {
                             in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
 
                 Text("Why it works this way").font(.system(size: 19, weight: .semibold))
-                Text("Each of your routines drives one alarm on your bed. OneAlarm sets its time, its days and whether it is on, and makes one if a routine has none. Temperature, vibration, level and pattern are read from Eight Sleep and handed straight back untouched, because it never has to guess what they should be. Nothing is ever deleted.")
+                Text("Each of your routines drives one alarm on your bed. OneAlarm sets its time, its days and whether it is on, and makes one if a routine has none. Temperature, vibration, level and pattern are read from Eight Sleep and handed straight back untouched, because it never has to guess what they should be. Alarms you made yourself are never deleted. If you delete a routine here, the alarm OneAlarm made for it goes too.")
                     .font(.system(size: 15)).foregroundStyle(Theme.grey)
 
                 Notice("One is enough. OneAlarm creates the rest from it, one per routine, rather than asking you to build them by hand.")
@@ -889,8 +889,8 @@ struct BedConfirmScreen: View {
     /// problem.** Before 17 August every alarm OneAlarm created carried a copied `oneOff-napMode`
     /// tag, so the Eight Sleep app filtered it out. Two of them are on his account, both enabled,
     /// both ringing minutes after his real alarm at full vibration. He cannot switch them off in the
-    /// Eight Sleep app because it does not list them, and OneAlarm has no delete on any service by
-    /// design and is not getting one.
+    /// Eight Sleep app because it does not list them. OneAlarm will not delete them either: deleting
+    /// reaches only alarms it recorded creating, and these predate that record.
     ///
     /// Off, not deleted: time, days, temperature and vibration all survive. Alex asked for it on
     /// 17 August, in one word: *"yes"*.
@@ -1008,12 +1008,12 @@ struct BedConfirmScreen: View {
             // Kept separate from the rows above, and warned about rather than merely mentioned,
             // because they are the one thing on this screen he cannot go and fix himself. They ring.
             // They do not appear in the Eight Sleep app, so there is nothing there to switch off, and
-            // OneAlarm has no delete on any device on purpose.
+            // OneAlarm deletes only alarms it recorded creating, and these predate that record.
             ForEach(choices.filter(\.isHidden)) { choice in
                 MatchRow(
                     title: choice.summary,
                     detail: "OneAlarm made this before 17 August and left a nap tag on it, so the Eight Sleep app does not list it",
-                    warning: "This one still rings, and you cannot switch it off in the Eight Sleep app because it is not shown there. OneAlarm leaves it alone rather than quietly taking it over.",
+                    warning: "This one still rings, and you cannot switch it off in the Eight Sleep app because it is not shown there. OneAlarm leaves it alone rather than quietly taking it over, and will not delete it either, because it cannot prove it made this one.",
                     live: false
                 )
             }

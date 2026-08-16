@@ -15,6 +15,22 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**OneAlarm must be able to delete, and the no-delete rule is overruled.** `[Alex, 17 August]`
+*"the one alarm app should be able to delete alarms if there are changes because right now for
+whatever reason I had three alarms in my sleep app and I had to delete all the alarms in the eight
+sleep app and set all alarms again from the one alarm app."*
+
+The rule it replaces was written for a good reason and the reason still holds for **his** alarms: a
+delete cannot be undone, and an ownership bug that writes the wrong time is a bad morning while one
+that deletes the wrong alarm is a lost one. What changed is that refusing to delete did not avoid
+that cost, it moved it onto him. He ended up cleaning the account by hand, which is the exact chore
+this app exists to remove.
+
+So the ban narrows rather than disappears. **Only an alarm OneAlarm created may be deleted**, tracked
+by id at the moment of creation, and only once no live routine claims it. Never one he made, never
+one adopted for matching days: adoption means it was already his.
+
+
 **"A test that mutates a live account is a change" applies to his phone, not only to his accounts.**
 `[observed, 17 August]` A new test for override expiry constructed a real `ScheduleStore`. Its `init`
 calls `recompute`, which purges an expired override and then **persists** to

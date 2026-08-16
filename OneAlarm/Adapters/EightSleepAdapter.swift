@@ -105,6 +105,23 @@ actor EightSleepAdapter: DeviceAdapter {
         // untouched apart from the two fields OneAlarm owns. `bedtime` in particular is his and is
         // never authored. See `authorRoutine`.
         #"^PUT https://app-api\.8slp\.net/v2/users/[^/]+/routines/[^/]+$"#,
+        // The only DELETE in this app, on any service.
+        //
+        // Alex overruled the blanket no-delete ban on 17 August after clearing three alarms off his
+        // bed by hand. The allowlist is where that decision becomes narrow enough to be safe: one
+        // verb, one host, one path, and the alarm id has to be one `RemoteAlarmLink.created` recorded
+        // OneAlarm posting. Both gates have to agree before anything is destroyed.
+        //
+        // The path is the PUT path with a different verb, which is a REST **convention** and not a
+        // captured request. Nothing public documents a delete here and the session cannot reach the
+        // host to probe it. `E20` says so, and the code reports the status and falls back to
+        // switching the alarm off rather than treating a refusal as done.
+        //
+        // Note what is still absent and stays absent: no DELETE on a routine, no DELETE on Whoop, no
+        // DELETE anywhere near the pod, the pump or the bed frame. A path allowlisted for a read is
+        // otherwise open to a destructive verb, which is the whole reason this allowlist is written
+        // method-first.
+        #"^DELETE https://app-api\.8slp\.net/v1/users/[^/]+/alarms/[^/]+$"#,
         #"^GET https://client-api\.8slp\.net/v1/users/me$"#,
         #"^GET https://app-api\.8slp\.net/v1/household/users/[^/]+/summary$"#,
     ]
@@ -580,7 +597,7 @@ actor EightSleepAdapter: DeviceAdapter {
     /// Switch an owned alarm off without touching anything else about it.
     ///
     /// For an alarm whose routine has been deleted in OneAlarm. It is switched off rather than
-    /// deleted because this app has no delete on either service and is not getting one, and because
+    /// deleted because this app deletes only alarms it created itself, which this is not, and because
     /// off is something he can undo in the Eight Sleep app in one tap. Leaving it alone is not an
     /// option: an abandoned alarm goes on firing on a morning he deleted the routine for.
     static func silence(_ alarm: [String: Any]) -> [String: Any] {
@@ -736,7 +753,8 @@ actor EightSleepAdapter: DeviceAdapter {
     /// The mess OneAlarm made before 17 August, ready to be shown to Alex before anything happens.
     ///
     /// Pure read. Two alarms on his account carry `oneOff-napMode`, ring, and are invisible in the
-    /// Eight Sleep app, so there is nothing there for him to switch off and OneAlarm has no delete on
+    /// Eight Sleep app, so there is nothing there for him to switch off and OneAlarm cannot prove it
+    /// created these two, which is the only thing that ever licenses a delete on
     /// any service by design. Switching them off is the only remedy that exists, and he asked for it
     /// on 17 August: *"yes"*.
     ///
@@ -757,7 +775,8 @@ actor EightSleepAdapter: DeviceAdapter {
 
     /// Switch off specific alarms by id, and report each one by name.
     ///
-    /// **Off, never deleted.** There is no DELETE on this adapter and there is not going to be one.
+    /// **Off, not deleted, because this alarm is his.** Deleting exists as of 17 August but reaches
+    /// only alarms `RemoteAlarmLink.created` records OneAlarm posting. Adoption is not authorship.
     /// An alarm switched off keeps its time, its days, its temperature and its vibration, so this is
     /// reversible by anybody who can see it, which for these particular alarms means the API rather
     /// than his app. That asymmetry is why he is asked first rather than told after.
@@ -854,7 +873,7 @@ actor EightSleepAdapter: DeviceAdapter {
 
         return WritePreview(
             device: .eightSleep,
-            summary: "One PUT per routine, carrying three changed fields: `time`, `repeat.weekDays` and `enabled`. \(lines). Vibration, thermal, level, pattern and every field with no known meaning are echoed back exactly as the server gave them. A routine with no alarm on the bed gets one created, as a copy of an alarm you already have, capped at \(Self.alarmCeiling) alarms. An alarm whose routine you deleted is switched off, never deleted. An alarm OneAlarm has never owned is not touched at all.",
+            summary: "One PUT per routine, carrying three changed fields: `time`, `repeat.weekDays` and `enabled`. \(lines). Vibration, thermal, level, pattern and every field with no known meaning are echoed back exactly as the server gave them. A routine with no alarm on the bed gets one created, as a copy of an alarm you already have, capped at \(Self.alarmCeiling) alarms. An alarm whose routine you deleted is removed if OneAlarm made it, and switched off rather than removed if you made it. An alarm OneAlarm has never owned is not touched at all.",
             method: "PUT",
             url: "\(Self.appHost)/v1/users/{userId}/alarms/{alarmId}",
             body: HTTPClient.redactedPreview(sketch, showing: Self.previewKeys),
@@ -1155,6 +1174,10 @@ actor EightSleepAdapter: DeviceAdapter {
                         let fresh = after.compactMap(Self.alarmID).filter { !knownAlarmIDs.contains($0) }
                         if fresh.count == 1, let newID = fresh.first {
                             RemoteAlarmLink.link(routine: entry.routineID, to: newID, on: .eightSleep)
+                            // Provenance, recorded the instant the create is confirmed and before
+                            // anything else can fail. This list is the only thing that ever makes an
+                            // alarm eligible for deletion. See `RemoteAlarmLink.created`.
+                            RemoteAlarmLink.markCreated(newID, on: .eightSleep)
                             createdIDs.insert(newID)
                             knownAlarmIDs.insert(newID)
                             createNotes.append("Added the \(entry.routineName) alarm inside a routine that already runs on those days, so the Eight Sleep app shows it.")
@@ -1191,6 +1214,7 @@ actor EightSleepAdapter: DeviceAdapter {
                     // Linked immediately. An alarm created and not recorded is one this app will
                     // fail to recognise the moment its days change, and will then create again.
                     RemoteAlarmLink.link(routine: entry.routineID, to: newID, on: .eightSleep)
+                    RemoteAlarmLink.markCreated(newID, on: .eightSleep)
                     report.pairs.append(
                         AlarmMatchReport.Pair(
                             routineID: entry.routineID,
@@ -1332,27 +1356,59 @@ actor EightSleepAdapter: DeviceAdapter {
             }
         }
 
-        // A routine deleted in OneAlarm leaves a real alarm on his bed. Switching it off is the
-        // other half of being the source of truth: without this, deleting a routine here changes
-        // nothing there and the bed goes on waking him on a morning he removed.
+        // A routine deleted in OneAlarm leaves a real alarm on his bed. Clearing it is the other half
+        // of being the source of truth: without this, deleting a routine here changes nothing there
+        // and the bed goes on waking him on a morning he removed.
         //
-        // Off, never deleted. This app has no DELETE on either service and is not getting one, and
-        // off is something he can undo in the Eight Sleep app in one tap.
+        // **Two different endings, decided by who made the alarm.** Alex overruled the blanket
+        // no-delete ban on 17 August, after ending up with three alarms on his bed and clearing them
+        // by hand: *"the one alarm app should be able to delete alarms if there are changes."*
+        //
+        // - **OneAlarm created it** → deleted. It only ever existed to serve a routine that is now
+        //   gone, so switching it off leaves litter he has to tidy, which is the chore he just did
+        //   manually and asked never to do again.
+        // - **He made it, or OneAlarm adopted it for matching days** → switched off, never deleted.
+        //   Adoption means the alarm was his before OneAlarm saw it. Off is reversible in his own app
+        //   in one tap; a delete is not reversible anywhere.
+        //
+        // The list in `RemoteAlarmLink.created` is the whole safety mechanism. Not "alarms OneAlarm
+        // manages", which would include his: only ones that did not exist until OneAlarm posted them.
         var silenced: [String] = []
+        var deleted: [String] = []
+        var deleteProblems: [String] = []
         if !plan.entries.isEmpty {
             let living = Set(entries.map(\.routineID))
+            let ours = RemoteAlarmLink.created(for: .eightSleep)
             for (routineID, alarmID) in RemoteAlarmLink.orphans(for: .eightSleep, livingRoutines: living) {
                 guard let existing = alarms.first(where: { Self.alarmID($0) == alarmID }) else {
-                    // Already gone from the account, so the link is the only thing left to clean up.
+                    // Already gone from the account, so the links are all that is left to clean up.
                     RemoteAlarmLink.unlink(routine: routineID, on: .eightSleep)
-                    continue
-                }
-                guard (existing["enabled"] as? Bool) != false else {
-                    RemoteAlarmLink.unlink(routine: routineID, on: .eightSleep)
+                    RemoteAlarmLink.forgetCreated(alarmID, on: .eightSleep)
                     continue
                 }
                 guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms/\(alarmID)") else { continue }
 
+                if ours.contains(alarmID) {
+                    // **The endpoint is the PUT path with a different verb, and that is a convention
+                    // rather than a capture.** No public source documents a delete on this API and
+                    // the session cannot reach the host to probe it. So a refusal is reported with
+                    // its status rather than swallowed, and the alarm is switched off instead, which
+                    // leaves him no worse off than before deleting existed. `E20` carries the
+                    // prediction. If it turns out to be a different address, the ladder is one line.
+                    let response = try await http.send("DELETE", url, headers: Self.baseHeaders(token: token))
+                    if response.isSuccess || response.status == 404 {
+                        deleted.append(Self.shortLabel(existing))
+                        RemoteAlarmLink.unlink(routine: routineID, on: .eightSleep)
+                        RemoteAlarmLink.forgetCreated(alarmID, on: .eightSleep)
+                        continue
+                    }
+                    deleteProblems.append("Could not delete the \(Self.shortLabel(existing)) alarm OneAlarm made (HTTP \(response.status)). Switched it off instead.")
+                }
+
+                guard (existing["enabled"] as? Bool) != false else {
+                    RemoteAlarmLink.unlink(routine: routineID, on: .eightSleep)
+                    continue
+                }
                 let response = try await http.send(
                     "PUT", url, headers: Self.baseHeaders(token: token),
                     body: try HTTPClient.json(Self.silence(existing))
@@ -1396,8 +1452,16 @@ actor EightSleepAdapter: DeviceAdapter {
         if !routineNotes.isEmpty {
             note += " " + routineNotes.joined(separator: " ")
         }
+        if !deleted.isEmpty {
+            // Named, and named plainly. A delete cannot be undone from here or anywhere else, so it
+            // is the one outcome he must never have to discover for himself.
+            note += " Deleted \(deleted.joined(separator: ", ")) from your bed, because the routine that owned it is gone and OneAlarm was the one that made it. Alarms you made yourself are never deleted."
+        }
+        if !deleteProblems.isEmpty {
+            note += " " + deleteProblems.joined(separator: " ")
+        }
         if !silenced.isEmpty {
-            note += " Switched off \(silenced.joined(separator: ", ")) on your bed, because the routine that owned it is gone. It is switched off rather than deleted, so you can turn it back on in the Eight Sleep app if that was not what you wanted."
+            note += " Switched off \(silenced.joined(separator: ", ")) on your bed, because the routine that owned it is gone. Yours are switched off rather than deleted, so you can turn it back on in the Eight Sleep app if that was not what you wanted."
         }
         if let skipped = entries.first(where: \.isSkippedNextMorning) {
             // A skip now reaches the bed. It is expressed as `enabled: false` on the alarm this

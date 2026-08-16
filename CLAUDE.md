@@ -55,7 +55,21 @@ finished.
 
 - Send anything to `smart-alarm-service`, including `strap-status` and `wbl`. The whole prefix is
   outside the Whoop allowlist on purpose.
-- **Delete** an alarm on either remote service, or **create** one on Whoop.
+- **Create** an alarm on Whoop. Alex deleted every Whoop schedule on 2026-08-17 and neither OneAlarm
+  nor Whoop's own `CREATE SCHEDULE` button could make one, so this is being reopened, but **only
+  against a captured request**. The six-field body is confirmed; the address and verb for a create
+  are not, and guessing on this service already cost five hours. See the raw envelope panel.
+- **Delete an Eight Sleep alarm OneAlarm did not create.** Deleting is otherwise allowed as of
+  2026-08-17, when Alex overruled the blanket ban: *"the one alarm app should be able to delete
+  alarms if there are changes because right now for whatever reason I had three alarms in my sleep
+  app and I had to delete all the alarms in the eight sleep app and set all alarms again from the
+  one alarm app."*
+
+  What makes it safe is not care, it is provenance. `RemoteAlarmLink` records the id of every alarm
+  OneAlarm creates, and **only an id on that list may ever be deleted**, and only once no live
+  routine claims it. An alarm he made by hand, or one OneAlarm adopted because its days matched, is
+  never deleted whatever state it is in: adoption means the alarm was already his. Switching one off
+  is the most that may happen to it, and that is reversible.
 - Create an Eight Sleep alarm by composing a payload. Alex overruled the create ban on 2026-08-16:
   *"the OneAlarm app should also write the new alarm sequence into the Eight Sleep app, and I
   shouldn't do it manually."* What makes it safe is not care, it is that `clone` copies an alarm the

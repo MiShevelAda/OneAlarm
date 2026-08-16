@@ -657,6 +657,51 @@ whether authenticated or not, and this is checked rather than assumed. Do not sp
 The same applies to `E16`. Neither version question can be resolved anywhere but on Alex's phone.
 
 
+---
+
+## E20 🔴 Does `DELETE /v1/users/{id}/alarms/{alarmId}` actually delete an Eight Sleep alarm?
+
+**Why.** Alex overruled the blanket no-delete ban on 17 August, after ending up with three alarms on
+his bed and clearing them by hand: *"the one alarm app should be able to delete alarms if there are
+changes."* So OneAlarm now deletes an orphaned alarm **it created**. The address is the PUT path with
+a different verb, which is a REST convention and **not a captured request**. Nothing public documents
+a delete on this API.
+
+**Why guessing was still the right call here, unusually for this project.** The failure mode is
+bounded in a way the create's was not. A refused delete is reported with its status and the alarm is
+switched off instead, which is exactly what happened before deleting existed. So a wrong guess costs
+one wasted request and leaves him no worse off. Compare the create, where a wrong guess sat invisible
+on his account for a fortnight.
+
+**What cannot go wrong, and why it is two independent gates rather than care.** The alarm id must be
+in `RemoteAlarmLink.created`, recorded at the moment OneAlarm posted it, **and** no live routine may
+claim it. An alarm he made is not on that list. An alarm OneAlarm adopted for matching days is not on
+that list either, because adoption is not authorship. `testAnAlarmHeMadeIsNeverDeleted` stubs the
+delete endpoint to succeed and asserts it is never called.
+
+**Test.** Delete a routine in OneAlarm that owns an alarm OneAlarm created, then Set all alarms. Read
+the Eight Sleep row.
+
+| What the row says | Means | Then |
+|---|---|---|
+| "Deleted 09:00, Sa Su from your bed" | the convention holds | remove this entry, record it in `RESEARCH.md` §1.5 |
+| "Could not delete ... (HTTP 405). Switched it off instead." | wrong verb for this path | the alarm object may carry a soft-delete field; look at a full dump before guessing again |
+| "... (HTTP 404)" | wrong path | treated as success today, since the alarm is gone either way. Worth a second look if the alarm is still on his bed afterwards |
+| "... (HTTP 403)" | deletes need something the token does not have | stop. Switching off is the answer and this entry closes |
+
+**Prediction, written before it runs.** 200 or 204, and the alarm disappears from the Eight Sleep
+app. The API is otherwise conventional on this path: the alarm list is `/v2`, the update is `/v1` on
+this exact URL, and a resource that accepts PUT at an id usually accepts DELETE there too. Confidence
+is moderate, not high, and the fallback is why that is acceptable.
+
+**Whose.** Alex, one routine deletion and one Set.
+
+**Why the session cannot answer it.** `app-api.8slp.net` is refused by the proxy at CONNECT, gateway
+403, checked on 16 August with four unauthenticated GETs. A 404-against-405 probe would settle it with
+no credentials and cannot be run here.
+
+
+
 ## Completed
 
 | | Question | Answer | Date |

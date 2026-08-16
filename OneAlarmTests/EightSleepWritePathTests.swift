@@ -949,6 +949,147 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertEqual(report, ["05:51 weekdays was left alone, it is not one of these"])
     }
 
+    // MARK: Deleting, which only ever applies to alarms OneAlarm made
+
+    /// An alarm OneAlarm created, whose routine is gone, is deleted.
+    ///
+    /// Alex, 17 August: *"the one alarm app should be able to delete alarms if there are changes
+    /// because right now for whatever reason I had three alarms in my sleep app and I had to delete
+    /// all the alarms in the eight sleep app and set all alarms again from the one alarm app."*
+    /// Before this, an orphan was switched off, which left litter on his bed that only he could tidy.
+    func testAnAlarmOneAlarmCreatedIsDeletedWhenItsRoutineIsGone() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    alarm(id: "live", time: "06:50:00", days: weekdayNames, routine: nil),
+                    alarm(id: "ours", time: "09:00:00", days: ["saturday", "sunday"], routine: nil),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/live"): accepted,
+            StubServer.key("DELETE", "/v1/users/\(userID)/alarms/ours"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "live", on: .eightSleep)
+        RemoteAlarmLink.link(routine: "weekend", to: "ours", on: .eightSleep)
+        RemoteAlarmLink.markCreated("ours", on: .eightSleep)
+
+        // The weekend routine has been deleted in OneAlarm: it is absent from the plan.
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 50)],
+            skipsNextMorning: false
+        )
+
+        let receipt = try await adapter().write(target, plan: plan)
+
+        XCTAssertTrue(StubServer.calls.contains(StubServer.Call(method: "DELETE", path: "/v1/users/\(userID)/alarms/ours")),
+                      "an alarm OneAlarm made, for a routine that is gone, is removed rather than left switched off")
+        XCTAssertNil(RemoteAlarmLink.alarmID(for: "weekend", on: .eightSleep))
+        XCTAssertFalse(RemoteAlarmLink.created(for: .eightSleep).contains("ours"),
+                       "and it leaves the created list, so a later id reuse cannot inherit permission to delete")
+        XCTAssertTrue((receipt.note ?? "").contains("Deleted"), "a delete is never silent")
+    }
+
+    /// **The one that matters most.** An alarm Alex made himself is never deleted, whatever happens.
+    ///
+    /// Same situation as the test above in every respect except provenance: the orphan is not on the
+    /// created list, because he made it or because OneAlarm adopted it for matching days. Adoption is
+    /// not authorship. It is switched off, which he can undo in the Eight Sleep app in one tap.
+    func testAnAlarmHeMadeIsNeverDeleted() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    alarm(id: "live", time: "06:50:00", days: weekdayNames, routine: nil),
+                    alarm(id: "his", time: "09:00:00", days: ["saturday", "sunday"], routine: nil),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/live"): accepted,
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("DELETE", "/v1/users/\(userID)/alarms/his"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "live", on: .eightSleep)
+        RemoteAlarmLink.link(routine: "weekend", to: "his", on: .eightSleep)
+        // Deliberately NOT marked created.
+
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 50)],
+            skipsNextMorning: false
+        )
+
+        _ = try await adapter().write(target, plan: plan)
+
+        XCTAssertFalse(StubServer.calls.contains { $0.method == "DELETE" },
+                       "OneAlarm never deletes an alarm it did not make, even with the endpoint stubbed to succeed")
+        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")])
+        XCTAssertEqual(body["enabled"] as? Bool, false, "his is switched off instead, which is reversible")
+    }
+
+    /// A refused delete falls back to switching off rather than reporting success.
+    ///
+    /// The delete address is the PUT path with a different verb, which is a REST convention and not a
+    /// captured request. Nothing public documents a delete on this API and no session can reach the
+    /// host to probe it. So the failure path is the one that has to be right: `E20`.
+    func testARefusedDeleteFallsBackToSwitchingOff() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    alarm(id: "live", time: "06:50:00", days: weekdayNames, routine: nil),
+                    alarm(id: "ours", time: "09:00:00", days: ["saturday", "sunday"], routine: nil),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/live"): accepted,
+            StubServer.key("DELETE", "/v1/users/\(userID)/alarms/ours"): (405, ["message": "method not allowed"]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/ours"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "live", on: .eightSleep)
+        RemoteAlarmLink.link(routine: "weekend", to: "ours", on: .eightSleep)
+        RemoteAlarmLink.markCreated("ours", on: .eightSleep)
+
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 50)],
+            skipsNextMorning: false
+        )
+
+        let receipt = try await adapter().write(target, plan: plan)
+        let note = try XCTUnwrap(receipt.note)
+
+        XCTAssertTrue(note.contains("405"), "the status is named, so one round trip settles E20")
+        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/ours")])
+        XCTAssertEqual(body["enabled"] as? Bool, false, "and it ends up switched off, no worse than before delete existed")
+    }
+
+    /// A live routine's alarm is never deleted, however it was made.
+    ///
+    /// The orphan check is what gates this, and getting it backwards would delete the alarm that is
+    /// about to ring. Cheap to assert, and the failure has no symptom until a morning is missed.
+    func testAnAlarmWithALivingRoutineIsNeverDeleted() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "ours", time: "06:50:00", days: weekdayNames, routine: nil)],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/ours"): accepted,
+            StubServer.key("DELETE", "/v1/users/\(userID)/alarms/ours"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "ours", on: .eightSleep)
+        RemoteAlarmLink.markCreated("ours", on: .eightSleep)
+
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 50)],
+            skipsNextMorning: false
+        )
+
+        _ = try await adapter().write(target, plan: plan)
+
+        XCTAssertFalse(StubServer.calls.contains { $0.method == "DELETE" },
+                       "the routine is alive, so its alarm is written to and never removed")
+    }
+
     /// The template for a create is an alarm he can see, so the settings copied are ones he chose.
     ///
     /// Stripping `tags` breaks the inheritance loop on its own. This closes the other half: copying

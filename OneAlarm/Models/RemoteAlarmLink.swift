@@ -58,12 +58,50 @@ enum RemoteAlarmLink {
         UserDefaults.standard.set(links, forKey: key(device))
     }
 
+    private static func createdKey(_ device: DeviceID) -> String {
+        "OneAlarm.alarmsCreated.\(device.rawValue)"
+    }
+
+    /// Ids of alarms OneAlarm made itself.
+    ///
+    /// **This list is the entire safety mechanism behind deleting**, so it is worth being exact about
+    /// what it is not. It is not "alarms OneAlarm manages". An adopted alarm, one matched because its
+    /// days happened to line up with a routine, is managed and is emphatically **not** on this list,
+    /// because it was already his before OneAlarm ever saw it. Only an alarm that did not exist until
+    /// OneAlarm posted it goes here.
+    ///
+    /// Alex overruled the blanket no-delete ban on 17 August, after ending up with three alarms on
+    /// his bed and clearing them by hand. The ban's reason still holds for his own alarms: a delete
+    /// cannot be undone, so an ownership bug that writes a wrong time costs a bad morning while one
+    /// that deletes costs a lost one. Provenance is what separates the two, and nothing else does.
+    static func created(for device: DeviceID) -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: createdKey(device)) ?? [])
+    }
+
+    /// Called the moment a create is confirmed, before anything else can fail.
+    static func markCreated(_ alarmID: String, on device: DeviceID) {
+        var ids = created(for: device)
+        guard !ids.contains(alarmID) else { return }
+        ids.insert(alarmID)
+        UserDefaults.standard.set(Array(ids).sorted(), forKey: createdKey(device))
+    }
+
+    /// After a successful delete, or when the alarm is gone from the account for any other reason.
+    static func forgetCreated(_ alarmID: String, on device: DeviceID) {
+        let ids = created(for: device).subtracting([alarmID])
+        UserDefaults.standard.set(Array(ids).sorted(), forKey: createdKey(device))
+    }
+
     /// Links whose routine no longer exists in OneAlarm.
     ///
     /// These alarms are still on his bed and still ours, so they cannot simply be forgotten: an
-    /// abandoned alarm goes on firing on a morning he deleted the routine for. They are switched
-    /// off rather than deleted, because OneAlarm has no delete on either service and is not getting
-    /// one, and because switching off is a thing he can undo in the Eight Sleep app in one tap.
+    /// abandoned alarm goes on firing on a morning he deleted the routine for.
+    ///
+    /// **Switched off, unless OneAlarm created it**, in which case it is deleted. Before 17 August
+    /// every orphan was switched off, because there was no delete at all. Alex changed that after
+    /// finding three alarms on his bed and clearing them himself. Switching off is still the answer
+    /// for an adopted alarm, and always will be: he made it, and off is a state he can undo in his
+    /// own app in one tap.
     static func orphans(for device: DeviceID, livingRoutines: Set<String>) -> [String: String] {
         all(for: device).filter { !livingRoutines.contains($0.key) }
     }
