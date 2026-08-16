@@ -377,9 +377,12 @@ struct CascadeView: View {
     @ViewBuilder
     private var whoopCarriesOneRoutine: some View {
         let live = store.schedule.routines.filter { $0.isOn && !$0.weekdays.isEmpty }
-        if live.count > 1, let next = store.next?.routineName {
-            Notice(.bad, title: "Only \(next) is armed. Set again after it.",
-                   "Your phone and your strap each hold one routine at a time, so right now they carry \(next) and nothing else. Your bed holds the whole week. Press Set all alarms again after \(next)'s last morning, or that next morning has no phone alarm. This is a limitation of the app rather than of your devices, and it is the top item on the list to fix.")
+        if live.count > 1,
+           store.isConnected(.whoop),
+           store.schedule.rule(for: .whoop)?.isEnabled == true,
+           let next = store.next?.routineName {
+            Notice(.warn, title: "Your strap holds one routine at a time.",
+                   "Whoop has a single smart alarm schedule, so OneAlarm sets it to \(next) and that replaces the days it had. Your phone and your bed carry the whole week. Your strap catches up the next time you sync.")
         }
     }
 }

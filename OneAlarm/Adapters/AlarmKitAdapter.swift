@@ -23,21 +23,24 @@ actor AlarmKitAdapter: DeviceAdapter {
 
     private(set) var authState: AuthState = .notConfigured
 
-    /// Persisted so a relaunch can cancel the alarm it scheduled last time instead of stacking a
-    /// second one. Not a secret, so `UserDefaults` is the right home.
+    /// Persisted so a relaunch can cancel the alarms it scheduled last time instead of stacking more.
+    /// Not a secret, so `UserDefaults` is the right home.
+    ///
+    /// A **map** now, routine key to alarm id, because the phone holds one alarm per routine as of
+    /// 17 August. It held exactly one before that, and the single id lived at `storageKey` below,
+    /// which is read once on the first write and cancelled so the old alarm cannot outlive the
+    /// change. Without that migration his phone would keep an orphan weekly alarm nothing tracks
+    /// and nothing can cancel, which is worse than the bug being fixed.
     private let storageKey = "OneAlarm.alarmKit.currentAlarmID"
+    private let mapKey = "OneAlarm.alarmKit.alarmIDsByKey"
 
-    private var currentAlarmID: UUID? {
+    private var alarmIDs: [String: UUID] {
         get {
-            guard let raw = UserDefaults.standard.string(forKey: storageKey) else { return nil }
-            return UUID(uuidString: raw)
+            let raw = UserDefaults.standard.dictionary(forKey: mapKey) as? [String: String] ?? [:]
+            return raw.compactMapValues(UUID.init(uuidString:))
         }
         set {
-            if let newValue {
-                UserDefaults.standard.set(newValue.uuidString, forKey: storageKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: storageKey)
-            }
+            UserDefaults.standard.set(newValue.mapValues(\.uuidString), forKey: mapKey)
         }
     }
 
@@ -88,6 +91,22 @@ actor AlarmKitAdapter: DeviceAdapter {
     }
 
     func write(_ target: ResolvedTarget) async throws -> WriteReceipt {
+        // A plan with no entries falls through to a single alarm, which is what this leg did for
+        // its whole life before 17 August.
+        try await write(target, plan: RoutinePlan(device: .iphone, entries: [], skipsNextMorning: false))
+    }
+
+    /// One alarm per routine, so no morning the week covers is left unarmed.
+    ///
+    /// Until 17 August this scheduled exactly one alarm, from the single resolved target, whose days
+    /// were those of the routine covering the **next** morning. With a weekday routine and a weekend
+    /// one, a Friday night sync armed Saturday and Sunday and left Monday with nothing. That is a
+    /// silent missed morning on the leg that exists because it needs no account and no network.
+    ///
+    /// What to schedule and what to cancel is decided by `AlarmKitReconciler`, which is pure and
+    /// tested. `AlarmManager.shared` is an Apple singleton with no seam, so this function stays a
+    /// shell: it does what it is told and reports what happened.
+    func write(_ target: ResolvedTarget, plan: RoutinePlan) async throws -> WriteReceipt {
         // Deliberately does NOT prompt. `requestAuthorization()` awaits a system alert with no
         // timeout, and a fan out that waits on it hangs forever if the user swipes the alert away,
         // leaving the Apply button spinning and disabled with no other way to set an alarm. The
@@ -99,13 +118,85 @@ actor AlarmKitAdapter: DeviceAdapter {
             )
         }
 
+        // The single id this leg used to keep. Cancelled once, on the first write after the change,
+        // or it becomes a weekly alarm nothing tracks and nothing can ever cancel.
+        if let legacy = UserDefaults.standard.string(forKey: storageKey).flatMap(UUID.init(uuidString:)) {
+            try? AlarmManager.shared.cancel(id: legacy)
+            UserDefaults.standard.removeObject(forKey: storageKey)
+        }
+
+        var held = alarmIDs
+        let outcome = AlarmKitReconciler.reconcile(plan: plan, target: target, held: Set(held.keys))
+
+        guard !outcome.schedule.isEmpty else {
+            // Only reachable when every routine is off or has no days, which is a real setting he
+            // can choose. Cancel what is held so the phone does not go on ringing for a week he has
+            // switched off, and say so rather than reporting a write that armed nothing.
+            for (_, id) in held { try? AlarmManager.shared.cancel(id: id) }
+            alarmIDs = [:]
+            throw AdapterError.unexpectedResponse("No routine is on, so nothing is armed. Previous alarms were cancelled.")
+        }
+
+        // Schedule the new alarms BEFORE cancelling the old ones.
+        //
+        // The other order looks tidier and is dangerous: if `schedule` throws, and it can, the
+        // documented `maximumLimitReached` being one way, the old alarm is already gone and the new
+        // one never arrives, so the backstop that exists to always ring has been removed by our own
+        // code. AlarmKit holds more than one alarm happily, so a moment of overlap costs nothing,
+        // and a duplicate ring is a far better failure than silence.
+        var replaced: [UUID] = []
+        for wanted in outcome.schedule {
+            let id = UUID()
+            do {
+                _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration(for: wanted))
+            } catch let error as AlarmManager.AlarmError {
+                throw AdapterError.unexpectedResponse("AlarmKit refused the alarm: \(error).")
+            } catch {
+                throw AdapterError.unexpectedResponse(error.localizedDescription)
+            }
+            if let previous = held[wanted.key] { replaced.append(previous) }
+            held[wanted.key] = id
+        }
+
+        // Only now are the old ones safe to remove. Cancelling an id that no longer exists is
+        // expected once an alarm has fired, so a throw here is not worth surfacing.
+        for id in replaced { try? AlarmManager.shared.cancel(id: id) }
+        for key in outcome.cancel {
+            if let id = held.removeValue(forKey: key) { try? AlarmManager.shared.cancel(id: id) }
+        }
+
+        alarmIDs = held
+        authState = .connected
+
+        // The id `verify` reads back is the one covering the morning the target is for, so the
+        // check still means "tonight is armed" rather than "something is armed".
+        let calendar = Calendar(identifier: .gregorian)
+        let nextWeekday = Locale.Weekday.from(
+            calendarIndex: calendar.component(.weekday, from: target.nextOccurrence)
+        )
+        let covering = outcome.schedule.first { $0.weekdays.contains(nextWeekday) } ?? outcome.schedule[0]
+
+        let note = outcome.schedule.count == 1
+            ? "Scheduled with AlarmKit."
+            : "Scheduled \(outcome.schedule.count) alarms with AlarmKit, one per routine, so every morning your week covers is armed."
+
+        return WriteReceipt(
+            device: .iphone,
+            succeededAt: Date(),
+            remoteID: held[covering.key]?.uuidString,
+            note: note
+        )
+    }
+
+    /// The AlarmKit configuration for one wanted alarm. Pulled out so `write` reads as what it does.
+    private func configuration(for wanted: AlarmKitReconciler.Scheduled) -> AlarmManager.AlarmConfiguration {
         // `.relative` and not `.fixed`. A fixed schedule is an absolute instant that does not track
         // the device time zone and cannot repeat, so a 07:00 wake up expressed that way drifts the
         // moment you change zone. This is the easiest bug to ship in the whole app.
-        let time = Alarm.Schedule.Relative.Time(hour: target.localTime.hour, minute: target.localTime.minute)
-        let recurrence: Alarm.Schedule.Relative.Recurrence = target.weekdays.isEmpty
+        let time = Alarm.Schedule.Relative.Time(hour: wanted.time.hour, minute: wanted.time.minute)
+        let recurrence: Alarm.Schedule.Relative.Recurrence = wanted.weekdays.isEmpty
             ? .never
-            : .weekly(Array(target.weekdays))
+            : .weekly(Array(wanted.weekdays))
         let schedule: Alarm.Schedule = .relative(.init(time: time, repeats: recurrence))
 
         // iOS 26.1 replaced the developer supplied stop button with a system slide to stop control,
@@ -120,45 +211,13 @@ actor AlarmKitAdapter: DeviceAdapter {
 
         // Every argument is passed explicitly, including the ones with defaults, so overload
         // resolution cannot drift to the App Entity variant of this initialiser.
-        let configuration = AlarmManager.AlarmConfiguration(
+        return AlarmManager.AlarmConfiguration(
             countdownDuration: nil,
             schedule: schedule,
             attributes: attributes,
             stopIntent: nil,
             secondaryIntent: nil,
             sound: .default
-        )
-
-        // Schedule the new alarm BEFORE cancelling the old one.
-        //
-        // The other order looks tidier and is dangerous: if `schedule` throws, and it can, the
-        // documented `maximumLimitReached` being one way, the old alarm is already gone and the new
-        // one never arrives, so the backstop that exists to always ring has been removed by our own
-        // code. AlarmKit holds more than one alarm happily, so a moment of overlap costs nothing,
-        // and a duplicate ring is a far better failure than silence.
-        let id = UUID()
-        do {
-            _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
-        } catch let error as AlarmManager.AlarmError {
-            throw AdapterError.unexpectedResponse("AlarmKit refused the alarm: \(error).")
-        } catch {
-            throw AdapterError.unexpectedResponse(error.localizedDescription)
-        }
-
-        // Only now is the previous one safe to remove. Cancelling an id that no longer exists is
-        // expected once an alarm has fired, so a throw here is not worth surfacing.
-        if let previous = currentAlarmID, previous != id {
-            try? AlarmManager.shared.cancel(id: previous)
-        }
-
-        currentAlarmID = id
-        authState = .connected
-
-        return WriteReceipt(
-            device: .iphone,
-            succeededAt: Date(),
-            remoteID: id.uuidString,
-            note: "Scheduled with AlarmKit."
         )
     }
 
@@ -181,9 +240,11 @@ actor AlarmKitAdapter: DeviceAdapter {
     }
 
     func cancelAll() async {
-        if let existing = currentAlarmID {
-            try? AlarmManager.shared.cancel(id: existing)
-            currentAlarmID = nil
+        for id in alarmIDs.values { try? AlarmManager.shared.cancel(id: id) }
+        alarmIDs = [:]
+        if let legacy = UserDefaults.standard.string(forKey: storageKey).flatMap(UUID.init(uuidString:)) {
+            try? AlarmManager.shared.cancel(id: legacy)
+            UserDefaults.standard.removeObject(forKey: storageKey)
         }
     }
 }

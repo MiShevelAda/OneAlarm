@@ -30,6 +30,15 @@ Routines, one per day set, each with its own time. Eight Sleep is written at mas
 at master minus 5, the iPhone at master. Each row reports what happened, and the two remote legs are
 read back rather than trusted.
 
+**The phone holds one alarm per routine** as of 17 August. It held exactly one before that, built
+from the single resolved target, whose days were those of the routine covering the **next** morning.
+So a Friday night sync armed Saturday and Sunday and left Monday with no phone alarm at all: a silent
+missed morning on the leg that exists because it needs no account, no network and no server. The
+decision of what to hold and what to cancel is `AlarmKitReconciler`, which is pure and has eight
+tests; `AlarmManager.shared` is an Apple singleton with no seam, so the adapter is a shell that
+schedules what it is told. A bend still arms one weekday and stands the routines down, because
+AlarmKit offers `.never` and `.weekly` and nothing between.
+
 **OneAlarm writes Eight Sleep routines, not just alarms** as of 16 August, evening. Their app models
 alarms **inside** routines, and the routine carries the `days`. So a OneAlarm routine now drives both:
 the alarm's time through `PUT /v1/users/{id}/alarms/{alarmId}`, and the routine's days and switch
@@ -82,44 +91,30 @@ is attacking it now, with an adversary at every stage.
 
 ## Known problems, worst first
 
-1. 🔴 **The phone holds one routine at a time, so a morning can have no alarm.** Found 17 August by
-   reading `AlarmKitAdapter` after fixing the same shape on Whoop. It schedules **one** alarm from
-   the single resolved target and cancels the previous one, and the target carries the days of
-   whichever routine covers the **next** morning. So with a weekday routine and a weekend one, a
-   Friday night sync arms Saturday and Sunday and leaves Monday with no phone alarm at all.
-
-   This is the worst problem in the app: a silent missed morning on the leg that exists precisely
-   because it needs no account, no network and no server. AlarmKit holds several alarms happily, so
-   the fix is one alarm per routine, keyed by routine id exactly as the Eight Sleep leg now is, plus
-   a second alarm for a bend rather than the current "arm one weekday and drop the rest".
-
-   Stated on the home screen until then, in red, naming which routine is armed and saying to press
-   Set again after it. The workaround is the nightly ritual the app already assumes, so it is not
-   fatal, but it was undocumented and unstated and that is what made it dangerous.
-2. 🔴 **The phone leg creates a second alarm.** OneAlarm's alarm sits beside the iOS Sleep Schedule
+1. 🔴 **The phone leg creates a second alarm.** OneAlarm's alarm sits beside the iOS Sleep Schedule
    alarm, which still fires at its own time. iOS exposes no way to read or change a Clock alarm or a
    sleep schedule, so this cannot be fixed in code. The remedy is to turn the **Alarm** toggle off
    inside the Sleep Schedule, keeping the schedule itself, and for the app to say so permanently.
-3. 🔴 **Alex's Whoop schedule was rewritten by our own test.** Turning on all seven days for the ring
+2. 🔴 **Alex's Whoop schedule was rewritten by our own test.** Turning on all seven days for the ring
    test collapsed his Monday to Friday schedule into every day, because the Whoop write replaces
    rather than merges. Whether his Saturday and Sunday schedule survived is **unconfirmed**.
-4. 🔴 **Whoop still has its days rewritten, and structurally so.** Whoop holds one schedule per
+3. 🔴 **Whoop still has its days rewritten, and structurally so.** Whoop holds one schedule per
    account, so it cannot express two routines the way Eight Sleep can. OneAlarm therefore writes the
    day list of whichever routine covers tonight, which means a Friday sync replaces a Monday to
    Friday list with Saturday and Sunday. Same shape as problem 2, but by design rather than by
    accident, and not yet fixed. Filed as `E12`.
-5. 🟠 **`sleep_goal` is hardcoded to `""`.** Harmless in `EXACT_TIME`, but if he ever selects Sleep
+4. 🟠 **`sleep_goal` is hardcoded to `""`.** Harmless in `EXACT_TIME`, but if he ever selects Sleep
    Goal mode, the next write wipes his 100/85/70 percentage.
-6. 🟠 **The strap may not know.** `PUT /smart-alarm-service/v1/strap-status` is what pushes a time
+5. 🟠 **The strap may not know.** `PUT /smart-alarm-service/v1/strap-status` is what pushes a time
    into strap firmware and the Whoop app sends it after an edit. We do not, and it is outside the
    allowlist. Whoop's server holding the new time and the wrist buzzing at the new time are still two
    different claims, and only the first is verified.
-7. 🟠 **The Whoop write sends up to three body shapes** and stops at the first accepted. Which one was
+6. 🟠 **The Whoop write sends up to three body shapes** and stops at the first accepted. Which one was
    accepted is printed in the green text on the row and has not been read back yet. Pinning it drops
    the write from three requests to one.
-8. 🟡 **No snooze.** Apple's sleep alarm has a nine minute snooze; ours has none. Needs a widget
+7. 🟡 **No snooze.** Apple's sleep alarm has a nine minute snooze; ours has none. Needs a widget
    extension.
-9. 🟡 **The test suite has never run.** No Swift toolchain here, and `download.swift.org`,
+8. 🟡 **The test suite has never run.** No Swift toolchain here, and `download.swift.org`,
    `github.com` releases and `objects.githubusercontent.com` are all refused by the proxy. Seventeen
    tests are written and are code shaped text until `Cmd+U` says otherwise. What **has** run is
    `npm run check`: the project structure, the secret scan, and a real tree-sitter parse of all 31
