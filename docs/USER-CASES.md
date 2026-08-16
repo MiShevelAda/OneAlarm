@@ -72,6 +72,56 @@ intent: no alarm tomorrow, routine intact, back to normal the day after. It is w
 like, and it needs to be one gesture from the main screen, because the alternative is disabling the
 routine and forgetting to re-enable it, which is the oversleep this whole document keeps circling.
 
+## The phone is the one leg OneAlarm does not move, and the app claims otherwise
+
+> *"Right now, what rings whenever I set an iPhone is an additional alarm and not the actual
+> routine. So I still have my sleep schedule and my alarm for the sleep schedule even on the iPhone
+> setup and not the routine."*
+
+Observed on the device, 2026-08-16. He is right and the consequence is larger than it sounds.
+
+**AlarmKit alarms belong to the app that created them.** iOS exposes no API to read, change or delete
+a Clock app alarm or the Health sleep schedule. So:
+
+| Leg | What OneAlarm does |
+|---|---|
+| Eight Sleep | reads the existing alarm, changes the time, writes it back |
+| Whoop | reads the existing schedule, changes the time, writes it back |
+| iPhone | **creates a second alarm beside whatever the phone already has** |
+
+Onboarding step one says OneAlarm *"moves alarms you already have, never creates or deletes"*. True
+for two legs, **false for the third**, and stated as though it were universal.
+
+**It defeats the override outright.** Suppress the routine for Saturday, set 10:30, and the Sleep
+Schedule alarm still fires at 07:45. The suppression worked perfectly and he is awake at 07:45
+regardless. Every mechanism in the spec sits downstream of an alarm the app cannot see.
+
+There is no code fix. The phone can hold one master and OneAlarm cannot become the existing one, so
+**the native alarm has to be off**. Since it cannot be detected either, saying so is the entire
+remedy, which means it has to be said properly:
+
+- Onboarding, its own step, before permission is requested, with the exact taps to turn off both a
+  Clock alarm and a Sleep Schedule wake alarm.
+- A permanent line on the iPhone row, not a dismissible banner: `Your phone's own alarms still ring.
+  OneAlarm cannot see or change them.`
+- The line stays forever. It is not a setup task that can be completed, because he can create a
+  Clock alarm at any time and nothing will notice.
+
+## Editing the anchor should mean editing the plan
+
+> *"If I have a fixed routine and I change one of the dominant, let's say the iPhone is the dominant,
+> the first hierarchy thing, it rings at eight AM, and I change it to eight ten, then the entire
+> routine needs to be changed, and then also updated inside the apps."*
+
+He does not think in terms of a master time that devices derive from. He thinks in terms of **the
+alarm that wakes him**, which is the phone, with the others arranged around it. The spec's master is
+already the phone's time, since the primary leg has a lead of zero, so the model agrees with him. The
+screen does not: the header is editable and the rows are not.
+
+So the anchor device's row should be editable and mean the same thing as the header. Same sheet, same
+three verbs. A row that displays the number he thinks of as his alarm, and cannot be tapped, teaches
+him that the header is a separate concept, which it is not.
+
 ## The case that changes the architecture
 
 > *"maybe she had this set on the whoop because she had an early travel"*
