@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "17 Aug, 17:00 · switch off the alarms you cannot see"
+    static let marker = "17 Aug, 17:40 · a one-off no longer wipes your Whoop week"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Connections, Eight Sleep now has a button to switch off the two alarms OneAlarm made that your Eight Sleep app will not show you. It names them first, it switches them off rather than deleting them, and it will not touch an alarm you can see."
+    static let whatIsNew = "Bending one morning was deleting the rest of your Whoop week. Whoop now keeps the whole routine's days. Also here: the button to switch off the two Eight Sleep alarms you cannot see."
 }

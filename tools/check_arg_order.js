@@ -154,6 +154,22 @@ for (const module of ['OneAlarm', 'OneAlarmTests']) {
   }
 }
 
+// **A third check was written here on 17 August and removed the same hour.** It looked for assigning
+// to a `let` property of the enclosing type, which broke the build twice that day: a SwiftUI screen
+// took its alarm list as a `let` from its parent and a button tried to refresh it, and the Whoop
+// adapter tried to widen a `ResolvedTarget` whose every field is a `let`.
+//
+// It could not be made to fail on either real case. The guard that kept it quiet, skipping any name
+// also declared `var` somewhere in the file, is exactly what swallowed them: `ConnectionsHubView.swift`
+// has three different types in it and two of them declare `var choices`. Resolving that needs the
+// name looked up in the type the assignment is actually inside, which the flat text scan cannot do.
+//
+// It is deleted rather than left in, because `docs/LEARNED.md` already carries the rule it would have
+// broken: **a checker that has never failed has not been tested**, and one that reports "no problems"
+// while enforcing nothing is worse than no checker, since it is read as evidence. Both cases were
+// caught by reading the property declaration before writing the assignment, which is the practice
+// that actually worked and costs one grep.
+
 for (const [file, tree] of trees) {
   const rel = path.relative(root, file);
   (function visit(node) {

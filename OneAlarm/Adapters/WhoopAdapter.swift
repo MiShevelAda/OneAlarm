@@ -762,6 +762,57 @@ actor WhoopAdapter: DeviceAdapter {
         )
     }
 
+    /// A bend must never shrink his Whoop week to the single day it falls on.
+    ///
+    /// **Observed on his account, 17 August 14:52.** He bent Monday. Whoop's own screen then showed
+    /// one scheduled day, `MONDAY 08:51`, a `CREATE SCHEDULE` button, and:
+    ///
+    /// > You have unscheduled days. On unscheduled days, Sleep Planner will default to your most
+    /// > recent wake time and set your alarm to off.
+    ///
+    /// Tuesday to Friday had no schedule and no alarm. One tap on `+15` deleted four mornings of
+    /// strap alarm, silently, and the OneAlarm row went green while it happened.
+    ///
+    /// The cause is upstream and correct for a different leg. `ScheduleStore.recompute` sets
+    /// `schedule.weekdays = [next.weekday]` while a bend is armed, because AlarmKit offers `.never`
+    /// and `.weekly` and nothing between, so arming one weekday is the only way the phone can express
+    /// "this Monday". Eight Sleep is unaffected: it takes its days from the plan, one alarm per
+    /// routine, and a bend there changes a time and nothing else.
+    ///
+    /// Whoop holds **one schedule for the whole account**, with one time and one day list, so the
+    /// collapsed set is not a narrower instruction, it is a deletion of every other day.
+    ///
+    /// So this leg takes its days from the plan: the routine covering the bent morning, at its full
+    /// width. The cost, stated plainly rather than hidden: while the bend is armed the **bent time**
+    /// sits on all of that routine's days, so Tuesday to Friday would buzz at the bent time until the
+    /// next sync. That is a wrong time on a leg that is already the least authoritative of the three,
+    /// against no alarm at all on four mornings. The expiry now also raises "Changed since last set",
+    /// so the correction is one press away and visible.
+    func write(_ target: ResolvedTarget, plan: RoutinePlan) async throws -> WriteReceipt {
+        // The routine that owns the morning being written. `target.weekdays` is the collapsed set
+        // during a bend, so it is used to find the routine rather than as the answer itself.
+        let covering = plan.entries.first { entry in
+            entry.shouldBeEnabled && !entry.weekdays.isDisjoint(with: target.weekdays)
+        }
+        guard let covering, covering.weekdays != target.weekdays else {
+            return try await write(target)
+        }
+
+        // Rebuilt rather than mutated: every field on `ResolvedTarget` is a `let`. Only the day set
+        // changes, and `nextOccurrence` in particular is carried through untouched, because it is the
+        // absolute instant the verification compares against and recomputing it here would be a
+        // second answer to a question already answered.
+        let widened = ResolvedTarget(
+            device: target.device,
+            localTime: target.localTime,
+            weekdays: covering.weekdays,
+            dayShift: target.dayShift,
+            nextOccurrence: target.nextOccurrence,
+            utcOffsetSeconds: target.utcOffsetSeconds
+        )
+        return try await write(widened)
+    }
+
     func write(_ target: ResolvedTarget) async throws -> WriteReceipt {
         // The envelope rather than just the list, because its other keys are the only part of this
         // endpoint's shape we have never looked at, and a 422 with an empty body has to be

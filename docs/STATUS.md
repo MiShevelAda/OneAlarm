@@ -124,7 +124,27 @@ evidence about that morning's design and not about this code.
 
 ## Known problems, worst first
 
-1. 🔴 **A bend across midnight arms the remote legs on the wrong day.** Found by reading on
+1. 🔴 **A bend deleted four mornings of Whoop schedule.** Observed on his account 17 August 14:52,
+   one tap on `+15`. Whoop's own screen showed a single scheduled day, `MONDAY 08:51`, a
+   `CREATE SCHEDULE` button and *"You have unscheduled days. On unscheduled days, Sleep Planner will
+   default to your most recent wake time and set your alarm to off."* Tuesday to Friday had no
+   schedule and no alarm, and OneAlarm's row was green throughout.
+
+   The cause is upstream and is correct for a different leg. `ScheduleStore.recompute` sets
+   `schedule.weekdays = [next.weekday]` while a bend is armed, because AlarmKit offers `.never` and
+   `.weekly` and nothing between, so arming one weekday is the only way the phone can say "this
+   Monday". Eight Sleep is unaffected: it takes days from the plan, one alarm per routine. **Whoop
+   holds one schedule for the whole account**, so a narrower day set is not a narrower instruction,
+   it is a deletion of every other day.
+
+   **Fixed 17 August**, in the Whoop adapter rather than upstream, so the phone's behaviour is
+   untouched: the leg widens the day set back to the covering routine's before writing. The cost,
+   stated rather than hidden, is that the bent time then sits on all of that routine's days until the
+   next sync, so Tuesday to Friday would buzz at the bent time. A wrong time on the least
+   authoritative leg beats no alarm at all on four mornings, and the expiry now raises "Changed since
+   last set" so the correction is one press away. **Not yet confirmed on his strap.**
+
+2. 🔴 **A bend across midnight arms the remote legs on the wrong day.** Found by reading on
    17 August, not by a failure. `RulesEngine` computes `dayShift` from the **routine's** time plus the
    device lead, and uses it to shift the day set. The bent time is computed separately, with no day
    shift of its own. So whenever the bend and the routine fall on different sides of midnight for
@@ -145,30 +165,30 @@ evidence about that morning's design and not about this code.
    earlier. One change at a time, and this one goes in with a compiler and a test in front of it,
    not at the end of the day that fixed the leg.
 
-2. 🔴 **The phone leg creates a second alarm.** OneAlarm's alarm sits beside the iOS Sleep Schedule
+3. 🔴 **The phone leg creates a second alarm.** OneAlarm's alarm sits beside the iOS Sleep Schedule
    alarm, which still fires at its own time. iOS exposes no way to read or change a Clock alarm or a
    sleep schedule, so this cannot be fixed in code. The remedy is to turn the **Alarm** toggle off
    inside the Sleep Schedule, keeping the schedule itself, and for the app to say so permanently.
-3. 🔴 **Alex's Whoop schedule was rewritten by our own test.** Turning on all seven days for the ring
+4. 🔴 **Alex's Whoop schedule was rewritten by our own test.** Turning on all seven days for the ring
    test collapsed his Monday to Friday schedule into every day, because the Whoop write replaces
    rather than merges. Whether his Saturday and Sunday schedule survived is **unconfirmed**.
-4. 🔴 **Whoop still has its days rewritten, and structurally so.** Whoop holds one schedule per
+5. 🔴 **Whoop still has its days rewritten, and structurally so.** Whoop holds one schedule per
    account, so it cannot express two routines the way Eight Sleep can. OneAlarm therefore writes the
    day list of whichever routine covers tonight, which means a Friday sync replaces a Monday to
    Friday list with Saturday and Sunday. Same shape as problem 3, but by design rather than by
    accident, and not yet fixed. Filed as `E12`.
-5. 🟠 **A bend anywhere ahead puts the phone back to one alarm.** `AlarmKitReconciler` treats "any
+6. 🟠 **A bend anywhere ahead puts the phone back to one alarm.** `AlarmKitReconciler` treats "any
    routine has a bend" as "arm the single target", so bending next Saturday from a Monday stands
    every routine alarm down for the rest of the week. Not a regression, it is what this leg did for
    every morning before 17 August, and the nightly Set covers it. The fix is for the plan to carry
    whether the override lands on the **next** morning rather than merely somewhere ahead.
-6. 🟠 **`sleep_goal` is hardcoded to `""`.** Harmless in `EXACT_TIME`, but if he ever selects Sleep
+7. 🟠 **`sleep_goal` is hardcoded to `""`.** Harmless in `EXACT_TIME`, but if he ever selects Sleep
    Goal mode, the next write wipes his 100/85/70 percentage.
-7. 🟠 **The strap may not know.** `PUT /smart-alarm-service/v1/strap-status` is what pushes a time
+8. 🟠 **The strap may not know.** `PUT /smart-alarm-service/v1/strap-status` is what pushes a time
    into strap firmware and the Whoop app sends it after an edit. We do not, and it is outside the
    allowlist. Whoop's server holding the new time and the wrist buzzing at the new time are still two
    different claims, and only the first is verified.
-8. 🟠 **The Whoop write sends up to three body shapes** and stops at the first accepted. Which one was
+9. 🟠 **The Whoop write sends up to three body shapes** and stops at the first accepted. Which one was
    accepted is printed in the green text on the row and has not been read back yet. Pinning it drops
    the write from three requests to one.
 8. 🟡 **No snooze.** Apple's sleep alarm has a nine minute snooze; ours has none. Needs a widget
