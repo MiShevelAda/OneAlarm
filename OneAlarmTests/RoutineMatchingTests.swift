@@ -492,6 +492,26 @@ final class AlarmOwnershipTests: XCTestCase {
         XCTAssertEqual(report.routinesWithNoAlarm, ["intruder"], "the second one gets its own created")
     }
 
+    /// An alarm whose routine was deleted is not reported as "left alone".
+    ///
+    /// It is still OneAlarm's, it is on its way to being switched off by the orphan pass, and saying
+    /// "left alone" about it in the same sentence that says "switched off" is a receipt contradicting
+    /// itself. It is also not adoptable by a routine that happens to share its days: that would be
+    /// two decisions fighting over one alarm.
+    func testAnOrphanedButOwnedAlarmIsNeitherStrandedNorAdopted() {
+        let orphan = Alarm(id: "orphan", weekdays: [.saturday, .sunday],
+                           isEnabled: true, label: "09:00 Sat Sun")
+        let report = RoutinePlan.match(
+            entries: [entry("weekdays", Locale.Weekday.weekdaysOnly)],
+            against: [weekdayAlarm, orphan],
+            links: ["weekdays": "a1", "deleted-weekend": "orphan"]
+        )
+
+        XCTAssertEqual(report.pairs.map(\.alarmID), ["a1"])
+        XCTAssertTrue(report.alarmsWithNoRoutine.isEmpty,
+                      "it is ours, so it is not somebody else's alarm we are leaving alone")
+    }
+
     /// The routine's switch drives the alarm's switch. This is the cost of the goal, stated: an
     /// alarm switched off in the Eight Sleep app comes back on if its routine is on.
     func testTheRoutineSwitchDrivesTheAlarm() {

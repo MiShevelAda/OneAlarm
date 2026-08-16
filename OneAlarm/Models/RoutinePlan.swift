@@ -196,6 +196,15 @@ extension RoutinePlan {
             claimed.insert(alarm.id)
         }
 
+        // Every alarm OneAlarm owns is claimed, including one whose routine has since been deleted.
+        //
+        // Without this, an alarm left behind by a deleted routine is reported as "left alone" and
+        // then, four lines later in the same sentence, as switched off. Both cannot be true. It is
+        // also not adoptable by another routine that happens to share its days: it is on its way to
+        // being switched off, and a routine taking it over on the way would be two decisions
+        // fighting over one alarm.
+        for owned in links.values { claimed.insert(owned) }
+
         for entry in entries {
             if let alarm = linked[entry.routineID] {
                 pair(entry, alarm, adopted: false)

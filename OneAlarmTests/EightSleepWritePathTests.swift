@@ -527,6 +527,59 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertTrue(note.contains("404"), "with the status, so it can be diagnosed in one look")
     }
 
+    /// Deleting a routine switches off **its** alarm and nothing else.
+    ///
+    /// This is the only destructive thing OneAlarm does to his bed, so it is the one that has to be
+    /// exactly right. The failure it guards against has no symptom until a morning nobody is woken
+    /// on, and by then the cause is a week old.
+    ///
+    /// Off, never deleted: there is no DELETE on either service and there is not going to be one.
+    func testDeletingARoutineSwitchesOffOnlyItsOwnAlarm() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    alarm(id: "keep", time: "07:00:00", days: weekdayNames, routine: "r1"),
+                    alarm(id: "abandoned", time: "09:00:00", days: ["saturday", "sunday"], routine: "r2"),
+                    alarm(id: "his-own", time: "05:30:00", days: ["wednesday"], routine: "r9"),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, [
+                "routines": [routine(id: "r1", days: weekdayNames)],
+            ]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/keep"): accepted,
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/abandoned"): accepted,
+        ]
+        // Both were OneAlarm's. The weekend routine has since been deleted in the app.
+        RemoteAlarmLink.link(routine: "weekdays", to: "keep", on: .eightSleep)
+        RemoteAlarmLink.link(routine: "weekend", to: "abandoned", on: .eightSleep)
+
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 50)],
+            skipsNextMorning: false
+        )
+
+        let receipt = try await adapter().write(target, plan: plan)
+
+        // The abandoned one is switched off, and only its switch changed: its time and its days are
+        // sent back exactly as they came, so turning it back on in their app gives him what he had.
+        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/abandoned")])
+        XCTAssertEqual(body["enabled"] as? Bool, false)
+        XCTAssertEqual(body["time"] as? String, "09:00:00", "its time is not ours to change on the way out")
+
+        // His own alarm, which OneAlarm never owned, is untouched.
+        XCTAssertFalse(StubServer.calls.contains { $0.path.hasSuffix("/alarms/his-own") })
+        // And nothing is ever deleted.
+        XCTAssertFalse(StubServer.calls.contains { $0.method == "DELETE" })
+
+        // The link is dropped, so the next sync does not go looking for it again.
+        XCTAssertNil(RemoteAlarmLink.alarmID(for: "weekend", on: .eightSleep))
+        XCTAssertEqual(RemoteAlarmLink.alarmID(for: "weekdays", on: .eightSleep), "keep")
+
+        XCTAssertTrue(receipt.note?.contains("Switched off") ?? false,
+                      "switching off an alarm on his bed is never silent")
+    }
+
     /// The whole point of recording ownership: nothing is created twice.
     func testALinkedAlarmIsUpdatedRatherThanDuplicated() async throws {
         StubServer.responses = [
