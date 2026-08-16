@@ -4,17 +4,25 @@ Updated 2026-08-16, after the first night of real use.
 
 ## Where this is
 
-**It works.** The app is installed on Alex's iPhone and all three legs were verified against live
-accounts on the night of 15 to 16 August.
+The app is installed on Alex's iPhone and rings. One leg of three is confirmed at the layer he sees.
 
 | Leg | State | How it was verified |
 |---|---|---|
 | iPhone | **working** | rang through Silent, through Focus, phone locked and face down |
-| Eight Sleep | **unconfirmed at the layer he sees** | written and read back at the API, absolute instant compared. Never once confirmed in the Eight Sleep app, and on 16 Aug he reported it not showing there. See `E13` |
+| Eight Sleep | **unconfirmed at the layer he sees** | written and read back at the API, absolute instant compared. Never once confirmed in the Eight Sleep app, and on 16 Aug he reported it not showing there. See `E13` and `E17` |
 | Whoop | **working** | written, and the new time confirmed in the Whoop app |
 
-The previous version of this file said "never compiled". That stopped being true on 15 August. It
-builds, installs, and rings.
+**This header used to say "It works. All three legs were verified", directly above a table saying one
+of them was not.** It was written on the morning of 16 August and was already contradicted by its own
+table by that evening. Kept as a correction rather than a silent edit, because a status file that
+overstates is worse than none: it is the thing you read to decide whether to go looking.
+
+The evening of 16 August is a further step back. Everything written after 18:00, the routine
+ownership model, the routine write and the create, is **committed and never executed**. There is no
+Swift toolchain in the session environment and `download.swift.org`, `github.com` releases and
+`objects.githubusercontent.com` are all refused by the proxy, checked rather than assumed. Four
+defects were found by hand and by grep in that code, two of them compile errors, which is a good
+argument for how much is likely still in there.
 
 ## What the app actually does today
 
