@@ -629,7 +629,24 @@ final class ScheduleStore {
     private func apply(target: ResolvedTarget, using adapter: any DeviceAdapter) async {
         status[target.device] = .writing
         do {
+            // **Rebuilt rather than emptied, and this fallback is a landmine rather than tidiness.**
+            //
+            // An empty plan is not a neutral value on the Eight Sleep leg. The adapter synthesises a
+            // single entry from `target` when the plan has no entries, and while a bend is armed
+            // `recompute` has collapsed `schedule.weekdays` to the one weekday the bend falls on. So
+            // an empty plan during a bend would write a **one day** repeat set onto a real alarm of
+            // his, which is precisely the failure that turned a Monday to Friday schedule into every
+            // day, and precisely what a bend did to his Whoop week this afternoon.
+            //
+            // Today it cannot fire: `plans` and `targets` are both built from
+            // `schedule.rules.filter(\.isEnabled)`, so every target has a plan. That is a coincidence
+            // of two filters agreeing, not a guarantee, and the cost of it ever stopping being true
+            // is a rewritten alarm nobody sees until a morning is missed. Rebuilding costs one pass
+            // over two routines.
             let plan = plans[target.device]
+                ?? schedule.rules.first { $0.device == target.device }.map {
+                    RulesEngine.plan(for: $0, in: schedule, calendar: calendar, now: Date())
+                }
                 ?? RoutinePlan(device: target.device, entries: [], skipsNextMorning: false)
             let receipt = try await adapter.write(target, plan: plan)
             status[target.device] = .verifying
