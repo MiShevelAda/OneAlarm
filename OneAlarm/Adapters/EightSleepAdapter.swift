@@ -187,9 +187,10 @@ actor EightSleepAdapter: DeviceAdapter {
     }
 
     func currentBed() async -> BedIdentity? {
-        guard let token = try? await currentToken() else { return nil }
+        // A tuple, not a string. Both calls below need the user id as well as the bearer.
+        guard let session = try? await currentToken() else { return nil }
         guard let meURL = URL(string: "https://client-api.8slp.net/v1/users/me"),
-              let response = try? await http.send("GET", meURL, headers: Self.baseHeaders(token: token)),
+              let response = try? await http.send("GET", meURL, headers: Self.baseHeaders(token: session.token)),
               response.isSuccess,
               let envelope = try? HTTPClient.dictionary(response.data),
               let user = envelope["user"] as? [String: Any]
@@ -206,9 +207,9 @@ actor EightSleepAdapter: DeviceAdapter {
 
         // The name lives in the household summary and nowhere else. `/devices/{id}` carries a model
         // string, a serial and a firmware version, and no name at all.
-        if let id = userID ?? user["userId"] as? String,
-           let url = URL(string: "\(Self.appHost)/v1/household/users/\(id)/summary"),
-           let summary = try? await http.send("GET", url, headers: Self.baseHeaders(token: token)),
+        let id = (user["userId"] as? String) ?? session.userID
+        if let url = URL(string: "\(Self.appHost)/v1/household/users/\(id)/summary"),
+           let summary = try? await http.send("GET", url, headers: Self.baseHeaders(token: session.token)),
            summary.isSuccess,
            let object = try? HTTPClient.dictionary(summary.data) {
             identity.name = Self.deviceName(deviceID, in: object)
