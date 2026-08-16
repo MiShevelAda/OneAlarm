@@ -107,30 +107,66 @@ is attacking it now, with an adversary at every stage.
 
 ## Next, in order
 
-**1. Confirm the damage from item 2.** Open Whoop, check whether the Saturday and Sunday schedule
-still exists, and put the weekday one back to Monday to Friday. Alex only; nothing here can see it.
+**Everything below this line is Alex's.** Nothing in the session can do any of it: there is no Swift
+compiler here, `app-api.8slp.net` is refused by the proxy, and his password lives in his iPhone
+Keychain where it belongs. All three were checked on 16 August rather than assumed.
 
-**2. Turn off the iOS Sleep Schedule alarm.** Health, Sleep, Change Wake Up, the `Alarm` toggle. Keep
-the schedule, keep the sleep goal, stop the second alarm. Until this is done, an override in OneAlarm
-cannot work, because Apple's alarm fires regardless.
+### 1. The one blocking step, and it is ten seconds
 
-**3. Read the Whoop row's green text once** and pin the write to the shape that was accepted.
+Paste this on the Mac, in Terminal:
 
-**4. Let the red team land**, feed it the three findings it has not seen (the phone leg creating
-rather than moving, the anchor row being the plan, and Apple's own two-verb prompt), and run a third
-pass.
+```
+cd ~/OneAlarm-build && git stash && git pull --rebase && git stash pop
+```
 
-**5. Then build, in this order:**
+Then in Xcode press **Cmd+U**.
 
-| | Why it is first |
+**What should happen:** seventeen tests run and go green, in about ten seconds. No phone, no bed, no
+waiting for morning.
+
+**If they go red, or Xcode shows errors instead:** that is the answer, and it is the useful kind.
+Nothing in this repo has ever been compiled by a session, so a compile error is expected rather than
+surprising, and the session can fix a pasted error in one pass. Do not try to work around it.
+
+**Why this before anything else:** it is the only check that costs nothing. Everything after it costs
+a real write to a live account.
+
+### 2. Then run it once and look at the bed
+
+**Cmd+R**, then **Set all alarms**, then open the Eight Sleep app.
+
+**What should happen:** a weekend alarm appears inside a routine, with the vibration and thermal
+settings copied from the alarm he already had, and his bedtime unchanged.
+
+**What to send back, whichever appears:**
+
+- the Eight Sleep row's text on the home screen. It now says which of four things happened: added
+  inside a routine, created standalone, refused with the server's own words, or the routines read
+  itself failed and with what status
+- the panel at Connections, Eight Sleep, "Your Eight Sleep routines, raw". It prints which API
+  version answered, which settles `E16` and `E19` in one look
+
+**If something wrong appears on the bed:** delete it in the Eight Sleep app. OneAlarm has no delete
+on either service and is not getting one, so cleanup there is manual by design.
+
+### 3. Two things still owed from 15 August
+
+- **Whoop:** check whether the Saturday and Sunday schedule survived the seven-day test, and put the
+  weekday one back to Monday to Friday. Nothing here can see it.
+- **iPhone:** Health, Sleep, Change Wake Up, the `Alarm` toggle, off. Keep the schedule and the sleep
+  goal. Until this is done a bend in OneAlarm cannot work, because Apple's own alarm fires regardless.
+
+### 4. What the build does next, once step 1 and 2 have answered
+
+| | Why |
 |---|---|
-| Routines and derived next alarm | removes the daily settings trip, which is the actual complaint |
-| Skip one date | one tap, expires by itself, replaces "turn the routine off and forget" |
-| Bend one date | keyed by date, suppresses the routine's weekday, restores it after |
+| Pin the accepted create shape and delete the ladder | it currently sends up to six requests to find one that works |
+| Pin the routines read version and drop the fallback | two requests where one will do, once `E19` is answered |
+| `skipNext` instead of `enabled` for a one-morning skip | `E11`. The current skip works but leaves an alarm off until the next sync |
+| Foreign change detection | compare against what was last written, adopt or ask, never overwrite silently |
 | Ranges instead of points | a row reading 07:55 for a leg that may fire at 07:25 is lying |
-| Foreign change detection | compare against what we last wrote, adopt or ask, never overwrite silently |
 
-Snooze, the anchor device, and Diary mode come after those five.
+Snooze, and Diary mode, come after those.
 
 ## What is genuinely uncertain
 
