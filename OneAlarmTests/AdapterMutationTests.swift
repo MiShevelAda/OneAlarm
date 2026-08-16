@@ -495,4 +495,32 @@ final class PreviewTests: XCTestCase {
         XCTAssertEqual(preview.method, "LOCAL")
         XCTAssertNil(preview.body)
     }
+
+    /// The gate has to describe the request the app actually makes.
+    ///
+    /// It said "Repeating alarm at 07:00 on Mon Tue Wed Thu Fri", singular, which stopped being true
+    /// the moment the phone started holding one alarm per routine. A gate that describes a request
+    /// the app no longer makes is worse than no gate: it is where you go to rule something out, and
+    /// this project has already lost an evening to one that did exactly that on the Whoop write.
+    func testAlarmKitPreviewNamesEveryRoutineItWouldArm() {
+        let plan = RoutinePlan(
+            device: .iphone,
+            entries: [
+                RoutinePlan.Entry(routineID: "weekdays", routineName: "Weekdays",
+                                  weekdays: Locale.Weekday.weekdaysOnly,
+                                  localTime: WallClockTime(hour: 7, minute: 0), bentTo: nil,
+                                  isOn: true, isSkippedNextMorning: false),
+                RoutinePlan.Entry(routineID: "weekend", routineName: "Weekend",
+                                  weekdays: [.saturday, .sunday],
+                                  localTime: WallClockTime(hour: 9, minute: 0), bentTo: nil,
+                                  isOn: true, isSkippedNextMorning: false),
+            ],
+            skipsNextMorning: false
+        )
+        let summary = AlarmKitAdapter().preview(target, plan: plan).summary
+
+        XCTAssertTrue(summary.contains("2 repeating alarms"))
+        XCTAssertTrue(summary.contains("07:00"))
+        XCTAssertTrue(summary.contains("09:00"), "the routine that is not next has to be shown too")
+    }
 }

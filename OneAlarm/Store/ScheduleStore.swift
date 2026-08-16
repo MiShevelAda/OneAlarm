@@ -495,12 +495,12 @@ final class ScheduleStore {
 
     func preview(for device: DeviceID) -> WritePreview? {
         guard let target = target(for: device), let adapter = adapter(for: device) else { return nil }
-        // The Eight Sleep leg sends one request per routine, so a preview built from the single next
+        // Both of these legs act once per routine now, so a preview built from the single next
         // target would show one of them and imply it was the whole write. The gate has already told
         // one lie of that shape, and it was the screen Alex went to in order to rule the bug out.
-        if let eight = adapter as? EightSleepAdapter, let plan = plans[device] {
-            return eight.preview(target, plan: plan)
-        }
+        guard let plan = plans[device] else { return adapter.preview(target) }
+        if let eight = adapter as? EightSleepAdapter { return eight.preview(target, plan: plan) }
+        if let phone = adapter as? AlarmKitAdapter { return phone.preview(target, plan: plan) }
         return adapter.preview(target)
     }
 

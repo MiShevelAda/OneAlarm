@@ -80,13 +80,43 @@ actor AlarmKitAdapter: DeviceAdapter {
     }
 
     nonisolated func preview(_ target: ResolvedTarget) -> WritePreview {
-        let days = Locale.Weekday.displayOrder
-            .filter { target.weekdays.contains($0) }
-            .map(\.shortLabel)
-            .joined(separator: " ")
+        preview(target, plan: RoutinePlan(device: .iphone, entries: [], skipsNextMorning: false))
+    }
+
+    /// What the phone would end up holding, alarm by alarm.
+    ///
+    /// It said "Repeating alarm at 07:00 on Mon Tue Wed Thu Fri" until 17 August, singular, which
+    /// stopped being true the moment this leg started holding one alarm per routine. A gate that
+    /// describes a request the app no longer makes is worse than no gate, because it is where you go
+    /// to rule something out. That exact mistake has already cost this project an evening on the
+    /// Whoop write.
+    ///
+    /// `held` is empty on purpose. This answers "what would be scheduled", not "what would be
+    /// cancelled", and reading the stored map would mean reaching into actor state from a function
+    /// that is deliberately pure and safe to call at any time.
+    nonisolated func preview(_ target: ResolvedTarget, plan: RoutinePlan) -> WritePreview {
+        let outcome = AlarmKitReconciler.reconcile(plan: plan, target: target, held: [])
+
+        let lines = outcome.schedule.map { wanted -> String in
+            let days = Locale.Weekday.displayOrder
+                .filter { wanted.weekdays.contains($0) }
+                .map(\.shortLabel)
+                .joined(separator: " ")
+            return "\(wanted.time.hhmm) on \(days)"
+        }
+
+        guard !lines.isEmpty else {
+            return .local(device: .iphone, summary: "No routine is on, so nothing would be armed.")
+        }
+        if lines.count == 1 {
+            return .local(
+                device: .iphone,
+                summary: "Repeating alarm at \(lines[0]), breaking through Silent and Focus."
+            )
+        }
         return .local(
             device: .iphone,
-            summary: "Repeating alarm at \(target.localTime.hhmm) on \(days), breaking through Silent and Focus."
+            summary: "\(lines.count) repeating alarms, one per routine, all breaking through Silent and Focus: \(lines.joined(separator: ", "))."
         )
     }
 
