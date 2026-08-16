@@ -51,6 +51,10 @@ struct GoodnightView: View {
                                 .foregroundStyle(Theme.grey)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                // Long press and copy. Alex reports these lines back, and three
+                                // handoffs have already failed on him having to retype or crop
+                                // something. The build stamp got this for the same reason.
+                                .textSelection(.enabled)
                         }
                     }
                     .padding(.top, 18)
