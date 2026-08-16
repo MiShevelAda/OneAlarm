@@ -95,8 +95,10 @@ final class RoutineEditingTests: XCTestCase {
 
         let uncovered = subject.uncoveredDays
         XCTAssertNotNil(uncovered)
-        XCTAssertTrue(uncovered?.contains("Sat") ?? false)
-        XCTAssertTrue(uncovered?.contains("Sun") ?? false)
+        // `Locale.Weekday.shortLabel` is two letters, "Sa" and "Su". The three letter form this used
+        // to expect never existed on this path.
+        XCTAssertTrue(uncovered?.contains("Sa") ?? false)
+        XCTAssertTrue(uncovered?.contains("Su") ?? false)
     }
 
     /// A bend armed on a day the deleted routine covered has nothing left to bend away from.

@@ -129,11 +129,23 @@ final class RoutineMatchingTests: XCTestCase {
         XCTAssertTrue(report.routinesWithNoAlarm.isEmpty)
     }
 
-    /// Two alarms with the same days are both moved.
+    /// **One routine adopts exactly one alarm, and the twin is left alone.**
     ///
-    /// This list is scoped to one account, so they are both his, and leaving one behind is how two
-    /// Monday alarms end up at two different times with nothing on screen saying why.
-    func testEveryAlarmWithMatchingDaysIsMoved() {
+    /// This test used to assert the opposite, that every alarm with matching days is moved, on the
+    /// reasoning that they are all his and leaving one behind produces two Monday alarms at two
+    /// different times. That reasoning is still true about the **symptom** and was wrong about the
+    /// **cure**, and the difference cost him a real schedule: moving every alarm whose days happen to
+    /// match means writing to alarms nobody established were OneAlarm's, which is what turned a
+    /// Monday to Friday schedule into every day.
+    ///
+    /// The rule that replaced it is one owner per routine, recorded in `RemoteAlarmLink`. A second
+    /// alarm on the same days is reported in `alarmsWithNoRoutine` so it is visible on screen and
+    /// untouched on the account, which addresses the original worry without the write.
+    ///
+    /// He saw this on 17 August from the other side: his bed screen listed "Weekdays" twice because
+    /// two alarms matched, one of them invisible in the Eight Sleep app, and OneAlarm had been
+    /// maintaining the invisible one.
+    func testOneRoutineAdoptsOneAlarmAndLeavesTheTwinAlone() {
         let twin = Alarm(id: "a1b", weekdays: Locale.Weekday.weekdaysOnly,
                          isEnabled: true, label: "07:15 weekdays")
         let report = RoutinePlan.match(
@@ -141,8 +153,9 @@ final class RoutineMatchingTests: XCTestCase {
             against: [weekdayAlarm, twin]
         )
 
-        XCTAssertEqual(Set(report.pairs.map(\.alarmID)), ["a1", "a1b"])
-        XCTAssertTrue(report.alarmsWithNoRoutine.isEmpty)
+        XCTAssertEqual(report.pairs.count, 1, "one routine owns one alarm")
+        XCTAssertEqual(report.alarmsWithNoRoutine.count, 1,
+                       "and the other is named on screen rather than written to")
     }
 
     /// The remote switch is no longer an input. OneAlarm is the source of truth for it, so an alarm

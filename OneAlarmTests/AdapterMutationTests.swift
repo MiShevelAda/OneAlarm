@@ -267,14 +267,22 @@ final class WhoopMutationTests: XCTestCase {
         // A bare 24 hour value carries no suffix and must be left exactly as it is.
         XCTAssertEqual(WhoopAdapter.wakeTime(from: "13:30"), WallClockTime(hour: 13, minute: 30))
 
+        // **Encoding is canonical whatever the read looked like, and these two assertions used to
+        // say the opposite.** They expected "12:30 am" back, mirroring the sample's display format,
+        // which is the belief `docs/RESEARCH.md` §2.3 records as costing five hours: `"1:00 pm"`
+        // earned a 400 and `"07:30:00"` was accepted against the live account.
+        //
+        // The parsing above still has to handle 12 hour input, because that is what the READ returns.
+        // The write never speaks it. A view model and a resource are allowed to disagree about
+        // format, and this pair does.
         let sample = "7:45 am"
         XCTAssertEqual(
             WhoopAdapter.encodeWakeTime(WallClockTime(hour: 0, minute: 30), like: sample) as? String,
-            "12:30 am"
+            "00:30:00"
         )
         XCTAssertEqual(
             WhoopAdapter.encodeWakeTime(WallClockTime(hour: 12, minute: 30), like: sample) as? String,
-            "12:30 pm"
+            "12:30:00"
         )
     }
 
@@ -361,14 +369,22 @@ final class PreviewTests: XCTestCase {
         }
     }
 
-    /// The body is one key now, because one key is the entire diff. Days are matched on, never
-    /// written, so a preview showing seven weekday booleans would describe a request this adapter
-    /// can no longer send.
-    func testEightSleepPreviewShowsOnlyTheTime() throws {
+    /// **The preview shows the days too, and asserting it did not was a stale rule.**
+    ///
+    /// This test used to say "days are matched on, never written, so a preview showing seven weekday
+    /// booleans would describe a request this adapter can no longer send". That was true on
+    /// 16 August morning and stopped being true that evening, when `RemoteAlarmLink` made ownership
+    /// explicit and days became writable again on an alarm a routine owns.
+    ///
+    /// The point of the gate is that it describes the **actual** outbound request. A preview asserted
+    /// to hide a field the app now sends is worse than no gate, because the gate is where you look to
+    /// rule something out. That exact failure has already cost this project an evening on the Whoop
+    /// write, and the app has now shipped five pieces of copy describing behaviour it no longer had.
+    func testEightSleepPreviewShowsTheTimeAndTheDays() throws {
         let body = try XCTUnwrap(EightSleepAdapter().preview(target).body)
 
         XCTAssertTrue(body.contains("06:50:00"))
-        XCTAssertFalse(body.contains("monday"))
+        XCTAssertTrue(body.contains("monday"), "days are written to an owned alarm and the gate says so")
         // The redaction is an allowlist, so a preview that renders the time as <redacted> would be
         // a regression rather than extra safety.
         XCTAssertFalse(body.contains("<redacted>"))

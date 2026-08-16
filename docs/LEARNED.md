@@ -15,6 +15,29 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**A test suite goes stale in the same way copy does, and it is more dangerous.** `[observed,
+17 August]` Alex's first full `Cmd+U` after the day's work returned five failures. One was a real
+compile error, actor isolation on a pure function. **The other four were tests asserting rules this
+project had deliberately replaced**, each still carrying a confident comment explaining why the old
+rule was right:
+
+| Test asserted | Replaced by | When |
+|---|---|---|
+| the Whoop write mirrors the read's `"12:30 am"` format | canonical `"00:30:00"`, confirmed live | 16 Aug, after five hours |
+| the Eight Sleep preview never shows days | days are written to an alarm a routine owns | 16 Aug evening |
+| every alarm with matching days is moved | one owner per routine, the twin left alone | 16 Aug evening |
+| uncovered days read `"Sat"` | `shortLabel` is two letters, `"Sa"` | earlier |
+
+Three of those four were **not merely out of date, they asserted the exact behaviour that caused a
+real incident.** "Every alarm with matching days is moved" is the rule that turned his Monday to
+Friday Whoop schedule into every day. A green suite containing it would have defended the bug.
+
+The same rot had already been found twice that day in **user-facing copy**, five stale strings and a
+preview gate describing a request the app no longer sends. So the rule generalises past tests:
+**when a rule changes, the things that assert it are part of the change.** Not a follow-up, not a
+cleanup task. The same commit.
+
+
 **Eight Sleep has a native one-off and OneAlarm has been faking it.** `[observed, 17 August, Alex's own
 screenshot]` Their home screen shows `UPCOMING ALARM ONLY  09:10  0̶9̶:̶3̶0̶`: the next occurrence moved,
 the routine struck through beside it, the weekly series untouched.

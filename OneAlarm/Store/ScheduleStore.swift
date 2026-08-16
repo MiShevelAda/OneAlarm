@@ -541,7 +541,10 @@ final class ScheduleStore {
     /// That matters because **this is the logic that was wrong on 17 August**: the screen read the
     /// snapshot in the override rather than the live routine, and told him a routine was "still
     /// 06:01" directly above a list showing 07:01.
-    static func struckThrough(
+    /// `nonisolated` because it touches no state: it is a function of its four arguments. `ScheduleStore`
+    /// is `@MainActor`, which would otherwise make even a pure static member unreachable from a
+    /// synchronous test, which is exactly what it did.
+    nonisolated static func struckThrough(
         override: DayOverride,
         routines: [Routine],
         showing: WallClockTime,
