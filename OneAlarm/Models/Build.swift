@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 05:00 · the panel says whether an override is live"
+    static let marker = "18 Aug, 05:40 · the panel names the overridden alarm"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "The Eight Sleep raw panel now works out for itself whether an override is in force, by comparing when the alarm next fires against its weekly time. It needs no new field, so it answers the question three raw dumps could not."
+    static let whatIsNew = "The Eight Sleep raw panel now names which alarm is firing at a different time from its weekly setting, right at the top. You should not have to read sixteen fields to find the one I need."
 }

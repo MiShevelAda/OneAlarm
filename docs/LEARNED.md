@@ -15,6 +15,25 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**Three failed handoffs are an instruction problem, not a user problem.** `[18 August]` Alex was asked
+for "the weekday alarm's raw block" three times. He sent the weekend alarm once and a switched-off
+ghost twice. Each round cost him a trip through two apps, and each time his Eight Sleep app was
+plainly showing `UPCOMING ALARM ONLY 09:45` with `07:45` struck through, so the fact was never in
+doubt. Only the retrieval was.
+
+That is not him misreading. **Following the instruction required reading sixteen fields across four
+blocks and knowing which `repeat.weekDays` combination counts as weekdays.** An instruction whose
+first step is "parse this" is a bad instruction however clearly it is worded, and rewording it a
+fourth time would have been the fourth failure.
+
+So the panel names the answer at the top instead: `OVERRIDDEN: 07:45, weekdays`. One line, no hunting.
+
+**The rule this project keeps rediscovering in new costumes:** when a step fails repeatedly, do not
+improve the step, **remove it**. The build marker exists because "which build are you on" kept being
+unanswerable. The `OVERRIDE CHECK` line exists because three dumps could not distinguish "never set"
+from "not on this object". This is the same move again, one level up.
+
+
 **When three dumps in a row answer nothing, stop asking for a fourth and compute the answer.**
 `[18 August]` Alex sent three raw Eight Sleep alarm dumps hunting for the field behind
 `UPCOMING ALARM ONLY`. All three came back with the same sixteen keys and no override field, which

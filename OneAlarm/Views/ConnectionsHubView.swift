@@ -870,9 +870,42 @@ struct BedConfirmScreen: View {
     /// Not hidden behind a failure. A diagnostic that only appears when parsing breaks cannot answer
     /// a question about a parse that succeeded, which has cost this project two answers already.
     @ViewBuilder
+    /// Which alarms are firing at a moment their weekly time does not describe.
+    ///
+    /// Reads the line `EightSleepAdapter.describe` already computes, rather than recomputing it, so
+    /// the summary and the detail can never disagree about the same alarm. Two readers of one fact is
+    /// how a screen and a write ended up describing different accounts earlier today.
+    private var overriddenAlarms: [String] {
+        choices
+            .filter { $0.rawKeys.contains { $0.contains("SOMETHING is overriding") } }
+            .map(\.summary)
+    }
+
     private var serverTruth: some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 12) {
+                // **The answer, at the top, so nobody has to find the right block.**
+                //
+                // Asking Alex for "the weekday alarm's block" failed three times on 17 and 18 August.
+                // He sent the weekend alarm once and a switched-off ghost twice, and each round cost
+                // him a trip to two apps. That is not him misreading an instruction, it is an
+                // instruction that requires reading sixteen fields to follow.
+                //
+                // His Eight Sleep app plainly showed `UPCOMING ALARM ONLY 09:45` with `07:45` struck
+                // through while all three dumps came back with no override field. So the question was
+                // always "which alarm is overridden", and this line answers it directly instead of
+                // asking him to work it out. `E23`.
+                if overriddenAlarms.isEmpty {
+                    Text("No alarm here is firing at a different time from its weekly setting.")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.grey)
+                } else {
+                    Text("OVERRIDDEN: \(overriddenAlarms.joined(separator: ", "))")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.State.unconfirmed)
+                        .textSelection(.enabled)
+                }
+
                 ForEach(choices) { choice in
                     VStack(alignment: .leading, spacing: 3) {
                         Text(choice.summary)
