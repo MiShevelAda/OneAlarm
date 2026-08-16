@@ -172,7 +172,13 @@ evidence about that morning's design and not about this code.
 4. 🔴 **Alex's Whoop schedule was rewritten by our own test.** Turning on all seven days for the ring
    test collapsed his Monday to Friday schedule into every day, because the Whoop write replaces
    rather than merges. Whether his Saturday and Sunday schedule survived is **unconfirmed**.
-5. 🔴 **Whoop still has its days rewritten, and structurally so.** Whoop holds one schedule per
+5. ✅ **FIXED 17 August, and the premise was wrong.** Whoop holds **more than one** schedule per
+   account: Alex made a second one for Saturday and both are live. So this leg now writes one
+   schedule per routine, matched by day set and recorded in `RemoteAlarmLink`, exactly as Eight Sleep
+   does. It still cannot **create** one, because no public source documents that request. Not yet
+   confirmed on his strap. The old entry, kept because the reasoning error is the fourth of its kind:
+
+   ~~**Whoop still has its days rewritten, and structurally so.** Whoop holds one schedule per~~
    account, so it cannot express two routines the way Eight Sleep can. OneAlarm therefore writes the
    day list of whichever routine covers tonight, which means a Friday sync replaces a Monday to
    Friday list with Saturday and Sunday. Same shape as problem 3, but by design rather than by

@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "17 Aug, 20:00 · the one-off banner stops lying"
+    static let marker = "17 Aug, 21:00 · Whoop follows every routine, not just tomorrow"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "The yellow one-off banner said Weekdays is still 06:01 while your week showed 07:01. It now reads your routine live instead of a stale snapshot. Also here: OneAlarm deletes the Eight Sleep alarms it made, and a one-off no longer wipes your Whoop week."
+    static let whatIsNew = "Whoop can hold more than one schedule, which this app did not know. It now writes one Whoop schedule per routine, matched by days, so your weekend routine reaches your strap instead of only the routine covering tomorrow."
 }

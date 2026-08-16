@@ -15,6 +15,28 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**Whoop holds MORE THAN ONE schedule per account. The opposite was written down as structural and it
+was wrong.** `[observed, 17 August, on his account]` He made a Monday to Thursday schedule in the
+Whoop app, OneAlarm extended it to Friday on the next Set, and then he made a **second** schedule for
+Saturday. His account now carries two at once, and `alarm_schedule_list` is a list because it is one.
+
+`docs/STATUS.md` problem 5 and `E12` both say *"Whoop holds one schedule per account, so it cannot
+express two routines the way Eight Sleep can"*, and the whole design of that leg follows from it: a
+single chosen schedule, `RemoteAlarmSelection` to pick which, and `alarmChoiceNeeded` thrown when
+there is more than one. **Every line of that is built on a premise his own account disproves.**
+
+What he saw, and it is the direct consequence: *"I created a new schedule only for Saturday, and then
+I clicked again in the one alarm app for the weekend, Saturday and Sunday, but now it did not update
+Sunday inside whoop."* OneAlarm writes exactly one Whoop schedule, the one covering the next morning,
+so his weekend routine never reaches that leg at all.
+
+**Fourth time on the same reasoning error, and worth naming as such.** Whoop's field names, Eight
+Sleep's bed names, Eight Sleep's routine tags, and now Whoop's schedule count. Each was a fact about
+one object read as a fact about the service. The rule is already in `CLAUDE.md` twice, once in each
+direction, and it still cost this leg its whole design:
+**a list that has only ever had one item in it is not a list that can only have one item.**
+
+
 **Eight Sleep now follows a routine being split and merged, both ways, confirmed on his bed.**
 `[observed, 17 August 15:42 and 15:44, in his own Eight Sleep app]` He split Weekend into two
 routines and then merged them back, and the bed tracked both:

@@ -840,21 +840,24 @@ actor WhoopAdapter: DeviceAdapter {
     /// next sync. That is a wrong time on a leg that is already the least authoritative of the three,
     /// against no alarm at all on four mornings. The expiry now also raises "Changed since last set",
     /// so the correction is one press away and visible.
-    func write(_ target: ResolvedTarget, plan: RoutinePlan) async throws -> WriteReceipt {
+    /// The target with its day set widened back to the covering routine's.
+    ///
+    /// Only ever narrows to a single day during a bend, and only on the single schedule path. On the
+    /// per routine path each schedule already carries its own routine's days, so nothing is
+    /// collapsed and this is not needed.
+    private static func widened(_ target: ResolvedTarget, plan: RoutinePlan) -> ResolvedTarget {
         // The routine that owns the morning being written. `target.weekdays` is the collapsed set
         // during a bend, so it is used to find the routine rather than as the answer itself.
         let covering = plan.entries.first { entry in
             entry.shouldBeEnabled && !entry.weekdays.isDisjoint(with: target.weekdays)
         }
-        guard let covering, covering.weekdays != target.weekdays else {
-            return try await write(target)
-        }
+        guard let covering, covering.weekdays != target.weekdays else { return target }
 
         // Rebuilt rather than mutated: every field on `ResolvedTarget` is a `let`. Only the day set
         // changes, and `nextOccurrence` in particular is carried through untouched, because it is the
         // absolute instant the verification compares against and recomputing it here would be a
         // second answer to a question already answered.
-        let widened = ResolvedTarget(
+        return ResolvedTarget(
             device: target.device,
             localTime: target.localTime,
             weekdays: covering.weekdays,
@@ -862,10 +865,202 @@ actor WhoopAdapter: DeviceAdapter {
             nextOccurrence: target.nextOccurrence,
             utcOffsetSeconds: target.utcOffsetSeconds
         )
-        return try await write(widened)
+    }
+
+    /// "07:00 Mo Tu We Th Fr", for naming a schedule on screen. Never used for matching.
+    static func shortLabel(_ schedule: [String: Any]) -> String {
+        let time = Self.wakeTime(from: schedule["latest_wake_time"])?.hhmm ?? "??:??"
+        let days = Locale.Weekday.displayOrder
+            .filter { Self.days(from: schedule["scheduled_days"]).contains($0) }
+            .map(\.shortLabel)
+        return days.isEmpty ? time : "\(time) \(days.joined(separator: " "))"
+    }
+
+    /// One schedule updated, through the two body shapes, reporting every outcome.
+    ///
+    /// Extracted on 17 August so the single schedule path and the per routine path share exactly one
+    /// PUT. Two copies of a write that is already the least understood thing in this app is how the
+    /// two of them would end up disagreeing about the body, and only one of them would be the one
+    /// that was tested.
+    ///
+    /// Two shapes at most, and every outcome is reported rather than only the last, because
+    /// "full 422, trimmed 422" and "full 200" are different findings and only one screenshot comes
+    /// back per round.
+    private func putSchedule(
+        _ existing: [String: Any],
+        id: String,
+        to target: ResolvedTarget,
+        token: String
+    ) async throws -> (shape: String, written: [String: Any]) {
+        guard let url = URL(string: "\(Self.host)/smart-alarm-bff/v1/schedule/\(id)?apiVersion=7") else {
+            throw AdapterError.transport("Bad schedule update URL.")
+        }
+
+        var accepted: (String, [String: Any])?
+        var outcomes: [String] = []
+
+        for (label, payload) in try Self.variants(existing, to: target) {
+            let response = try await http.send(
+                "PUT", url,
+                headers: Self.dataHeaders(token: token, timeZone: TimeZone.current.identifier),
+                body: try HTTPClient.json(payload)
+            )
+
+            if response.status == 429 { throw AdapterError.rateLimited }
+            if response.isSuccess {
+                accepted = (label, payload)
+                break
+            }
+
+            // Per attempt, not collapsed into one. Two attempts that fail differently is the most
+            // informative thing this can report, and a single shared string hid it: whichever
+            // attempt spoke first silenced the other.
+            var line = "\(label) \(payload.keys.count) fields: \(response.status)"
+            let said = Self.serverMessage(response.data)
+            if said != "nothing" { line += " (\(said))" }
+            let fromHeaders = response.diagnosticHeaders
+            if said == "nothing", !fromHeaders.isEmpty { line += " [\(fromHeaders)]" }
+            if let redirected = response.redirectedTo { line += " REDIRECTED to \(redirected)" }
+            outcomes.append(line)
+
+            // Only a complaint about the body is worth a second shape. Anything else, stop.
+            guard response.status == 400 || response.status == 422 else { break }
+        }
+
+        guard let accepted else {
+            // A read, and the one description of the write contract that comes from the server.
+            // Worth a request precisely because every guess so far has come from us.
+            let editScreen = await editScreenKeys(for: id)
+            throw AdapterError.unexpectedResponse(
+                "Rejected updating the alarm. "
+                    + outcomes.joined(separator: " | ")
+                    + ". Sent \"\(target.localTime.hhmmss)\", account mode "
+                    + Self.describeValue(existing["alarm_mode"])
+                    + ". Edit screen: " + editScreen
+            )
+        }
+        return accepted
+    }
+
+    /// One Whoop schedule per routine, matched by day set, exactly as the Eight Sleep leg works.
+    ///
+    /// **The premise this replaces was wrong, and his own account disproved it.** `STATUS.md` problem
+    /// 5 and `E12` both said Whoop holds one schedule per account, so it could never express two
+    /// routines and its days would always be rewritten by whichever routine covered tonight. The
+    /// whole leg followed from that: one chosen schedule, `RemoteAlarmSelection` to pick it, and
+    /// `alarmChoiceNeeded` thrown the moment a second appeared.
+    ///
+    /// On 17 August Alex made a Monday to Thursday schedule in the Whoop app, watched OneAlarm extend
+    /// it to Friday, then made a **second** schedule for Saturday. Two live schedules on one account.
+    /// `alarm_schedule_list` is a list because it is one. What he then reported is the direct
+    /// consequence of the old design: *"I clicked again in the one alarm app for the weekend, Saturday
+    /// and Sunday, but now it did not update Sunday inside whoop."* His weekend routine never reached
+    /// this leg at all, because only one schedule was ever written and it was the one covering the
+    /// next morning.
+    ///
+    /// **What is deliberately not copied from the Eight Sleep leg: the create.** A routine with no
+    /// schedule is reported and left alone. Eight Sleep can create because a create there is a copy of
+    /// an alarm he already owns with two fields changed, so nothing is invented. No public source
+    /// documents creating a Whoop schedule, and composing one from scratch against this API is the
+    /// thing that cost five hours. He makes it once in the Whoop app and OneAlarm keeps it from then
+    /// on, which is exactly the deal Eight Sleep had before it earned the create.
+    func write(_ target: ResolvedTarget, plan: RoutinePlan) async throws -> WriteReceipt {
+        let envelope = try await fetchScheduleEnvelope()
+        try Self.assertMasterSwitchOn(envelope)
+        let schedules = (envelope["alarm_schedule_list"] as? [[String: Any]]) ?? []
+
+        // One schedule, or none, or no plan: the old path, which also carries the bend widening.
+        // Deliberately not routed through the matcher, because with a single schedule "the one he
+        // has" and "the one this routine owns" are the same answer and the matcher would only add a
+        // way to decide there is nothing to write.
+        guard schedules.count > 1, !plan.entries.isEmpty else {
+            return try await writeSingle(target, plan: plan)
+        }
+
+        let candidates = schedules.compactMap { schedule -> RoutinePlan.CandidateAlarm? in
+            guard let id = Self.scheduleID(schedule) else { return nil }
+            return RoutinePlan.CandidateAlarm(
+                id: id,
+                weekdays: Self.days(from: schedule["scheduled_days"]),
+                isEnabled: !Self.isFalse(schedule["alarm_on"] ?? true),
+                label: Self.shortLabel(schedule)
+            )
+        }
+
+        let links = RemoteAlarmLink.all(for: .whoop)
+        let report = RoutinePlan.match(entries: plan.entries, against: candidates, links: links)
+
+        // Recorded before anything is written, so from here on a routine's schedule is identified by
+        // the link rather than by its days. That is what lets the days change without the routine
+        // losing track of which schedule is its own.
+        for pair in report.pairs where pair.isAdoption {
+            RemoteAlarmLink.link(routine: pair.routineID, to: pair.alarmID, on: .whoop)
+        }
+
+        guard !report.pairs.isEmpty else {
+            throw AdapterError.noMatchingDays(
+                routines: report.routinesWithNoAlarm,
+                alarms: candidates.map(\.label)
+            )
+        }
+
+        let token = try await currentToken()
+        var moved: [String] = []
+        var failures: [String] = []
+
+        for pair in report.pairs {
+            guard let existing = schedules.first(where: { Self.scheduleID($0) == pair.alarmID }) else { continue }
+            let entry = plan.entries.first { $0.routineID == pair.routineID }
+            let perRoutine = ResolvedTarget(
+                device: .whoop,
+                localTime: pair.time,
+                weekdays: pair.weekdays,
+                dayShift: target.dayShift,
+                // Only the schedule covering the next morning has a meaningful absolute instant, and
+                // it is the only one `verify` looks at. The others carry the same one rather than a
+                // recomputed guess, because a second answer to a question already answered is how
+                // this project has been wrong before.
+                nextOccurrence: target.nextOccurrence,
+                utcOffsetSeconds: target.utcOffsetSeconds
+            )
+            do {
+                _ = try await putSchedule(existing, id: pair.alarmID, to: perRoutine, token: token)
+                moved.append("\(entry?.routineName ?? pair.routineName) to \(pair.time.hhmm)")
+            } catch {
+                failures.append("\(pair.routineName): \((error as? AdapterError)?.errorDescription ?? "refused")")
+            }
+        }
+
+        guard failures.count < report.pairs.count else {
+            throw AdapterError.unexpectedResponse("Every schedule failed: \(failures.joined(separator: " | ")).")
+        }
+
+        authState = .connected
+        var note = moved.isEmpty ? "Nothing to move." : "Moved \(moved.joined(separator: ", "))."
+        if !report.routinesWithNoAlarm.isEmpty {
+            note += " No Whoop schedule runs on \(report.routinesWithNoAlarm.joined(separator: " or ")). Make one in the Whoop app, any time, and OneAlarm keeps it from then on."
+        }
+        if !failures.isEmpty { note += " " + failures.joined(separator: " ") }
+
+        return WriteReceipt(
+            device: .whoop,
+            succeededAt: Date(),
+            // The schedule covering the next morning, because that is the one `verify` checks and a
+            // receipt naming any other would compare the wrong row against the wrong instant.
+            remoteID: report.pairs.first { !$0.weekdays.isDisjoint(with: target.weekdays) }?.alarmID
+                ?? report.pairs[0].alarmID,
+            note: note
+        )
     }
 
     func write(_ target: ResolvedTarget) async throws -> WriteReceipt {
+        try await writeSingle(target, plan: RoutinePlan(device: .whoop, entries: [], skipsNextMorning: false))
+    }
+
+    private func writeSingle(_ rawTarget: ResolvedTarget, plan: RoutinePlan) async throws -> WriteReceipt {
+        // A bend collapses `weekdays` to one day upstream, which is right for AlarmKit and a deletion
+        // here, because a single Whoop schedule carries the whole week. See `widened`.
+        let target = Self.widened(rawTarget, plan: plan)
         // The envelope rather than just the list, because its other keys are the only part of this
         // endpoint's shape we have never looked at, and a 422 with an empty body has to be
         // diagnosed from something.
@@ -898,56 +1093,7 @@ actor WhoopAdapter: DeviceAdapter {
         }
 
         let token = try await currentToken()
-        guard let url = URL(string: "\(Self.host)/smart-alarm-bff/v1/schedule/\(id)?apiVersion=7") else {
-            throw AdapterError.transport("Bad schedule update URL.")
-        }
-
-        // Two body shapes at most, and every outcome is reported rather than only the last, because
-        // "full 422, trimmed 422" and "full 200" are different findings and only one screenshot
-        // comes back per round.
-        var accepted: (String, [String: Any])?
-        var outcomes: [String] = []
-
-        for (label, payload) in try Self.variants(existing, to: target) {
-            let response = try await http.send(
-                "PUT", url,
-                headers: Self.dataHeaders(token: token, timeZone: TimeZone.current.identifier),
-                body: try HTTPClient.json(payload)
-            )
-
-            if response.status == 429 { throw AdapterError.rateLimited }
-            if response.isSuccess {
-                accepted = (label, payload)
-                break
-            }
-
-            // Per attempt, not collapsed into one. Two attempts that fail differently is the most
-            // informative thing this can report, and a single shared string hid it: whichever
-            // attempt spoke first silenced the other.
-            var line = "\(label) \(payload.keys.count) fields: \(response.status)"
-            let said = Self.serverMessage(response.data)
-            if said != "nothing" { line += " (\(said))" }
-            let fromHeaders = response.diagnosticHeaders
-            if said == "nothing", !fromHeaders.isEmpty { line += " [\(fromHeaders)]" }
-            if let redirected = response.redirectedTo { line += " REDIRECTED to \(redirected)" }
-            outcomes.append(line)
-
-            // Only a complaint about the body is worth a second shape. Anything else, stop.
-            guard response.status == 400 || response.status == 422 else { break }
-        }
-
-        guard let (shape, written) = accepted else {
-            // A read, and the one description of the write contract that comes from the server.
-            // Worth a request precisely because every guess so far has come from us.
-            let editScreen = await editScreenKeys(for: id)
-            throw AdapterError.unexpectedResponse(
-                "Rejected updating the alarm. "
-                    + outcomes.joined(separator: " | ")
-                    + ". Sent \"\(target.localTime.hhmmss)\", account mode "
-                    + Self.describeValue(existing["alarm_mode"])
-                    + ". Edit screen: " + editScreen
-            )
-        }
+        let (shape, written) = try await putSchedule(existing, id: id, to: target, token: token)
 
         authState = .connected
         let previous = Self.wakeTime(from: existing["latest_wake_time"])?.hhmm ?? "an existing schedule"
