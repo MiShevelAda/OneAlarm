@@ -639,6 +639,115 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertTrue(StubServer.calls.contains { $0.method == "PUT" && $0.path.hasSuffix("/alarms/a1") })
     }
 
+    // MARK: One morning only
+
+    // Alex's goal has two halves: *"whenever I change something on the routine **or one time off**,
+    // it should be done in the 1 alarm app and should be written into the other apps."*
+    //
+    // The routine half was confirmed on his bed on 17 August. The one-off half had **no test on this
+    // path at all**, on either leg of it. `AlarmKitReconcilerTests` covers what the phone does with a
+    // bend; nothing covered what reaches Eight Sleep. So the three cases below are the ones his own
+    // two minute check on the phone is about to exercise, written first.
+
+    /// A bend writes the bent time to the bed, and leaves the routine's days and switch alone.
+    func testABendWritesTheOneOffTimeToTheBed() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil)],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        var bent = entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)
+        bent = RoutinePlan.Entry(
+            routineID: bent.routineID, routineName: bent.routineName, weekdays: bent.weekdays,
+            localTime: bent.localTime,
+            // +15 on his home screen, carried through the bed's 10 minute lead by the rules engine.
+            bentTo: WallClockTime(hour: 6, minute: 20),
+            isOn: true, isSkippedNextMorning: false
+        )
+
+        _ = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent], skipsNextMorning: false)
+        )
+
+        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")])
+        XCTAssertEqual(body["time"] as? String, "06:20:00", "the bed follows the one-off, not the routine")
+        XCTAssertEqual(body["enabled"] as? Bool, true, "a bend moves an alarm, it does not switch it off")
+        let days = (body["repeat"] as? [String: Any])?["weekDays"] as? [String: Bool]
+        XCTAssertEqual(days?["monday"], true, "and the routine's days are untouched")
+        XCTAssertEqual(days?["saturday"], false)
+    }
+
+    /// A skip switches the bed's alarm off, and changes nothing else about it.
+    ///
+    /// Off rather than deleted, and off rather than moved, because an Eight Sleep alarm has no way to
+    /// say "not this one Tuesday". The time and days must survive so that clearing the skip is a
+    /// single field going back.
+    func testASkipSwitchesTheBedsAlarmOffAndNothingElse() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil)],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let base = entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)
+        let skipped = RoutinePlan.Entry(
+            routineID: base.routineID, routineName: base.routineName, weekdays: base.weekdays,
+            localTime: base.localTime, bentTo: nil, isOn: true, isSkippedNextMorning: true
+        )
+
+        _ = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [skipped], skipsNextMorning: true)
+        )
+
+        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")])
+        XCTAssertEqual(body["enabled"] as? Bool, false, "a skip switches it off")
+        XCTAssertEqual(body["time"] as? String, "06:05:00", "and leaves the routine time on it")
+        let days = (body["repeat"] as? [String: Any])?["weekDays"] as? [String: Bool]
+        XCTAssertEqual(days?["monday"], true, "and the days, so clearing the skip is one field back")
+        // His settings are not collateral. This is the whole "temperature and vibration are yours"
+        // line, tested on the path most likely to break it.
+        XCTAssertNotNil(body["vibration"])
+        XCTAssertNotNil(body["thermal"])
+    }
+
+    /// Clearing the bend puts the routine time back. The second half of his two minute check.
+    ///
+    /// This is the failure that would matter most: a one-off that strands his bed on a time he chose
+    /// for one morning. It is the same write with `bentTo` gone, so what it really asserts is that
+    /// nothing about the bend was persisted anywhere on the way through.
+    func testClearingTheBendPutsTheRoutineTimeBack() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "his", time: "06:20:00", days: weekdayNames, routine: nil)],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        _ = try await adapter().write(
+            target,
+            plan: RoutinePlan(
+                device: .eightSleep,
+                entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 5, minute: 51)],
+                skipsNextMorning: false
+            )
+        )
+
+        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")])
+        XCTAssertEqual(body["time"] as? String, "05:51:00", "back to the routine, not stranded on the bend")
+        XCTAssertEqual(body["enabled"] as? Bool, true)
+    }
+
     // MARK: Alarms his own app hides
 
     /// A created alarm never carries the tags that hide it.
