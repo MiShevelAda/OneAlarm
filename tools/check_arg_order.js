@@ -194,6 +194,44 @@ for (const [file] of trees) {
   }
 }
 
+// A standard library method called without its required argument label.
+//
+// `pair.weekdays.subtracting(own).isSubset(othersCover)` broke Alex's build on 20 August:
+// "Missing argument label 'of:' in call". The parse is perfectly happy, the types are right, and the
+// only thing wrong is a word. Fourth class of error to reach his Xcode that nothing here could see.
+//
+// Deliberately a **fixed list**, not a general check. Knowing which labels a method requires needs
+// type information a parse does not have, so this covers only the handful this codebase actually
+// uses, where the label is mandatory and the mistake is silent until a compiler speaks. Add to the
+// list when something new bites, rather than trying to be clever.
+const LABELLED_METHODS = [
+  ['isSubset', 'of'],
+  ['isStrictSubset', 'of'],
+  ['isSuperset', 'of'],
+  ['isStrictSuperset', 'of'],
+  ['isDisjoint', 'with'],
+  ['symmetricDifference', null],
+  ['starts', 'with'],
+];
+
+for (const [file] of trees) {
+  const rel = path.relative(root, file);
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  for (const [method, label] of LABELLED_METHODS) {
+    if (!label) continue;
+    for (let i = 0; i < lines.length; i++) {
+      // `.isSubset(` where the next thing is not `of:`. Comments are skipped, because this file and
+      // its neighbours discuss these calls in prose constantly.
+      if (/^\s*(\/\/|\*|\/\*)/.test(lines[i])) continue;
+      const pattern = new RegExp(`\\.${method}\\(\\s*(?!${label}\\s*:)`);
+      if (!pattern.test(lines[i])) continue;
+      failures++;
+      console.log(`  FAIL ${rel}:${i + 1}  ${method}(...) needs its '${label}:' label`);
+      console.log(`       ${lines[i].trim()}`);
+    }
+  }
+}
+
 for (const [file, tree] of trees) {
   const rel = path.relative(root, file);
   (function visit(node) {

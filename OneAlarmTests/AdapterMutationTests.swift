@@ -230,7 +230,7 @@ final class WhoopMutationTests: XCTestCase {
         let routine = Locale.Weekday.weekdaysOnly
 
         func isPartOfASplit(own: Set<Locale.Weekday>, others: Set<Locale.Weekday>) -> Bool {
-            !own.isEmpty && own.isSubset(of: routine) && routine.subtracting(own).isSubset(others)
+            !own.isEmpty && own.isSubset(of: routine) && routine.subtracting(own).isSubset(of: others)
         }
 
         // Split week: Monday's schedule, and Tue to Fri each have their own.

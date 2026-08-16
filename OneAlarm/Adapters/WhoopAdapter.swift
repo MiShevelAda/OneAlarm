@@ -1451,7 +1451,7 @@ actor WhoopAdapter: DeviceAdapter {
             let ownDays = Self.days(from: existing["scheduled_days"])
             let isPartOfASplit = !ownDays.isEmpty
                 && ownDays.isSubset(of: pair.weekdays)
-                && pair.weekdays.subtracting(ownDays).isSubset(othersCover)
+                && pair.weekdays.subtracting(ownDays).isSubset(of: othersCover)
 
             let perRoutine = ResolvedTarget(
                 device: .whoop,

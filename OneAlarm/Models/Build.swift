@@ -12,7 +12,7 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "20 Aug, 07:50 · a split Whoop week survives a sync"
+    static let marker = "20 Aug, 08:20 · build fix, split week support"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
