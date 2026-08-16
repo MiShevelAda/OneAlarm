@@ -114,11 +114,11 @@ actor EightSleepAdapter: DeviceAdapter {
     /// Every alarm on the account, described well enough to pick from.
     ///
     /// The API is keyed on the user rather than the device, so this returns alarms across every Pod
-    /// on the account. Eight Sleep does not put a device or room name on an alarm, so time and days
-    /// are the only honest way to tell them apart.
+    /// on the account. Whether it names the bed is answered by `groupName`, which searches rather
+    /// than assumes, and by the diagnostic the picker prints on a successful parse.
     func availableAlarms() async throws -> [RemoteAlarmChoice] {
         try await fetchAlarms().compactMap { alarm in
-            guard let id = alarm["id"] as? String else { return nil }
+            guard let id = Self.alarmID(alarm) else { return nil }
             let parts = (alarm["time"] as? String)?.split(separator: ":").compactMap { Int($0) } ?? []
             let time = parts.count >= 2 ? WallClockTime(hour: parts[0], minute: parts[1]) : nil
 
@@ -344,6 +344,20 @@ actor EightSleepAdapter: DeviceAdapter {
         )
     }
 
+    /// The alarm's identifier, whatever the account spells it.
+    ///
+    /// Was `alarm["id"] as? String` in one place and inline in another. Anything that failed that
+    /// cast was dropped **silently**, and an empty list means the picker never opens, which is
+    /// indistinguishable from having no alarms. A numeric id, or one under `alarmId`, would produce
+    /// exactly the report "choosing a pod does not work".
+    static func alarmID(_ alarm: [String: Any]) -> String? {
+        for key in ["id", "alarmId", "alarm_id"] {
+            if let text = alarm[key] as? String, !text.isEmpty { return text }
+            if let number = alarm[key] as? NSNumber { return number.stringValue }
+        }
+        return nil
+    }
+
     /// Which bed, pod or side this alarm belongs to.
     ///
     /// Searched rather than assumed. The reference write-up's alarm object carries no name, and an
@@ -425,10 +439,10 @@ actor EightSleepAdapter: DeviceAdapter {
         // only discovered by not waking up.
         let chosenID: String?
         if let id = RemoteAlarmSelection.selected(for: .eightSleep),
-           alarms.contains(where: { ($0["id"] as? String) == id }) {
+           alarms.contains(where: { Self.alarmID($0) == id }) {
             chosenID = id
         } else if alarms.count == 1 {
-            chosenID = alarms.first?["id"] as? String
+            chosenID = alarms.first.flatMap(Self.alarmID)
         } else if alarms.count > 1 {
             throw AdapterError.alarmChoiceNeeded(count: alarms.count)
         } else {
@@ -437,7 +451,7 @@ actor EightSleepAdapter: DeviceAdapter {
 
         guard
             let alarmID = chosenID,
-            let existing = alarms.first(where: { ($0["id"] as? String) == alarmID })
+            let existing = alarms.first(where: { Self.alarmID($0) == alarmID })
         else {
             // Creating one is possible, but the create payload is exactly where the field name
             // contradiction lives. Better to tell the user to make one alarm in the Eight Sleep app
@@ -500,7 +514,7 @@ actor EightSleepAdapter: DeviceAdapter {
 
             let alarms = try await fetchAlarms()
             guard
-                let updated = alarms.first(where: { ($0["id"] as? String) == receipt.remoteID }),
+                let updated = alarms.first(where: { Self.alarmID($0) == receipt.remoteID }),
                 let timestamp = updated["nextTimestamp"] as? String,
                 let actual = ISO8601DateFormatter.parseFlexible(timestamp)
             else {

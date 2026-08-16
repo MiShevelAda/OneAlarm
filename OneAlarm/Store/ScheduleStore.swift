@@ -349,6 +349,43 @@ final class ScheduleStore {
         return "\(dayLabel(override.day)) only. \(routine) is still \(was.hhmm) and returns after."
     }
 
+    /// Days no routine covers, named. Silence should be stated, never inferred from an absence.
+    var uncoveredDays: String? {
+        let covered = schedule.routines.filter(\.isOn).reduce(into: Set<Locale.Weekday>()) {
+            $0.formUnion($1.weekdays)
+        }
+        let missing = Locale.Weekday.displayOrder.filter { !covered.contains($0) }
+        guard !missing.isEmpty else { return nil }
+        let names = missing.map(\.shortLabel)
+        guard names.count > 1, let last = names.last else { return names.joined() }
+        return names.dropLast().joined(separator: ", ") + " and " + last
+    }
+
+    /// The main alarm first, then everything else in the order it fires.
+    ///
+    /// Not pure firing order. The main alarm is the one the whole cascade is arranged around, and
+    /// it is usually the last to go off, so chronological order buries it at the bottom. Alex asked
+    /// twice for it to be obvious which one is dominant, and position is the cheapest way to say so.
+    /// The cost is that the times below it are no longer a straight countdown, which is why each
+    /// row states its distance from the main alarm in words.
+    var orderedTargets: [ResolvedTarget] {
+        let anchor = schedule.anchorDevice
+        return targets.sorted { lhs, rhs in
+            if lhs.device == anchor { return true }
+            if rhs.device == anchor { return false }
+            return lhs.nextOccurrence < rhs.nextOccurrence
+        }
+    }
+
+    /// How far this device sits from the main alarm, in words.
+    func distanceFromMain(_ device: DeviceID) -> String? {
+        guard device != schedule.anchorDevice,
+              let minutes = schedule.rule(for: device)?.offsetMinutes else { return nil }
+        if minutes == 0 { return "same time as \(schedule.anchorDevice.displayName)" }
+        let unit = abs(minutes) == 1 ? "minute" : "minutes"
+        return "\(abs(minutes)) \(unit) \(minutes < 0 ? "before" : "after") \(schedule.anchorDevice.displayName)"
+    }
+
     func dayLabel(_ day: CalendarDay) -> String {
         guard let date = day.date(in: calendar) else { return "that day" }
         if calendar.isDateInToday(date) { return "Today" }

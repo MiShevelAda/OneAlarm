@@ -29,6 +29,7 @@ struct CascadeView: View {
             VStack(spacing: 26) {
                 nextMorning
                 masterTime
+                routinesBlock
                 wakeWindow
                 cascade
                 previewLink
@@ -161,46 +162,91 @@ struct CascadeView: View {
             .datePickerStyle(.wheel)
             .labelsHidden()
             .colorScheme(.dark)
-
-            weekdays
         }
         .padding(.top, 4)
     }
 
-    /// The days of the routine that covers the next morning, not a free floating day set.
+    // MARK: My routines
+
+    /// Every routine, always on screen, with its days and its time.
     ///
-    /// A day moved into this routine leaves whichever one held it, because a day in two routines is
-    /// two answers to the same question. A day in none means no alarm, which is a real answer.
-    private var weekdays: some View {
-        let routineID = store.next.flatMap { next in
-            store.schedule.routine(covering: next.weekday)?.id
-        }
-        return VStack(alignment: .leading, spacing: 6) {
-            if let routineID,
-               let routine = store.schedule.routines.first(where: { $0.id == routineID }) {
-                Text("\(routine.name) · \(routine.time.hhmm)").themeLabel()
-            }
-            HStack(spacing: 6) {
-            ForEach(Locale.Weekday.displayOrder, id: \.calendarIndex) { day in
-                let on = routineID.flatMap { id in
-                    store.schedule.routines.first(where: { $0.id == id })?.weekdays.contains(day)
-                } ?? false
-                Button {
-                    if let routineID { store.toggleDay(day, in: routineID) }
-                } label: {
-                    Text(day.shortLabel)
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(maxWidth: .infinity, minHeight: 38)
-                        .background(on ? Color.white.opacity(0.14) : Color.white.opacity(0.04),
-                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(on ? Theme.lineStrong : Theme.line, lineWidth: 1)
-                        )
-                        .foregroundStyle(on ? .white : Theme.greyDim)
+    /// The previous version showed only the routine covering the next morning, so the weekend was
+    /// invisible from Monday to Thursday and there was no way to tell whether one existed. Alex:
+    /// "it's still not clear which routines I have set up, it should be directly on my home screen".
+    /// A schedule you cannot see is one you have to remember, which is the thing this app is for.
+    private var routinesBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("My routines").themeLabel()
+
+            ForEach(store.schedule.routines) { routine in
+                let isNext = store.next?.routineName == routine.name
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline, spacing: 9) {
+                        Text(routine.name)
+                            .font(.system(size: 15, weight: .semibold))
+                        if isNext {
+                            Text("NEXT")
+                                .font(.system(size: 9, weight: .bold)).tracking(1)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(Theme.State.confirmed.opacity(0.16),
+                                            in: RoundedRectangle(cornerRadius: 5))
+                                .foregroundStyle(Theme.State.confirmed)
+                        }
+                        Spacer(minLength: 6)
+                        Text(routine.weekdays.isEmpty ? "no days" : routine.time.hhmm)
+                            .font(Theme.numeral(26))
+                            .foregroundStyle(routine.weekdays.isEmpty ? Theme.greyDim : .white)
+                    }
+
+                    HStack(spacing: 6) {
+                        ForEach(Locale.Weekday.displayOrder, id: \.calendarIndex) { day in
+                            let on = routine.weekdays.contains(day)
+                            Button { store.toggleDay(day, in: routine.id) } label: {
+                                Text(day.shortLabel)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .frame(maxWidth: .infinity, minHeight: 34)
+                                    .background(on ? Color.white.opacity(0.14) : Color.white.opacity(0.04),
+                                                in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        .strokeBorder(on ? Theme.lineStrong : Theme.line, lineWidth: 1))
+                                    .foregroundStyle(on ? .white : Theme.greyDim)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    HStack(spacing: 6) {
+                        Button {
+                            store.setRoutineTime(WallClockTime(
+                                minutesSinceMidnight: routine.time.minutesSinceMidnight - 15
+                            ), routineID: routine.id)
+                        } label: { stepLabel("−15") }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            store.setRoutineTime(WallClockTime(
+                                minutesSinceMidnight: routine.time.minutesSinceMidnight + 15
+                            ), routineID: routine.id)
+                        } label: { stepLabel("+15") }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+                        Text(routine.weekdays.isEmpty
+                             ? "No days, so this routine never fires."
+                             : "Every \(routine.daysSentence)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.greyDim)
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(14)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
+                    .strokeBorder(isNext ? Theme.State.confirmed.opacity(0.4) : Theme.line, lineWidth: 1))
             }
+
+            if let uncovered = store.uncoveredDays, !uncovered.isEmpty {
+                Notice(.warn, title: "No alarm on \(uncovered).",
+                       "Those days belong to no routine, so nothing will wake you on them.")
             }
         }
     }
@@ -262,8 +308,8 @@ struct CascadeView: View {
             }
 
             VStack(spacing: 9) {
-                ForEach(store.targets, id: \.device) { target in
-                    CascadeRow(target: target) { previewDevice = target.device }
+                ForEach(store.orderedTargets, id: \.device) { target in
+                    CascadeRow(target: target) { store.makeAnchor(target.device) }
                 }
 
                 // Disabled legs still show, greyed, so switching one off is visible rather than a
@@ -360,7 +406,22 @@ private struct CascadeRow: View {
                             .foregroundStyle(Theme.State.unconfirmed)
                     }
                 }
-                Text(target.device.displayName).font(.system(size: 15, weight: .semibold))
+                HStack(spacing: 7) {
+                    Text(target.device.displayName).font(.system(size: 15, weight: .semibold))
+                    if store.schedule.anchorDevice == target.device {
+                        Text("MAIN")
+                            .font(.system(size: 9, weight: .bold)).tracking(1)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .background(Theme.State.confirmed.opacity(0.16), in: RoundedRectangle(cornerRadius: 5))
+                            .foregroundStyle(Theme.State.confirmed)
+                    }
+                }
+
+                // Main first means the times below it are no longer a countdown, so each row says
+                // in words where it sits relative to the main alarm.
+                if let distance = store.distanceFromMain(target.device) {
+                    Text(distance).font(.system(size: 11)).foregroundStyle(Theme.greyDim)
+                }
 
                 // Each device's own time, editable here rather than nowhere. The offsets have
                 // existed since the first build and no screen ever reached them.
@@ -379,23 +440,6 @@ private struct CascadeRow: View {
                     } label: { stepLabel("+5") }
                     .buttonStyle(.plain)
 
-                    if store.schedule.anchorDevice == target.device {
-                        Text("MAIN")
-                            .font(.system(size: 9, weight: .bold)).tracking(1)
-                            .padding(.horizontal, 7).padding(.vertical, 4)
-                            .background(Theme.State.confirmed.opacity(0.16), in: RoundedRectangle(cornerRadius: 5))
-                            .foregroundStyle(Theme.State.confirmed)
-                    } else {
-                        Button { store.makeAnchor(target.device) } label: {
-                            Text("Set as main")
-                                .font(.system(size: 11, weight: .bold))
-                                .padding(.horizontal, 8).padding(.vertical, 5)
-                                .background(Theme.card, in: RoundedRectangle(cornerRadius: 6))
-                                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.line, lineWidth: 1))
-                                .foregroundStyle(Theme.grey)
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
                 .padding(.top, 2)
 

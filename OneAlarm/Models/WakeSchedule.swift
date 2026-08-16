@@ -74,6 +74,19 @@ struct Routine: Codable, Equatable, Sendable, Identifiable {
         get { WeekdaySetCoding.decode(weekdayIndices) }
         set { weekdayIndices = WeekdaySetCoding.encode(newValue) }
     }
+
+    /// "Monday to Friday", "Saturday and Sunday", "Tuesday". Written out rather than abbreviated,
+    /// because the chips above it are already the short version and repeating them says nothing.
+    var daysSentence: String {
+        let days = Locale.Weekday.displayOrder.filter { weekdays.contains($0) }
+        if days.isEmpty { return "never" }
+        if Set(days) == Locale.Weekday.everyDay { return "day" }
+        if Set(days) == Locale.Weekday.weekdaysOnly { return "Monday to Friday" }
+        if Set(days) == Set([Locale.Weekday.saturday, .sunday]) { return "Saturday and Sunday" }
+        let names = days.map(\.shortLabel)
+        guard names.count > 1, let last = names.last else { return names.joined() }
+        return names.dropLast().joined(separator: ", ") + " and " + last
+    }
 }
 
 /// A calendar day, stored as three integers rather than a `Date`.
