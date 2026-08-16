@@ -15,6 +15,23 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**"A test that mutates a live account is a change" applies to his phone, not only to his accounts.**
+`[observed, 17 August]` A new test for override expiry constructed a real `ScheduleStore`. Its `init`
+calls `recompute`, which purges an expired override and then **persists** to
+`UserDefaults.standard` under `OneAlarm.schedule.v2`. XCTest runs inside the app, so that is the same
+store the real app reads. Pressing `Cmd+U` would have replaced Alex's Weekdays 06:05 and Weekend 10:05
+with the shipped defaults, 07:00 and 09:00, on his own phone, silently.
+
+Caught before it shipped, by asking what the test writes rather than what it asserts. The rule was
+already in this file, learned when a Whoop ring test rewrote his real schedule to every day, and it
+was written as being about **accounts**. It is about any shared store, and the phone is one. Tests in
+that class now snapshot the key in `setUp` and put it back in `tearDown`, including removing it when
+there was nothing there.
+
+**The general form: ask what a test writes, not only what it asserts.** An assertion is the part
+somebody reviews. Persistence is the part nobody looks at, and it is where the damage is.
+
+
 **The Eight Sleep leg works. Settled by Alex, 17 August:** *"Ok eightsleep is save remember the
 changes and write them down as working."* Not to be reopened without evidence, and the one line that
 must never come back is `clone` copying `tags`. `testACreatedAlarmCarriesNoTags` fails if it does.

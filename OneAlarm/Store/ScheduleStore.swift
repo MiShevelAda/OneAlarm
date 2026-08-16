@@ -133,6 +133,23 @@ final class ScheduleStore {
         if override.day < CalendarDay(Date(), in: calendar) {
             schedule.override = nil
             phoneNeedsRearm = true
+            // The bed and the strap are still holding the bend, and until 17 August nothing said so.
+            //
+            // An expiring override changes what the two remote legs should be holding, exactly as an
+            // edit does, and `needsApply` is how this app says "what is on your devices is not what
+            // is on this screen". It was set on every edit and not here, so the one case where the
+            // plan changes without him touching anything was also the one case with no banner.
+            //
+            // A skip is the sharp end. Skipping tomorrow switches the covering routine's Eight Sleep
+            // alarm **off**, for the whole routine and not just that morning, because that is the
+            // only thing an alarm object can express. When the skip expires the phone re-arms itself
+            // below, so he is still woken, and his bed stays switched off until he presses Set all
+            // alarms. Silently, with a green "Last set" on screen.
+            //
+            // Deliberately still not an unattended remote write. See `phoneNeedsRearm` below: the
+            // phone is local and the other two are live accounts. This makes the gap visible rather
+            // than closing it behind his back.
+            needsApply = true
             persist()
         }
     }
