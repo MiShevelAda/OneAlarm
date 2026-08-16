@@ -1992,7 +1992,11 @@ actor EightSleepAdapter: DeviceAdapter {
             // is measured on his bed rather than inferred from a status code.
             isPartial: !report.isComplete || !failures.isEmpty || !createProblems.isEmpty
                 || oneOffFailed || !weekProblems.isEmpty
-                || routineNotes.contains { $0.hasPrefix("Could not") }
+                || routineNotes.contains { $0.hasPrefix("Could not") },
+            // The one time change and any silent morning, on the screen whether this went perfectly
+            // or not. Everything else in `note` is about the routines, and a clean write already says
+            // that in its own words.
+            highlights: weekProblems + oneOffVerdicts
         )
     }
 

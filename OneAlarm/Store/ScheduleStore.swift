@@ -773,8 +773,18 @@ final class ScheduleStore {
                 // routines can land and a third can have no alarm with its days, and the morning
                 // that third routine covers is then not carried by this device at all. A green tick
                 // over that is the one lie this app must never tell.
+                // **Highlights survive a clean write. The note does not.**
+                //
+                // A one time change that worked perfectly produced `isPartial == false`, so the line
+                // confirming it went into the `else` branch below and was discarded. The screen said
+                // "Set for 06:05" and nothing about the one time change at all. Four rounds of work
+                // on a message that could not be displayed, and Alex had been asked to read that
+                // exact line back.
+                let extra = receipt.highlights.joined(separator: " ")
                 if receipt.isPartial, let note = receipt.note {
                     status[target.device] = .warning("\(note) \(confirmation)")
+                } else if !extra.isEmpty {
+                    status[target.device] = .done("Set for \(target.localTime.hhmm). \(extra) \(confirmation)")
                 } else {
                     status[target.device] = .done("Set for \(target.localTime.hhmm). \(confirmation)")
                 }
@@ -787,7 +797,13 @@ final class ScheduleStore {
                     "Accepted, but it reads back as \(formatter.string(from: actual)) instead of \(formatter.string(from: expected))."
                 )
             case .unavailable(let reason):
-                let head = receipt.isPartial ? (receipt.note ?? "Written.") : "Written."
+                // Same rule here. This is the branch a Whoop write always takes, and the branch an
+                // Eight Sleep write takes when the morning's own alarm was not among the ones that
+                // landed, which is exactly when a one time change is most worth reporting.
+                var head = receipt.isPartial ? (receipt.note ?? "Written.") : "Written."
+                if !receipt.isPartial, !receipt.highlights.isEmpty {
+                    head += " " + receipt.highlights.joined(separator: " ")
+                }
                 status[target.device] = .warning("\(head) Could not confirm: \(reason)")
             }
         } catch let error as AdapterError {

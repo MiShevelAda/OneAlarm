@@ -87,12 +87,38 @@ struct WriteReceipt: Equatable, Sendable {
     /// with a hole in it, and the hole is a morning nobody is woken on.
     var isPartial: Bool = false
 
-    init(device: DeviceID, succeededAt: Date, remoteID: String?, note: String?, isPartial: Bool = false) {
+    /// Things that must reach the screen **even when the write succeeded completely**.
+    ///
+    /// `note` does not. A clean write reports as `.done("Set for 06:05. Eight Sleep reads back Tue
+    /// 06:05.")` and the note is discarded, which is right for the routine chatter it mostly
+    /// contains: "Set Weekdays to 06:05" next to "Set for 06:05" is the same sentence twice.
+    ///
+    /// It is wrong for anything that is not about the routine. On 18 August the one day override
+    /// landed here: a one time change that worked perfectly produced `isPartial == false`, so the
+    /// line confirming it, and the line saying the extra alarm clears itself, were both thrown away.
+    /// The screen would have said "Set for 06:05" and nothing else, and Alex, who had been asked to
+    /// read exactly that line back, would have reported that nothing happened.
+    ///
+    /// **Found by tracing the value to the pixel rather than to the return statement.** This app's
+    /// oldest rule is that a file written on a server is not a post published, and a receipt field
+    /// populated is not a sentence on a screen. Four rounds of work had been spent on a message that
+    /// could not be displayed.
+    var highlights: [String] = []
+
+    init(
+        device: DeviceID,
+        succeededAt: Date,
+        remoteID: String?,
+        note: String?,
+        isPartial: Bool = false,
+        highlights: [String] = []
+    ) {
         self.device = device
         self.succeededAt = succeededAt
         self.remoteID = remoteID
         self.note = note
         self.isPartial = isPartial
+        self.highlights = highlights
     }
 }
 

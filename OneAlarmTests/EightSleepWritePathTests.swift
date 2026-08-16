@@ -1079,6 +1079,73 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertTrue(receipt.note.contains("did not land"), receipt.note)
     }
 
+    /// A one time change that worked perfectly still reaches the screen.
+    ///
+    /// **The bug this pins would have wasted his whole test.** A clean write reports as
+    /// `isPartial == false`, and on that path `ScheduleStore` throws `note` away and prints
+    /// "Set for 06:05" alone. So a one time change that went exactly right said nothing at all, and
+    /// he had been asked to read that line back and send it.
+    ///
+    /// `highlights` is the channel that survives a success. Anything he must see whether or not
+    /// something went wrong goes in it, and nothing else does: the rest of `note` is routine chatter
+    /// that a successful row already says in its own words.
+    func testTheVerdictSurvivesAWriteThatWentPerfectly() async throws {
+        let created = alarm(id: "oneoff-1", time: "06:20:00", days: ["tuesday"], routine: nil)
+        StubServer.sequences = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): [
+                (200, ["alarms": [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)]] as [String: Any]),
+                (200, ["alarms": [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)]] as [String: Any]),
+                // The final read back, after the create: both alarms are really there.
+                (200, ["alarms": [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil), created]] as [String: Any]),
+            ],
+        ]
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["id": "oneoff-1"] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20)],
+                              skipsNextMorning: false)
+        )
+
+        XCTAssertFalse(receipt.isPartial, "everything worked, so this is not a warning")
+        XCTAssertTrue(receipt.highlights.contains { $0.contains("This worked") },
+                      "\(receipt.highlights)")
+    }
+
+    /// A silent morning is a highlight too, not only a note.
+    ///
+    /// It makes the write partial, so it would reach the screen either way today. It is in
+    /// `highlights` so that stays true if the partial rules ever change: a morning with no alarm on
+    /// it is the one sentence that must never depend on another flag being set.
+    func testASilentMorningIsAHighlight() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                // Covers Monday and Tuesday only, against a Monday to Friday routine.
+                "alarms": [alarm(id: "his", time: "06:05:00", days: ["monday", "tuesday"], routine: nil)],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(
+                device: .eightSleep,
+                entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)],
+                skipsNextMorning: false
+            )
+        )
+
+        XCTAssertTrue(receipt.isPartial, "a hole in the week is never a green tick")
+        XCTAssertTrue(receipt.highlights.contains { $0.contains("not be woken") }, "\(receipt.highlights)")
+    }
+
     /// Signing out forgets which alarms OneAlarm made, not just which routine owns which.
     ///
     /// The created list is the only thing that licenses a delete. Left behind across a sign out it

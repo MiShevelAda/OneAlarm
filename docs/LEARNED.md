@@ -530,6 +530,22 @@ was then twenty lines.
 in the same breath, and check that list whenever anything new lands. Otherwise the note becomes the
 resting place rather than the queue.
 
+**Trace the value to the pixel, not to the return statement.** `[18 August]` Four rounds of work went
+into a `ONE TIME CHECK` line that could not be displayed. The Eight Sleep adapter computed it and put
+it in the receipt correctly, and `ScheduleStore` discards `receipt.note` whenever the write is not
+partial. A one time change that worked **perfectly** therefore printed "Set for 06:05" and nothing
+else. Alex had been asked to read that exact line back and send it, and would have reported that
+nothing happened, which would have read as the feature failing.
+
+Nothing in the adapter or its tests could see this. The field was populated, the tests asserted it was
+populated, and the value died one file away in a branch nobody had reason to open.
+
+**This is the project's oldest rule wearing a new costume:** a file written on a server is not a post
+published on LinkedIn; a receipt field populated is not a sentence on a screen. The fix is a
+`highlights` list that survives a success, and the general form is: **when you add something a person
+is meant to read, follow it all the way to the screen before writing the instruction that asks them
+to read it.**
+
 ## 2. Method: what did not work
 
 **Trusting a single source for a payload shape.** `[observed, three times]` The Whoop field names,
