@@ -42,6 +42,20 @@ Three things are still true and none of them is the Eight Sleep write:
    distinct classes of error have now shipped that a parse cannot catch. Two of them, argument order
    and a type declared twice, are checked by `tools/check_arg_order.js` as of today.
 
+## The setup that is known to work
+
+`[Alex, 18 August: "worked step 1-3"]` From this state the whole fan out is green, because every
+routine finds its alarm on the first pass:
+
+1. **Eight Sleep app:** exactly two alarms, `EVERY WEEKDAY` and `EVERY WEEKEND`. Times do not matter,
+   days do.
+2. **Whoop app:** master switch on, one schedule on Mon to Fri, one on Sat and Sun.
+3. **OneAlarm:** exactly two routines, Weekdays and Weekend. No "Every day" routine.
+
+**And the known weakness is the other side of the same coin**, in his words: *"the problem is when
+something changes, if one alarm would change the entire thing then it usually doesn't work."* Matching
+is by exact day set, so changing a routine's days orphans the alarm it owned. See `LEARNED.md`.
+
 ## What the app actually does today
 
 Routines, one per day set, each with its own time. Eight Sleep is written at master minus 10, Whoop

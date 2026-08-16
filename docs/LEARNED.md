@@ -15,6 +15,23 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**The setup guide works, and that is Steps 1 to 3 only.** `[observed, Alex, 18 August]` *"worked step
+1-3"*, meaning: two alarms on the bed, two Whoop schedules with the master switch on, and two matching
+routines in OneAlarm. From that state every routine finds its alarm on the first pass and the whole
+fan out is green.
+
+**`E11`, the native skip, is NOT confirmed by this.** He was asked which of two tests passed and named
+the setup. So the skip through `skipNext` remains built, tested against a fake server, and never run
+against his bed. Written here explicitly because the alternative was assuming, and an assumed
+confirmation in this file is worse than an open question: the next session cannot tell one from the
+other and will build on it.
+
+**Which makes his diagnosis exactly the finding.** The setup working is not a small result, it is the
+proof of his sentence: *"if you set it up this way to match the actual settings in the apps, then it
+usually works."* The app is reliable from a matched starting state and fragile across a change. That
+is the whole remaining problem stated in one observation, by the person using it.
+
+
 **Alex's diagnosis of the remaining weakness, 18 August, and it is sharper than anything in this
 file:** *"if you set it up this way to match the actual settings in the apps, then it usually works
 because then it gets the right data. The problem is when something changes, if one alarm would change
