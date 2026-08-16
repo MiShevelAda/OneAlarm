@@ -122,13 +122,17 @@ final class WhoopMutationTests: XCTestCase {
         )
     }
 
-    /// This is a real Whoop schedule, read off the diagnostic the picker showed on 2026-08-15. Two
-    /// things in it contradict the reference spec, and both cost a 422:
+    /// A real Whoop schedule as the **list screen** renders it, read off the picker's diagnostic on
+    /// 2026-08-15. It is a view model, not the resource.
     ///
-    /// The names. `day_of_week_list`, `enabled`, `time_zone_offset` and `sleep_goal` do not exist.
-    /// The format. The spec showed `"07:30:00"`; the account returns `"7:45 am"`.
+    /// An earlier version of this comment said `day_of_week_list`, `enabled`, `time_zone_offset`
+    /// and `sleep_goal` do not exist, on the evidence of this very fixture. They do exist. This is
+    /// the shape the **read** returns; the shape the **write** accepts uses those four names, was
+    /// confirmed against a live account on 2026-08-16, and is asserted in
+    /// `testTheDomainBodyIsNotContaminatedByTheViewModel`.
     ///
-    /// Do not restore either from a document. This fixture is the evidence.
+    /// The two are different objects and that is the durable fact. See `docs/RESEARCH.md`, section
+    /// 2.3, for the table and for how believing otherwise cost five hours.
     private var serverSchedule: [String: Any] {
         [
             "schedule_id": "uuid-1",
