@@ -825,6 +825,150 @@ final class EightSleepWritePathTests: XCTestCase {
                        "and it is not reported to him as an alarm nobody is using")
     }
 
+    // MARK: The week, checked morning by morning
+
+    // Alex's diagnosis of the last weakness, 18 August: *"if you set it up this way to match the
+    // actual settings in the apps, then it usually works because then it gets the right data. The
+    // problem is when something changes, if one alarm would change the entire thing then it usually
+    // doesn't work."*
+    //
+    // One finding only: a morning a routine covers with nothing on the bed to ring on it. That is
+    // the direction with no other symptom until he does not wake up. The loud direction, an alarm
+    // ringing that nothing asked for, is left to the stranded-alarm line on the same row.
+    //
+    // Most of these tests assert **silence**. This line sits next to ONE TIME CHECK, and a check
+    // that fires on a healthy week is one he learns to scroll past.
+
+    /// A week where every morning agrees says nothing at all.
+    func testAWholeWeekReportsNothing() {
+        let findings = EightSleepAdapter.weekFindings(
+            alarms: [
+                alarm(id: "week", time: "06:05:00", days: weekdayNames, routine: nil),
+                alarm(id: "wend", time: "09:55:00", days: ["saturday", "sunday"], routine: nil),
+            ],
+            entries: [
+                entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5),
+                entry("weekend", "Weekend", [.saturday, .sunday], hour: 9, minute: 55),
+            ]
+        )
+        XCTAssertEqual(findings, [], "a healthy week is silent, or the check gets ignored")
+    }
+
+    /// A morning a routine covers with nothing on the bed to ring is named.
+    ///
+    /// The dangerous direction, and the one with no other symptom until he does not wake up. It is
+    /// what a refused create leaves behind, and what widening a routine's days produces when the
+    /// alarm that used to serve it no longer matches.
+    func testASilentMorningIsNamed() {
+        let findings = EightSleepAdapter.weekFindings(
+            alarms: [alarm(id: "week", time: "06:05:00", days: ["monday", "tuesday"], routine: nil)],
+            entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)]
+        )
+        XCTAssertEqual(findings.count, 3, "Wednesday, Thursday and Friday")
+        XCTAssertTrue(findings.contains { $0.contains("We") && $0.contains("not be woken") }, "\(findings)")
+    }
+
+    /// An alarm ringing at a time nothing asked for is deliberately NOT reported here.
+    ///
+    /// The first version of `weekFindings` did report it, and it was cut before shipping: the
+    /// stranded-alarm line on the same row already says it, by alarm rather than by day, and it says
+    /// what to do about it. Two sentences about one alarm in two vocabularies is how a row stops
+    /// being read. This test pins the decision so it is not quietly re-added.
+    func testTheWeekCheckLeavesTheLoudDirectionToTheStrandedLine() {
+        let findings = EightSleepAdapter.weekFindings(
+            alarms: [
+                alarm(id: "week", time: "06:05:00", days: weekdayNames, routine: nil),
+                alarm(id: "ghost", time: "05:30:00", days: ["monday"], routine: nil),
+            ],
+            entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)]
+        )
+        XCTAssertEqual(findings, [], "Monday is covered. That the extra alarm exists is said elsewhere")
+    }
+
+    /// A morning covered only by the one day override still counts as covered.
+    ///
+    /// The override can fall on a morning no routine covers, and its own alarm is real coverage for
+    /// that day. A week check that ignored it would report "you will not be woken" on the one morning
+    /// the app is most likely to be asked about.
+    func testTheOverridesOwnAlarmCountsAsCoverage() {
+        let override = bent(onDay: 19, at: 6, 20)
+        // No routines at all, so Tuesday is expected only because the override says so.
+        XCTAssertEqual(
+            EightSleepAdapter.weekFindings(
+                alarms: [alarm(id: "oneoff-1", time: "06:20:00", days: ["tuesday"], routine: nil)],
+                entries: [],
+                overrides: [override]
+            ),
+            [], "the override's own alarm covers that morning"
+        )
+        // And the same morning with nothing on the bed is a real gap, not an ignored day.
+        let gap = EightSleepAdapter.weekFindings(alarms: [], entries: [], overrides: [override])
+        XCTAssertEqual(gap.count, 1, "\(gap)")
+        XCTAssertTrue(gap[0].contains("Tu"), gap[0])
+    }
+
+    /// A skipped morning is judged neither way.
+    ///
+    /// **Two opposite false positives from one feature.** Eight Sleep's native skip leaves the alarm
+    /// switched on at its ordinary time, so the stranger check would report the routine's own alarm.
+    /// The fallback switches it off, so the silent check would report a morning he cleared on purpose
+    /// as one he will not wake up on. Both are wrong, so the day is not judged.
+    func testASkippedMorningIsNotJudged() {
+        let base = entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)
+        let skipped = RoutinePlan.Entry(
+            routineID: base.routineID, routineName: base.routineName, weekdays: base.weekdays,
+            localTime: base.localTime, bentTo: nil, isOn: true, isSkippedNextMorning: true
+        )
+        // The fallback path: the alarm is switched off, so no weekday has anything ringing.
+        let findings = EightSleepAdapter.weekFindings(
+            alarms: [alarm(id: "week", time: "06:05:00", days: weekdayNames, routine: nil, enabled: false)],
+            entries: [skipped]
+        )
+        XCTAssertEqual(findings, [], "a skip is a choice, not a broken morning")
+    }
+
+    /// A switched off routine is not a silent morning.
+    ///
+    /// Turning a routine off in OneAlarm means no alarm that morning, so nothing is missing. Firing
+    /// here would put a warning on his screen for a setting he chose.
+    func testASwitchedOffRoutineIsNotAMissingMorning() {
+        let off = entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5, isOn: false)
+        XCTAssertEqual(
+            EightSleepAdapter.weekFindings(alarms: [], entries: [off]), [],
+            "a routine he turned off is not a morning he is missing"
+        )
+    }
+
+    /// An alarm Eight Sleep's own app hides is not counted as covering a morning.
+    ///
+    /// Two of these are on his real account, both enabled and both ringing. Counting one as coverage
+    /// would report a genuinely silent morning as fine, on the strength of an alarm he cannot see or
+    /// switch off.
+    func testAHiddenAlarmDoesNotCountAsCoverage() {
+        let findings = EightSleepAdapter.weekFindings(
+            alarms: [hiddenAlarm(id: "nap", time: "06:05:00", days: weekdayNames)],
+            entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)]
+        )
+        XCTAssertEqual(findings.count, 5, "all five mornings are genuinely uncovered")
+    }
+
+    /// A morning no routine covers is left alone entirely.
+    ///
+    /// Saturday is his, and an alarm on it is his business. The stranded-alarm line already reports
+    /// these by alarm rather than by day, and saying the same thing twice in two vocabularies is
+    /// worse than saying it once.
+    func testAMorningNoRoutineCoversIsNotJudged() {
+        let findings = EightSleepAdapter.weekFindings(
+            alarms: [
+                alarm(id: "week", time: "06:05:00", days: weekdayNames, routine: nil),
+                // Saturday is his. Nothing in OneAlarm describes it.
+                alarm(id: "his", time: "11:00:00", days: ["saturday"], routine: nil),
+            ],
+            entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)]
+        )
+        XCTAssertEqual(findings, [], "\(findings)")
+    }
+
     // MARK: The app answers "did it work", instead of asking him to
 
     /// The verdict when it worked: routine intact, override present.

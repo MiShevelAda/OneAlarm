@@ -498,6 +498,20 @@ fact, and twice it existed in an endpoint nobody had called. The third time the 
 better still: the field was missing because the **relationship does not exist**, and the question
 had to be rephrased rather than answered.
 
+**Cutting a check before shipping it, because something else already said it.** `[18 August]` The
+week check was written with two findings: a morning with no alarm on it, and an alarm ringing that
+nothing asked for. The second was deleted before it ever ran, because the stranded-alarm line on the
+same row already reports it, by alarm rather than by day, and names what to do about it. Two
+sentences about one alarm in two vocabularies is how a row stops being read.
+
+The kept half is the one nothing else covered: **a morning a routine covers with nothing on the bed
+to ring on it**. That is the only failure on this leg whose next symptom is him not waking up. The
+loud direction always had a witness. The silent one had none.
+
+**The rule:** a new check earns its place by covering a case nothing else does, not by being correct.
+Correct and redundant still costs attention, and attention on that row is what the dangerous finding
+needs.
+
 ## 2. Method: what did not work
 
 **Trusting a single source for a payload shape.** `[observed, three times]` The Whoop field names,

@@ -716,6 +716,78 @@ actor EightSleepAdapter: DeviceAdapter {
         }
     }
 
+    /// What his bed will actually do on each of the seven mornings, against what OneAlarm intends.
+    ///
+    /// **Alex's own diagnosis of the last weakness, 18 August:** *"if you set it up this way to match
+    /// the actual settings in the apps, then it usually works because then it gets the right data.
+    /// The problem is when something changes, if one alarm would change the entire thing then it
+    /// usually doesn't work."*
+    ///
+    /// He is describing a system that reconciles correctly from a matched starting state and has no
+    /// way to notice when a change has broken the match. Every failure on this leg has that shape:
+    /// merging two routines orphaned both alarms and left them ringing; changing a routine's days
+    /// stranded the alarm that had served it; a refused create left a morning with nothing on it. In
+    /// every case the sync reported what it **did**, which was correct, and nobody was told what the
+    /// week now looks like, which was the thing that had gone wrong.
+    ///
+    /// So this asks the only question that matters at the end of a sync, once per morning: **will
+    /// this bed wake him, and at the time he asked for?** Answered against the account as read back,
+    /// not against intent.
+    ///
+    /// **One finding, deliberately.** A morning a routine covers, with no enabled alarm on the bed
+    /// that rings on it. That is the dangerous direction, and the only failure on this leg whose next
+    /// symptom is him not waking up.
+    ///
+    /// The first version also reported alarms ringing at a time nothing asked for, and that was cut
+    /// before it shipped: the stranded-alarm line four lines below already says it, by alarm rather
+    /// than by day, and more usefully, because it names what to do about it. Two sentences about one
+    /// alarm in two vocabularies is how a row stops being read. The loud direction is covered; the
+    /// silent one was not covered anywhere.
+    ///
+    /// Override times still count as intended, because the one day alarm this adapter creates is
+    /// real coverage for that morning and a week check that ignored it would be wrong about the one
+    /// day the app is most likely to be asked about.
+    ///
+    /// Returns an empty array when the week is whole, and the caller says nothing at all.
+    static func weekFindings(
+        alarms: [[String: Any]],
+        entries: [RoutinePlan.Entry],
+        overrides: [RoutinePlan.Entry] = []
+    ) -> [String] {
+        // Hidden alarms are not coverage. Two are on his real account, both enabled and both
+        // ringing, and counting one would report a genuinely silent morning as fine on the strength
+        // of an alarm he can neither see nor switch off.
+        let live = alarms.filter { ($0["enabled"] as? Bool) != false && isVisibleToHim($0) }
+
+        var findings: [String] = []
+        for day in Locale.Weekday.displayOrder {
+            let covering = entries.filter { $0.isOn && $0.weekdays.contains(day) }
+
+            // **A skipped morning is not a broken one, and this check would call it one.**
+            //
+            // The skip's fallback path switches the weekly alarm off, so a morning he deliberately
+            // cleared would be reported as one he will not wake up on. He cleared it on purpose,
+            // and it is already named elsewhere on this row.
+            if covering.contains(where: \.isSkippedNextMorning) { continue }
+
+            // Whether OneAlarm expects to wake him at all on this morning. `isOn` rather than
+            // `shouldBeEnabled`, because this asks what the week is supposed to look like, not what
+            // is armed tonight.
+            //
+            // A morning no routine covers is a morning off, and an alarm on it is his business. It is
+            // not judged here at all.
+            let expected = !covering.isEmpty
+                || overrides.contains { $0.bendDay?.weekday == day && $0.bentTo != nil }
+            guard expected else { continue }
+
+            let ringing = live.contains { weekdays(of: $0).contains(day) }
+            if !ringing {
+                findings.append("Nothing on your bed rings on \(day.shortLabel), and a routine covers it. You will not be woken.")
+            }
+        }
+        return findings
+    }
+
     static func silence(_ alarm: [String: Any]) -> [String: Any] {
         var payload = alarm
         for field in computedFields { payload.removeValue(forKey: field) }
@@ -1679,29 +1751,6 @@ actor EightSleepAdapter: DeviceAdapter {
                 }
             }
 
-            // One read back, and the app says whether it worked.
-            //
-            // Everything above reports what OneAlarm **did**, which is not the same question. A 200
-            // is not a moved alarm, and a create reporting success is not an alarm on his bed: that
-            // exact gap is `E14`, where every create returned accepted for a fortnight while nothing
-            // appeared in his app. So the account is read once more and compared.
-            //
-            // It also ends a handoff that has failed three times. He was asked for a screenshot of
-            // the Eight Sleep alarm list, which means reading it, deciding which alarm is which, and
-            // knowing what should have changed. The app has the list. It can do the deciding.
-            let settled = (try? await fetchAlarms()) ?? []
-            for entry in bends where !settled.isEmpty {
-                guard let bend = entry.bendDay, let bentTime = entry.bentTo,
-                      let pair = report.pairs.first(where: { $0.routineID == entry.routineID })
-                else { continue }
-                oneOffNotes.append(Self.oneOffVerdict(
-                    alarms: settled,
-                    routineAlarmID: pair.alarmID,
-                    routineTime: entry.localTime,
-                    overrideTime: bentTime,
-                    weekday: bend.weekday
-                ))
-            }
         }
 
         // The routine each owned alarm belongs to, brought into line.
@@ -1822,6 +1871,34 @@ actor EightSleepAdapter: DeviceAdapter {
 
         authState = .connected
 
+        // **One read back at the very end, and the app answers the two questions he cannot.**
+        //
+        // Last, deliberately: after the writes, after the routines, after anything deleted or
+        // switched off. Everything before this reports what OneAlarm **did**, which is a different
+        // question from what is on his bed. `E14` is a fortnight of creates that all returned
+        // accepted while nothing appeared in his app.
+        //
+        // It also ends a handoff that failed three times in two days. He was asked to open the Eight
+        // Sleep app, decide which alarm is which, and say what changed. The app has the list.
+        var oneOffVerdicts: [String] = []
+        var weekProblems: [String] = []
+        let settled = (try? await fetchAlarms()) ?? []
+        if !settled.isEmpty {
+            for entry in bends {
+                guard let bend = entry.bendDay, let bentTime = entry.bentTo,
+                      let pair = report.pairs.first(where: { $0.routineID == entry.routineID })
+                else { continue }
+                oneOffVerdicts.append(Self.oneOffVerdict(
+                    alarms: settled,
+                    routineAlarmID: pair.alarmID,
+                    routineTime: entry.localTime,
+                    overrideTime: bentTime,
+                    weekday: bend.weekday
+                ))
+            }
+            weekProblems = Self.weekFindings(alarms: settled, entries: entries, overrides: bends)
+        }
+
         var note = report.note
         if !created.isEmpty {
             // Named, and named first. Creating an alarm on a live account is the most consequential
@@ -1838,6 +1915,15 @@ actor EightSleepAdapter: DeviceAdapter {
         }
         if !failures.isEmpty {
             note += " Failed: \(failures.joined(separator: ", "))."
+        }
+        if !weekProblems.isEmpty {
+            // First in the sentence, ahead of everything the sync did. A morning with no alarm on it
+            // outranks every other thing this row can say, and it is the one failure whose next
+            // symptom is him not waking up.
+            note = weekProblems.joined(separator: " ") + " " + note
+        }
+        if !oneOffVerdicts.isEmpty {
+            oneOffNotes.append(contentsOf: oneOffVerdicts)
         }
         if !oneOffNotes.isEmpty {
             // First after the headline, because a one time change is the thing he just did and the
@@ -1901,8 +1987,12 @@ actor EightSleepAdapter: DeviceAdapter {
             // alarm and calling tonight verified.
             remoteID: verifiableID.flatMap { written.contains($0) ? $0 : nil },
             note: note,
+            // A morning with nothing on it makes this a warning whatever else succeeded. Everything
+            // in this expression is something that did not happen; a silent morning is the one that
+            // is measured on his bed rather than inferred from a status code.
             isPartial: !report.isComplete || !failures.isEmpty || !createProblems.isEmpty
-                || oneOffFailed || routineNotes.contains { $0.hasPrefix("Could not") }
+                || oneOffFailed || !weekProblems.isEmpty
+                || routineNotes.contains { $0.hasPrefix("Could not") }
         )
     }
 

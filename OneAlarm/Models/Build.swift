@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 07:55 · one time changes, and the app checks itself"
+    static let marker = "18 Aug, 08:40 · one time changes, and the app checks its own week"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "A one time change no longer moves your whole Monday to Friday alarm on Eight Sleep. It gets its own alarm for that one day, and the extra alarm deletes itself the morning after. The row after Set all alarms now reads ONE TIME CHECK and tells you whether it worked, so you do not have to go and look."
+    static let whatIsNew = "A one time change no longer moves your whole Monday to Friday alarm on Eight Sleep. It gets its own alarm for that one day, and deletes itself the morning after. The row after Set all alarms now tells you whether it worked, and warns you if any morning of the week has no alarm on your bed at all."
 }
