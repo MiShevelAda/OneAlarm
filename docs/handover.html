@@ -338,10 +338,20 @@
   <p class="sec-label">Start here</p>
   <h2>The three things we want help with</h2>
   <p>Everything below is context for these. If you read nothing else, read this section and the Soll-Ist table.</p>
+  <div class="note"><p><strong>Question 1 was answered hours after this document was first written</strong>, by reading two maintained clients at source rather than reasoning further. It is struck through rather than deleted, because how it was answered is the most useful thing here: the answer had been sitting unread in this project's own notes, and what closed it was going to look rather than thinking harder.</p></div>
 
   <div class="ask">
-    <h3>1. How does Eight Sleep represent a one time change?</h3>
-    <p>Their app has a feature called <code>UPCOMING ALARM ONLY</code>: change tomorrow's alarm without touching the weekly schedule. Four raw dumps of the alarm object show <strong>no field that carries it</strong>. We can detect that an override is in force, by comparing the alarm's weekly <code>time</code> against the server's own <code>nextTimestamp</code>, but we cannot find where it lives or write one. Current working theory in the Eight Sleep section below.</p>
+    <h3 style="text-decoration:line-through;opacity:.55">1. How does Eight Sleep represent a one time change?</h3>
+    <p><strong>Answered late on 18 August, and left in place because how it was answered still matters.</strong> The question was where <code>UPCOMING ALARM ONLY</code> lives, given that four raw dumps of the alarm object show no field carrying it.</p>
+    <p>It is not a field. A one-off is <strong>its own alarm, created by omitting the <code>repeat</code> block</strong>. Confirmed in the maintained Home Assistant integration, which has a function for exactly this:</p>
+    <pre><code>async def set_one_off_alarm(self, time, enabled=True, vibration_..., thermal_...):
+    """Create a new alarm via the new alarms API."""
+    url = APP_API_URL + f"v1/users/{self.user_id}/alarms"
+    data = {"time": time, "enabled": enabled,
+            "vibration": {...}, "thermal": {...}}
+    await self.device.api_request("POST", url, data=data)</code></pre>
+    <p>The same file's alarm reader carries the comment <em>"not just recommendedAlarm, which may skip one-off alarms"</em>, so one-offs are first-class entries in <code>alarms[]</code> rather than a flag on a recurring alarm. That is a <strong>second source</strong> for a line sitting unread in this project's own research file since day one, so it meets the two-source bar.</p>
+    <p><strong>Still open, and only the hardware answers it:</strong> whether a one-shot clears itself after firing. If it does, the ownership key, the link and the delete described in notes 3 and 4 all become unnecessary.</p>
   </div>
 
   <div class="ask">
@@ -601,7 +611,7 @@ PUT https://api.prod.whoop.com/smart-alarm-bff/v1/schedule/{id}?apiVersion=7
       <tr class="r-warn">
         <td><b>Eight Sleep: one time change</b></td>
         <td>Tomorrow only moves. The rest of the week is untouched</td>
-        <td><b>Was broken:</b> moved the entire Monday-to-Friday series. Rebuilt 18 August as a separate single-day alarm. Never run on hardware</td>
+        <td><b>Was broken:</b> moved the entire Monday-to-Friday series. Rebuilt 18 August, then corrected the same night to use Eight Sleep's own one-shot, a POST with no <code>repeat</code>, confirmed in two sources. <b>Never run on hardware</b></td>
         <td><span class="chip c-warn">Unverified</span></td>
         <td class="fn">3</td>
       </tr>
