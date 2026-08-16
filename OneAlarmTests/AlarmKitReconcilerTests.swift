@@ -132,6 +132,30 @@ final class AlarmKitReconcilerTests: XCTestCase {
         XCTAssertEqual(outcome.cancel, [AlarmKitReconciler.overrideKey])
     }
 
+    /// A bend days away still collapses this leg to one alarm, and that is known rather than hidden.
+    ///
+    /// `isBent` means "this routine has a bend somewhere ahead", not "on the next morning". Bending
+    /// next Saturday from a Monday therefore stands every routine alarm down for the rest of the
+    /// week. It is what this leg did for every morning before 17 August, so it is a narrowing rather
+    /// than a regression, and the nightly Set covers it. Pinned here so the day somebody narrows it
+    /// properly, this test is what tells them the behaviour changed on purpose.
+    func testABendDaysAwayStillCollapsesToASingleAlarm() {
+        let outcome = AlarmKitReconciler.reconcile(
+            plan: plan([
+                entry("weekdays", weekdays, hour: 7),
+                entry("weekend", weekend, hour: 9, bentTo: WallClockTime(hour: 10, minute: 0)),
+            ]),
+            // The next morning is an ordinary weekday: the bend is days off.
+            target: target(weekdays, hour: 7),
+            held: ["weekdays", "weekend"]
+        )
+
+        XCTAssertEqual(outcome.schedule.count, 1)
+        XCTAssertEqual(outcome.schedule.first?.weekdays, weekdays,
+                       "it arms the target, so the week is still covered, just by one alarm")
+        XCTAssertEqual(outcome.cancel, ["weekdays", "weekend"])
+    }
+
     /// A skip arms whatever the rules engine says is next, which is past the skipped morning.
     func testASkipArmsTheMorningAfterIt() {
         let outcome = AlarmKitReconciler.reconcile(

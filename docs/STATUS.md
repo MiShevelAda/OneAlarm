@@ -103,18 +103,23 @@ is attacking it now, with an adversary at every stage.
    day list of whichever routine covers tonight, which means a Friday sync replaces a Monday to
    Friday list with Saturday and Sunday. Same shape as problem 2, but by design rather than by
    accident, and not yet fixed. Filed as `E12`.
-4. 🟠 **`sleep_goal` is hardcoded to `""`.** Harmless in `EXACT_TIME`, but if he ever selects Sleep
+4. 🟠 **A bend anywhere ahead puts the phone back to one alarm.** `AlarmKitReconciler` treats "any
+   routine has a bend" as "arm the single target", so bending next Saturday from a Monday stands
+   every routine alarm down for the rest of the week. Not a regression, it is what this leg did for
+   every morning before 17 August, and the nightly Set covers it. The fix is for the plan to carry
+   whether the override lands on the **next** morning rather than merely somewhere ahead.
+5. 🟠 **`sleep_goal` is hardcoded to `""`.** Harmless in `EXACT_TIME`, but if he ever selects Sleep
    Goal mode, the next write wipes his 100/85/70 percentage.
-5. 🟠 **The strap may not know.** `PUT /smart-alarm-service/v1/strap-status` is what pushes a time
+6. 🟠 **The strap may not know.** `PUT /smart-alarm-service/v1/strap-status` is what pushes a time
    into strap firmware and the Whoop app sends it after an edit. We do not, and it is outside the
    allowlist. Whoop's server holding the new time and the wrist buzzing at the new time are still two
    different claims, and only the first is verified.
-6. 🟠 **The Whoop write sends up to three body shapes** and stops at the first accepted. Which one was
+7. 🟠 **The Whoop write sends up to three body shapes** and stops at the first accepted. Which one was
    accepted is printed in the green text on the row and has not been read back yet. Pinning it drops
    the write from three requests to one.
-7. 🟡 **No snooze.** Apple's sleep alarm has a nine minute snooze; ours has none. Needs a widget
+8. 🟡 **No snooze.** Apple's sleep alarm has a nine minute snooze; ours has none. Needs a widget
    extension.
-8. 🟡 **The test suite has never run.** No Swift toolchain here, and `download.swift.org`,
+9. 🟡 **The test suite has never run.** No Swift toolchain here, and `download.swift.org`,
    `github.com` releases and `objects.githubusercontent.com` are all refused by the proxy. Seventeen
    tests are written and are code shaped text until `Cmd+U` says otherwise. What **has** run is
    `npm run check`: the project structure, the secret scan, and a real tree-sitter parse of all 31

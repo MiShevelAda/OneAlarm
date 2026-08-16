@@ -62,6 +62,18 @@ enum AlarmKitReconciler {
         // with no plan is the protocol's own entry point, and before 17 August it armed the target.
         // Making it throw instead would turn "no plan supplied" into no alarm at all on the leg that
         // exists to always ring, which is a worse bug than the one being fixed.
+        // Deliberately over-broad, and named so nobody has to rediscover why.
+        //
+        // `isBent` is true for a routine that has a bend **anywhere ahead**, not only one falling on
+        // the next morning. So bending next Saturday from a Monday puts this whole leg back into
+        // single alarm mode for the rest of the week, and the weekend routine's own alarm stands
+        // down until the sync after the bend expires.
+        //
+        // That is not a regression: it is exactly what this leg did before 17 August, for every
+        // morning rather than only these. Narrowing it needs the plan to carry whether the override
+        // lands on the **next** morning specifically, which is a third structural change to the leg
+        // that must ring, on a night that has already produced two compile errors, a create loop and
+        // an untracked-alarm leak. One change at a time, and this one is written down instead.
         let bendArmed = plan.entries.contains(where: \.isBent) || plan.skipsNextMorning
         if bendArmed || plan.entries.isEmpty {
             if !target.weekdays.isEmpty {
