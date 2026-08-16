@@ -498,6 +498,30 @@ fact, and twice it existed in an endpoint nobody had called. The third time the 
 better still: the field was missing because the **relationship does not exist**, and the question
 had to be rephrased rather than answered.
 
+**Refusing to act is an action, and on the Whoop leg it was waking him two hours early.**
+`[19 August]` He bent Monday to 09:41. The bed took the one-shot, the phone split correctly, and the
+Whoop adapter **deliberately** left the strap alone, reporting *"your phone and your bed have it"*.
+His schedule was MON to FRI 07:50, enabled. So the strap would have buzzed at 07:50 on the one
+morning he had asked to sleep until 09:41.
+
+The refusal itself was right and stays: one Whoop schedule carries one time for **all** its days, so
+writing 09:36 would have moved Tuesday to Friday with it. What was wrong was treating "we cannot
+write the new time" as the end of the sentence. The schedule is now switched **off** for that
+morning instead, through its own `enabled` field inside the confirmed six key body.
+
+He found it in one glance at a screen that said everything had worked. His words: *"Important test 2,
+whoop didn't change."*
+
+**The rule.** When a leg refuses an instruction, ask what that leg then **does** on the morning in
+question, not just what it failed to do. A refusal that leaves a device doing the old thing is only
+safe when the old thing is harmless, and an alarm is never harmless: it either rings or it does not,
+and both are answers.
+
+**And the trade is stated rather than hidden.** If OneAlarm never runs again he loses the wrist buzz
+and keeps the bed and the phone. The other failure, a strap going off two hours early, is the one
+that actually costs him the morning. Recovery needs nobody to remember anything: every ordinary
+write hardcodes `enabled: true`, so the next sync with no override restores it.
+
 **A "broken" row that had been fixed for two days, and nobody re-checked it.** `[18 August]` Both
 `LEARNED.md` and `STATUS.md` recorded that merging two routines *"orphans both alarms and leaves them
 ringing"*, and that narrowing a routine's days *"strands the alarm that had served it for weeks"*.

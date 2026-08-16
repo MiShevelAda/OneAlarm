@@ -215,6 +215,36 @@ final class WhoopMutationTests: XCTestCase {
         XCTAssertEqual(payload.keys.count, 6)
     }
 
+    /// **Silencing the strap for a bent morning, and coming back on by itself.**
+    ///
+    /// From Alex's strap, 19 August. He bent Monday to 09:41; his Whoop schedule sat at MON to FRI
+    /// 07:50, enabled. The bed and phone took the one-off and the strap was left to buzz two hours
+    /// early. Refusing to write a one-off is not neutral on this leg, it wakes him at the wrong time.
+    func testABentMorningSwitchesTheScheduleOffAndAnOrdinaryWriteTurnsItOn() throws {
+        let hushed = WhoopAdapter.domainBody(serverSchedule, to: target, silenced: true)
+        XCTAssertEqual(hushed["enabled"] as? Bool, false)
+        // Everything else is still his, because this is one morning off and not a reset.
+        XCTAssertEqual(hushed["day_of_week_list"] as? [String], ["MONDAY", "WEDNESDAY"])
+        XCTAssertEqual(hushed["alarm_mode"] as? String, serverSchedule["alarm_mode"] as? String)
+
+        // The recovery, and the reason nobody has to remember it: every ordinary write sends true.
+        let ordinary = WhoopAdapter.domainBody(serverSchedule, to: target)
+        XCTAssertEqual(ordinary["enabled"] as? Bool, true,
+                       "the next sync with no override turns the strap back on")
+    }
+
+    /// The view model rung is dropped when silencing, because it would undo the silence.
+    ///
+    /// It is built by mutating the read shape, which carries its own on switch. A fallback that
+    /// quietly reverses the request is worse than one rung fewer.
+    func testTheSilencedLadderHasNoRungThatTurnsItBackOn() throws {
+        for (name, body) in try WhoopAdapter.variants(serverSchedule, to: target, silenced: true) {
+            let enabled = body["enabled"] as? Bool
+                ?? (body["schedule"] as? [String: Any])?["enabled"] as? Bool
+            XCTAssertNotEqual(enabled, true, "rung \(name) would switch the strap back on")
+        }
+    }
+
     /// A deliberate one-off refusal is not reported as a mismatch.
     ///
     /// **From Alex's bed, 19 August.** His Whoop row read "Accepted, but it reads back as Mon 07:50

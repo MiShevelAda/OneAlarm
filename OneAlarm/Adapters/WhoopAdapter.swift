@@ -613,17 +613,22 @@ actor WhoopAdapter: DeviceAdapter {
     /// `forcing` is create-only and deliberately named so it cannot be mistaken for a retry knob. It
     /// was once a `mode:` parameter used to substitute his wake strategy on a failed write, which is
     /// the rule in `LEARNED.md` being broken by the code the rule was written about.
+    /// - Parameter silenced: switch this schedule off, for a morning his one time change has moved.
     static func domainBody(
         _ schedule: [String: Any],
         to target: ResolvedTarget,
-        forcing mode: String? = nil
+        forcing mode: String? = nil,
+        silenced: Bool = false
     ) -> [String: Any] {
         [
             "latest_wake_time": target.localTime.hhmmss,
             "day_of_week_list": Locale.Weekday.displayOrder
                 .filter { target.weekdays.contains($0) }
                 .map(\.whoopName),
-            "enabled": true,
+            // **`false` only for a morning his one time change has moved.** See `silenced` below.
+            // Every ordinary write sends `true`, which is what makes this self healing: the next sync
+            // with no override in force turns the schedule back on without anybody remembering to.
+            "enabled": !silenced,
             "time_zone_offset": target.utcOffsetString,
             // His, echoed. `forcing` is create-only and `observedMode` only stands in when the
             // schedule carries no mode at all. Neither path ever overwrites a mode on a schedule
@@ -645,9 +650,13 @@ actor WhoopAdapter: DeviceAdapter {
     /// The view model echo, full and trimmed, has been refused twice each, so it is retained as a
     /// single control rather than two. The domain body has never actually run: it was written after
     /// the last attempt, so every 422 so far belongs to the echo.
-    static func variants(_ schedule: [String: Any], to target: ResolvedTarget) throws -> [(String, [String: Any])] {
+    static func variants(
+        _ schedule: [String: Any],
+        to target: ResolvedTarget,
+        silenced: Bool = false
+    ) throws -> [(String, [String: Any])] {
         var shapes: [(String, [String: Any])] = [
-            ("domain", Self.domainBody(schedule, to: target)),
+            ("domain", Self.domainBody(schedule, to: target, silenced: silenced)),
         ]
         // **The mode substitution rung was removed on 18 August, and it should never have shipped.**
         //
@@ -670,7 +679,13 @@ actor WhoopAdapter: DeviceAdapter {
         // `LEARNED.md` already carries the rule, written after this exact thing happened once:
         // **never silently change a setting Alex chose. Adopt, or ask, never overwrite.** The rung
         // was that rule being broken by the code the rule was written about.
-        shapes.append(("viewmodel", Self.trimmed(try Self.mutate(schedule, to: target))))
+        // **The view model rung is dropped when silencing.** It is built by mutating the read shape,
+        // which carries its own on switch, so it would send the schedule back enabled and undo the
+        // one thing this call exists to do. A control that quietly reverses the request is worse
+        // than one rung fewer.
+        if !silenced {
+            shapes.append(("viewmodel", Self.trimmed(try Self.mutate(schedule, to: target))))
+        }
         return shapes
     }
 
@@ -993,7 +1008,8 @@ actor WhoopAdapter: DeviceAdapter {
         _ existing: [String: Any],
         id: String,
         to target: ResolvedTarget,
-        token: String
+        token: String,
+        silenced: Bool = false
     ) async throws -> (shape: String, written: [String: Any]) {
         guard let url = URL(string: "\(Self.host)/smart-alarm-bff/v1/schedule/\(id)?apiVersion=7") else {
             throw AdapterError.transport("Bad schedule update URL.")
@@ -1002,7 +1018,7 @@ actor WhoopAdapter: DeviceAdapter {
         var accepted: (String, [String: Any])?
         var outcomes: [String] = []
 
-        for (label, payload) in try Self.variants(existing, to: target) {
+        for (label, payload) in try Self.variants(existing, to: target, silenced: silenced) {
             let response = try await http.send(
                 "PUT", url,
                 headers: Self.dataHeaders(token: token, timeZone: TimeZone.current.identifier),
@@ -1291,7 +1307,46 @@ actor WhoopAdapter: DeviceAdapter {
             guard let existing = schedules.first(where: { Self.scheduleID($0) == pair.alarmID }) else { continue }
             let entry = plan.entries.first { $0.routineID == pair.routineID }
             if entry?.isBent == true {
-                oneOffSkipped.append(entry?.routineName ?? pair.routineName)
+                // **Refusing to write the one-off is not neutral, it wakes him early.**
+                //
+                // From his strap on 19 August. He bent Monday to 09:41, and his Whoop schedule sat at
+                // MON to FRI 07:50, enabled. The bed and the phone took the one-off correctly and the
+                // strap was left to buzz at 07:50, two hours before the morning he actually asked
+                // for. This adapter had been calling that outcome "your phone and your bed have it",
+                // which is true and is not the point.
+                //
+                // The bent time still cannot go on the schedule: one Whoop schedule carries one time
+                // for **all** its days, so writing 09:36 would move Tuesday through Friday with it.
+                // So the schedule is switched **off** for that morning instead.
+                //
+                // **Why off is the right trade, stated plainly.** If OneAlarm never runs again he
+                // loses the wrist buzz and keeps the bed and the phone, and the phone is the leg that
+                // must ring and needs no account or network. The alternative failure, a strap
+                // buzzing two hours early, is the one that actually costs him the morning. And the
+                // recovery is automatic: `domainBody` hardcodes `enabled: true` on every ordinary
+                // write, so the next sync with no override turns it back on.
+                //
+                // This uses the schedule's own `enabled` field inside the confirmed six key body. It
+                // is **not** `alarm-schedule/enable` or `/disable`, which are the account wide master
+                // switch he sets by hand and are banned in `CLAUDE.md`.
+                let name = entry?.routineName ?? pair.routineName
+                let hush = ResolvedTarget(
+                    device: .whoop,
+                    localTime: pair.time,
+                    weekdays: pair.weekdays,
+                    dayShift: target.dayShift,
+                    nextOccurrence: target.nextOccurrence,
+                    utcOffsetSeconds: target.utcOffsetSeconds
+                )
+                do {
+                    _ = try await putSchedule(existing, id: pair.alarmID, to: hush,
+                                              token: token, silenced: true)
+                    oneOffSkipped.append(name)
+                } catch {
+                    // Named, because the consequence is him being woken at the routine time on a
+                    // morning he moved, and that is worth a sentence rather than a shrug.
+                    failures.append("\(name): could not switch the strap off for that morning, so it still buzzes at \(pair.time.hhmm). \((error as? AdapterError)?.errorDescription ?? "refused")")
+                }
                 continue
             }
             let perRoutine = ResolvedTarget(
@@ -1398,7 +1453,7 @@ actor WhoopAdapter: DeviceAdapter {
         // while the write had deliberately sent the routine time.
         var wroteInstead: WallClockTime?
         if !oneOffSkipped.isEmpty {
-            note += " Your one-off is not on the strap: a Whoop schedule has one time for all its days, so writing it would move every \(oneOffSkipped.joined(separator: " and ")) morning, not just the one. Your phone and your bed have it."
+            note += " Your strap is switched off for that one morning, so it cannot buzz at the \(oneOffSkipped.joined(separator: " and ")) time. A Whoop schedule has one time for all its days, so putting the one-off here would move every morning it covers, not just the one. Your phone and your bed carry the new time, and the next time you press Set all alarms the strap comes back on by itself."
             // The routine time for the schedule covering the next morning, which is what went out.
             wroteInstead = plan.entries.first {
                 $0.isBent && !$0.weekdays.isDisjoint(with: target.weekdays)
