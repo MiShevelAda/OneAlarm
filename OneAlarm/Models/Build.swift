@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 18:40 · the overridden line names the new time"
+    static let marker = "18 Aug, 19:10 · the panel names the hidden tagged alarms too"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "The yellow OVERRIDDEN line now says what the alarm is actually firing at, not just that something changed it. You should not have to expand the block to find the one number that matters."
+    static let whatIsNew = "The yellow OVERRIDDEN line now says what the alarm is firing at instead, and the line under it lists the hidden tagged alarms on your bed. If Eight Sleep makes one of those when you set UPCOMING ALARM ONLY, those two lines tell us in one glance."
 }

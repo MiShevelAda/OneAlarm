@@ -1034,6 +1034,53 @@ an alarm of his deleted by a sweep that was certain.
 
 
 
+## E26 🔴 Is Eight Sleep's `UPCOMING ALARM ONLY` a hidden tagged alarm rather than a field?
+
+**The best explanation yet, and it comes from Alex's own account rather than from reasoning.**
+
+Four raw dumps in a row, 17 and 18 August, have carried the same thirteen keys and **no override
+field of any kind**: `time`, `enabled`, `dismissedUntil`, `id`, `repeat`, `skipNext`, `skippedUntil`,
+`smart`, `snoozedUntil`, `snoozing`, `tags`, `thermal`, `vibration`, plus `nextTimestamp` when the
+alarm is switched on. `E23`'s own prediction table has a row for this outcome: *"nothing new at all →
+the override lives on the routine object or a separate endpoint."*
+
+There is a third possibility that table did not list, and his account has been showing it the whole
+time.
+
+**Two alarms on his bed are tagged `temporary-mode` and `oneOff-napMode`.** One of those words is
+literally `oneOff`. They are hidden from the Eight Sleep app's alarm list, which is `E15`, confirmed.
+And the tags cannot have originated with OneAlarm: `clone` copies a template's `tags`, and the
+template is always an alarm the account already had. **So an alarm of his carried those tags before
+OneAlarm ever ran, which means Eight Sleep writes them.**
+
+**The hypothesis.** Their app implements `UPCOMING ALARM ONLY` the same way OneAlarm now implements a
+one time change, by accident rather than by copying: a **separate single occurrence alarm**, tagged
+so it does not appear in the alarm list, rendered instead as struck-through text on the card of the
+alarm it displaces. If so, there is no field to find, and today's design is the right shape rather
+than a workaround.
+
+**The test needs no field hunting, which is the point.** Setting an override in their app either
+makes a new alarm appear on the account or it does not. The panel already lists every alarm including
+hidden ones, and now prints them on one line next to the override, so this is a glance.
+
+| What the panel shows after setting `UPCOMING ALARM ONLY` in their app | Reading | What follows |
+|---|---|---|
+| a **new** hidden tagged alarm at the override time | confirmed, and there is no field | today's design is right. Consider using their tag so their app renders it as an override instead of as a second alarm, **but see the warning below** |
+| the same two hidden alarms, unchanged, and `OVERRIDDEN:` still fires | it is not an alarm and not on the object, so it is a separate endpoint | needs a capture. `E23` stays open and today's design stands |
+| `OVERRIDDEN:` stops firing when he clears it, and no alarm ever appears | the override is server side and only visible through `nextTimestamp` | today's design stands, and the detector is the only handle we will ever have |
+
+**The warning, which must not be lost if this confirms.** `clone` stripping `tags` is what fixed a
+fortnight of invisible alarms, `E14`, and `testACreatedAlarmCarriesNoTags` fails if it ever stops.
+Writing their tag onto an alarm OneAlarm creates would make it invisible to Alex, which is the
+failure that took two weeks to find. **A confirmation here is a reason to open a new experiment about
+whether their app renders a tagged alarm as an override, not a licence to add the tag.**
+
+**Whose.** Alex. In the Eight Sleep app, set `UPCOMING ALARM ONLY` on one alarm. Then in OneAlarm,
+Connections, Eight Sleep, expand the panel and read the top two lines. Under a minute, and it needs
+no raw block at all.
+
+
+
 ## Completed
 
 | | Question | Answer | Date |

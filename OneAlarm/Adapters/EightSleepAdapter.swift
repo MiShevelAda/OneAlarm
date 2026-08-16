@@ -963,6 +963,23 @@ actor EightSleepAdapter: DeviceAdapter {
     /// missed morning.
     static let hiddenTags: Set<String> = ["temporary-mode", "oneOff-napMode"]
 
+    /// Every tagged, hidden alarm on the account, as "09:56 Sa Su".
+    ///
+    /// **For `E26`, which is the best explanation yet of what `UPCOMING ALARM ONLY` actually is.**
+    /// Alex's dump of 18 August carries thirteen keys and no override field anywhere, the fourth in a
+    /// row to do so. But two alarms on his account are tagged `temporary-mode` and `oneOff-napMode`,
+    /// and `clone` copies a template's tags, so those tags had to come from an alarm of **his**
+    /// before OneAlarm ever ran. Eight Sleep tags alarms that way, and one of those words is
+    /// literally `oneOff`.
+    ///
+    /// If their one-off is a separate tagged alarm rather than a field, then setting
+    /// `UPCOMING ALARM ONLY` in their app makes a new hidden alarm appear at the override time, and
+    /// that is visible with no field hunting at all. Putting these on the panel turns the test into
+    /// one glance instead of a scroll through four blocks.
+    static func hiddenAlarmLabels(_ alarms: [[String: Any]]) -> [String] {
+        alarms.filter { !isVisibleToHim($0) }.map(shortLabel)
+    }
+
     /// Whether Eight Sleep's app will show this alarm to Alex.
     ///
     /// An alarm he cannot see is one he cannot check, cannot change and cannot switch off. OneAlarm

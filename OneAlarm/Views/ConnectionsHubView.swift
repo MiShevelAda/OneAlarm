@@ -874,6 +874,11 @@ struct BedConfirmScreen: View {
     /// Reads the line `EightSleepAdapter.describe` already computes, rather than recomputing it, so
     /// the summary and the detail can never disagree about the same alarm. Two readers of one fact is
     /// how a screen and a write ended up describing different accounts earlier today.
+    /// Tagged alarms Eight Sleep's own app hides, for correlating against an override. `E26`.
+    private var hiddenLabels: [String] {
+        choices.filter(\.isHidden).map(\.summary)
+    }
+
     private var overriddenAlarms: [String] {
         choices.compactMap { choice in
             guard let detail = choice.rawKeys.compactMap(EightSleepAdapter.overrideDetail).first
@@ -907,6 +912,21 @@ struct BedConfirmScreen: View {
                     Text("OVERRIDDEN: \(overriddenAlarms.joined(separator: ", "))")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Theme.State.unconfirmed)
+                        .textSelection(.enabled)
+                }
+
+                // **The tagged alarms, named next to the override. `E26`.**
+                //
+                // Four dumps in a row have carried no override field, and two alarms on this account
+                // are tagged `temporary-mode` and `oneOff-napMode`. One of those words is literally
+                // `oneOff`. If Eight Sleep expresses `UPCOMING ALARM ONLY` as a hidden tagged alarm
+                // rather than as a field, then one of these will be sitting at exactly the time the
+                // line above says the bed is firing, and the question is answered by reading two
+                // lines instead of hunting a field that may not exist.
+                if !hiddenLabels.isEmpty {
+                    Text("HIDDEN (tagged) ALARMS: \(hiddenLabels.joined(separator: ", "))")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.grey)
                         .textSelection(.enabled)
                 }
 
