@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 03:40 · Skip uses Eight Sleep's own skip"
+    static let marker = "18 Aug, 04:10 · stranded alarms are named on the row"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Skip now uses the skip button Eight Sleep already has, so your weekly alarm stays switched on and nothing has to be put back afterwards. If their server ignores it, OneAlarm falls back to what it did before and tells you which happened."
+    static let whatIsNew = "Change a routine so an alarm no longer matches it, and the Eight Sleep row now names that alarm and says it still rings. You said the app works until something changes; this is the first half of making a change visible instead of silent."
 }

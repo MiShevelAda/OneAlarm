@@ -15,6 +15,36 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**Alex's diagnosis of the remaining weakness, 18 August, and it is sharper than anything in this
+file:** *"if you set it up this way to match the actual settings in the apps, then it usually works
+because then it gets the right data. The problem is when something changes, if one alarm would change
+the entire thing then it usually doesn't work."*
+
+That is exactly right and it names the shape of every failure on this leg. OneAlarm reconciles by
+**exact day set equality**, which is a good rule for a first meeting and a poor one for a lifetime.
+It works perfectly when his routines already mirror the alarms on the device, because then every
+routine finds its alarm on the first pass. The moment a routine's days change, the alarm it owned
+stops matching, and the app has no way back to it except the recorded link, which is dropped precisely
+when he edits the thing the link describes.
+
+The failures all have this one cause:
+
+| What he changed | What happened |
+|---|---|
+| merged Weekdays and Weekend into "Every day" | both real alarms orphaned, still ringing, and a third about to be created |
+| a Sa-only Whoop schedule against a Sa-Su routine | routine stranded, no adoption possible, no create possible |
+| deleted a routine | its alarm left behind, switched off rather than removed, until provenance shipped |
+
+**The rule underneath, which the outside review reached independently:** content similarity is a fine
+way to **propose** a pairing and a bad way to **maintain** one. Mature sync systems use it once, at
+adoption, with an explicit confirmation, and never again as identity. OneAlarm has the id mapping and
+does the adoption silently, so a change that breaks the day match silently breaks the mapping too.
+
+Nothing here is fixed by better matching. It is fixed by **noticing when a change has orphaned
+something and saying so before the write**, which is why the week coverage diff is now the highest
+value thing left on this leg.
+
+
 **Half the one-off problem was fixable from data already on the table.** `[18 August]` The bend needs
 a field nobody has seen yet, so it is blocked on a capture. The **skip** did not: `skipNext` and
 `skippedUntil` are in every raw dump Alex has sent, sitting unused, while OneAlarm expressed a skip by

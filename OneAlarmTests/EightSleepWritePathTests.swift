@@ -851,6 +851,70 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertEqual(otherBody["enabled"] as? Bool, true, "the other routine still rings")
     }
 
+    /// An alarm that matches no routine, and still rings, is named on the row after a write.
+    ///
+    /// Alex, 18 August: *"the problem is when something changes, if one alarm would change the entire
+    /// thing then it usually doesn't work."* On 17 August he merged his two routines into one "Every
+    /// day" routine, which left `09:30 weekdays` and `10:55 Sa Su` matching nothing. OneAlarm
+    /// correctly stopped touching them and they correctly kept ringing, and the only place that was
+    /// said was a panel three taps away in Connections. He reads the row.
+    func testAnAlarmMatchingNoRoutineIsNamedOnTheRow() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    alarm(id: "his", time: "06:50:00", days: weekdayNames, routine: nil),
+                    alarm(id: "stranded", time: "09:00:00", days: ["saturday"], routine: nil),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(
+                device: .eightSleep,
+                entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 50)],
+                skipsNextMorning: false
+            )
+        )
+        let note = try XCTUnwrap(receipt.note)
+
+        XCTAssertTrue(note.contains("still rings"), "the part that decides whether he wakes up")
+        XCTAssertTrue(note.contains("09:00"), "named, so he knows which one to go and look at")
+    }
+
+    /// An alarm that matches no routine and is already switched off is not mentioned.
+    ///
+    /// A warning that fires on a harmless state teaches him to skim past the one that matters, which
+    /// is the mistake the hidden-alarm row made for an hour on 17 August.
+    func testAStrandedAlarmThatIsSwitchedOffIsNotMentioned() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    alarm(id: "his", time: "06:50:00", days: weekdayNames, routine: nil),
+                    alarm(id: "quiet", time: "09:00:00", days: ["saturday"], routine: nil, enabled: false),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(
+                device: .eightSleep,
+                entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 50)],
+                skipsNextMorning: false
+            )
+        )
+
+        XCTAssertFalse((receipt.note ?? "").contains("still ring"),
+                       "a switched off alarm is not a problem and saying it is trains him to ignore this")
+    }
+
     // MARK: Skip, through Eight Sleep's own field
 
     /// A skip uses `skipNext` and leaves the weekly alarm switched on.

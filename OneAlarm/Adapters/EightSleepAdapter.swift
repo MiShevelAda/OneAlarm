@@ -1558,6 +1558,27 @@ actor EightSleepAdapter: DeviceAdapter {
         if !deleteProblems.isEmpty {
             note += " " + deleteProblems.joined(separator: " ")
         }
+        // **An alarm no routine covers, still switched on, named on the row he actually reads.**
+        //
+        // Alex, 18 August: *"the problem is when something changes, if one alarm would change the
+        // entire thing then it usually doesn't work."* This is that, made visible. Merging two
+        // routines into one, or widening a routine's days, leaves the alarms they owned matching
+        // nothing. OneAlarm correctly stops touching them, and they correctly keep ringing, and until
+        // now the only place that was said was a panel three taps away in Connections.
+        //
+        // He does not go looking. He reads the row after pressing Set all alarms. So it goes there,
+        // with the count, because "one" and "three" are different amounts of trouble.
+        let strandedAndLive = alarms.filter { candidate in
+            guard let id = Self.alarmID(candidate) else { return false }
+            guard !written.contains(id), Self.isVisibleToHim(candidate) else { return false }
+            guard (candidate["enabled"] as? Bool) != false else { return false }
+            guard !Self.weekdays(of: candidate).isEmpty else { return false }
+            return !report.pairs.contains { $0.alarmID == id }
+        }
+        if !strandedAndLive.isEmpty {
+            let names = strandedAndLive.map(Self.shortLabel).joined(separator: ", ")
+            note += " \(strandedAndLive.count) alarm\(strandedAndLive.count == 1 ? "" : "s") on your bed match no routine and OneAlarm did not touch \(strandedAndLive.count == 1 ? "it" : "them"): \(names). \(strandedAndLive.count == 1 ? "It still rings" : "They still ring"). Give a routine those days to take \(strandedAndLive.count == 1 ? "it" : "them") over, or delete \(strandedAndLive.count == 1 ? "it" : "them") in the Eight Sleep app."
+        }
         if !silenced.isEmpty {
             note += " Switched off \(silenced.joined(separator: ", ")) on your bed, because the routine that owned it is gone. Yours are switched off rather than deleted, so you can turn it back on in the Eight Sleep app if that was not what you wanted."
         }
