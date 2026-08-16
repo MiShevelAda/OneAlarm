@@ -29,6 +29,20 @@ struct ConnectionsHubView: View {
 
                 Text("Passwords are kept in the iPhone Keychain, tied to this device. They are never backed up and never copied to another phone.")
                     .font(.system(size: 13)).foregroundStyle(Theme.greyDim)
+
+                // Which build this is. Three rounds in a row opened with "is the code you are
+                // running the code I pushed", and there was no way to answer it from the phone.
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("BUILD").themeLabel()
+                    Text(Build.marker)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Theme.grey)
+                        .textSelection(.enabled)
+                    Text(Build.whatIsNew)
+                        .font(.system(size: 12)).foregroundStyle(Theme.greyDim)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
             }
             .padding(.bottom, 20)
         } footer: {

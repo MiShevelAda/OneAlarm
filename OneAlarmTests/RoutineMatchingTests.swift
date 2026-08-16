@@ -238,7 +238,13 @@ final class RoutinePlanBuildingTests: XCTestCase {
         XCTAssertEqual(plan.entries.first?.weekdays, Set([.sunday, .monday, .tuesday, .wednesday, .thursday]))
     }
 
-    func testARoutineThatIsSwitchedOffIsNotInThePlan() {
+    /// A switched off routine stays in the plan, carrying its switch.
+    ///
+    /// It used to be filtered out, which was right when the plan only described writes. It is wrong
+    /// now: its alarm is still on his bed, and dropping it from the plan leaves that alarm firing on
+    /// a morning he turned off in OneAlarm. Being the source of truth means switching it off there,
+    /// which needs the routine to still be in the plan to switch off.
+    func testASwitchedOffRoutineStaysInThePlanAndCarriesItsSwitch() {
         var routines = WakeSchedule.defaultRoutines
         routines[1].isOn = false
 
@@ -249,7 +255,10 @@ final class RoutinePlanBuildingTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        XCTAssertEqual(plan.entries.map(\.routineID), ["weekdays"])
+        XCTAssertEqual(plan.entries.map(\.routineID), ["weekdays", "weekend"])
+        XCTAssertFalse(plan.entries[1].isOn)
+        XCTAssertFalse(plan.entries[1].shouldBeEnabled, "its alarm gets switched off, not abandoned")
+        XCTAssertTrue(plan.entries[0].shouldBeEnabled)
     }
 
     /// An expired bend must never reach a plan. It would put a time nobody chose on a live account.
@@ -269,12 +278,13 @@ final class RoutinePlanBuildingTests: XCTestCase {
         XCTAssertNil(plan.entries.first(where: \.isBent))
     }
 
-    /// A skip is carried as a flag and deliberately not turned into a write.
+    /// A skip reaches the bed, and only the routine it falls on.
     ///
-    /// Eight Sleep has a `skipNext` field on every alarm and this app has never sent it, so its
-    /// behaviour is known from its name and nothing else. This project has already paid five hours
-    /// for reasoning about a field name.
-    func testASkipIsFlaggedAndNotWritten() {
+    /// It is expressed as `enabled: false` on that routine's owned alarm, a field this adapter has
+    /// read and written since the first build, rather than as `skipNext`, whose behaviour is known
+    /// from its name and nothing else. This project has already paid five hours for reasoning about
+    /// a field name. `skipNext` is the better long term answer and is filed as E11.
+    func testASkipSuppressesOnlyTheRoutineItFallsOn() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let today = CalendarDay(now, in: calendar)
         let plan = RulesEngine.plan(
@@ -288,7 +298,18 @@ final class RoutinePlanBuildingTests: XCTestCase {
         )
 
         XCTAssertTrue(plan.skipsNextMorning)
-        XCTAssertNil(plan.entries.first(where: \.isBent), "a skip is not a time to write")
+        XCTAssertNil(plan.entries.first(where: \.isBent), "a skip is not a time")
+
+        // 1_800_000_000 is Friday 15 January 2027 in Europe/Zurich, checked rather than assumed:
+        // the first version of this test said Sunday and asserted the opposite way round. So the
+        // weekday routine is the one suppressed and the weekend must be untouched. A skip that took
+        // the whole week down would be a routine change wearing a one day label.
+        let weekdays = plan.entries.first { $0.routineID == "weekdays" }
+        let weekend = plan.entries.first { $0.routineID == "weekend" }
+        XCTAssertTrue(weekdays?.isSkippedNextMorning ?? false)
+        XCTAssertFalse(weekdays?.shouldBeEnabled ?? true)
+        XCTAssertFalse(weekend?.isSkippedNextMorning ?? true)
+        XCTAssertTrue(weekend?.shouldBeEnabled ?? false)
     }
 }
 

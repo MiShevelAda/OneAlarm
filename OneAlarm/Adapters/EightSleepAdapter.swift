@@ -11,13 +11,21 @@ import Foundation
 /// its documented read shape disagree about field names, `vibration.powerLevel` against
 /// `vibration.level` and `thermal.level` against `thermal.temperature`, thirty lines apart in the
 /// same file. Rather than gamble on which is right, this adapter reads the existing alarm as a raw
-/// dictionary, changes **only `time`**, and sends everything else back exactly as the server gave
-/// it. Unknown fields survive untouched, so the contradiction cannot bite us and neither can any
-/// field added upstream later.
+/// dictionary and sends everything back exactly as the server gave it, except the fields it owns.
+/// Unknown fields survive untouched, so the contradiction cannot bite us and neither can any field
+/// added upstream later. The same principle makes `clone` safe: a new alarm is a copy of a real one,
+/// never a payload composed here.
 ///
-/// It used to also write `enabled` and the whole `repeat` block. Both are gone as of 2026-08-16.
-/// Days are now the key a routine is **matched on** rather than a field that gets written: OneAlarm
-/// finds the alarm that already has a routine's days and moves that alarm's time. See `write`.
+/// **What it owns, set by Alex on 2026-08-16:** *"OneAlarm is my one single source of truth for
+/// alarm setting... only the modifications of temperature, vibration etc should be done in the
+/// respective app."* So three fields, and only on an alarm a routine owns: `time`,
+/// `repeat.weekDays`, `enabled`. Ownership comes from `RemoteAlarmLink`. An alarm this app has never
+/// owned is never written to at all.
+///
+/// This file changed direction twice in one day and both turns are recorded rather than tidied away.
+/// Days were written, then banned at 09:00 after one hand-picked alarm serving two routines turned a
+/// real Monday to Friday schedule into every day, then written again at 13:00 once ownership was
+/// recorded and that ambiguity was gone. The ban was right for its reason and wrong as a rule.
 actor EightSleepAdapter: DeviceAdapter {
 
     nonisolated let device: DeviceID = .eightSleep
@@ -30,12 +38,12 @@ actor EightSleepAdapter: DeviceAdapter {
     private static let clientSecret = "f0954a3ed5763ba3d06834c73731a32f15f168f47d4f164751275def86db0c76"
 
     private let keychain: KeychainStore
-    /// Exactly three requests, verb included. Nothing else on this API is reachable from here.
+    /// Six requests, verb included. Nothing else on this API is reachable from here.
     ///
-    /// Note what is deliberately absent. `POST .../v1/users/{id}/alarms` creates an alarm, which is
-    /// the call the reference library's discovery routine uses to put ten real alarms on a live
-    /// account, and `DELETE .../v1/users/{id}/alarms/{alarmId}` is unverified and irreversible.
-    /// Neither is listed, so neither can be sent, including by a later edit that forgets why.
+    /// Note what is deliberately absent: `DELETE .../v1/users/{id}/alarms/{alarmId}`. It is
+    /// unverified, it is irreversible, and nothing in this app needs it. A routine deleted in
+    /// OneAlarm switches its alarm **off** instead, which he can undo in the Eight Sleep app in one
+    /// tap. It is not listed, so it cannot be sent, including by a later edit that forgets why.
     private let http = HTTPClient(allowedPatterns: [
         #"^POST https://auth-api\.8slp\.net/v1/tokens$"#,
         #"^GET https://app-api\.8slp\.net/v2/users/[^/]+/alarms$"#,
@@ -47,9 +55,9 @@ actor EightSleepAdapter: DeviceAdapter {
         //
         // This was on the banned list, and the reason it was banned still stands: the reference
         // library's discovery routine uses exactly this call to put ten real alarms on a live
-        // account. What makes it safe here is not care, it is `createAlarm`, which never composes a
-        // payload. It clones an alarm the account already has, so no field is guessed, and it is
-        // hard capped. Read the guards on that function before touching this line.
+        // account. What makes it safe here is not care, it is `clone`, which never composes a
+        // payload. It copies an alarm the account already has, so no field is guessed, and it is
+        // hard capped at `alarmCeiling`. Read those two before touching this line.
         #"^POST https://app-api\.8slp\.net/v1/users/[^/]+/alarms$"#,
         // Two reads, added to answer "which bed am I on". Neither can change anything.
         //
@@ -547,6 +555,44 @@ actor EightSleepAdapter: DeviceAdapter {
         return payload
     }
 
+    /// The create payload, in the order worth trying, each one differing from the last by **one**
+    /// thing.
+    ///
+    /// This is the ladder that solved the Whoop write, reused because the situation is identical: a
+    /// create is being refused, the refusal is opaque, and reasoning about which field is at fault
+    /// has already been wrong repeatedly. Send the fullest honest shape first, and on a refusal drop
+    /// exactly one class of field and try again, reporting which rung was accepted so it can be
+    /// pinned later and the ladder deleted.
+    ///
+    /// The rungs, and the single question each one asks:
+    ///
+    /// 1. **The full clone.** Every field the server gave us. Asks: does a create accept the same
+    ///    object shape a read returns?
+    /// 2. **Without `tags`.** `tags` holds a `routine-<uuid>` belonging to the alarm we copied. If
+    ///    their server treats that as a claim on another routine's slot, it is the field that
+    ///    refuses. This is `E14` and it is the rung most likely to be the answer.
+    /// 3. **Schedule and comfort only.** Everything but `time`, `enabled`, `repeat`, `vibration`,
+    ///    `thermal` and `audio` dropped, including fields with no known meaning. Asks: is some other
+    ///    echoed field the problem? Last rung because it is the one that discards the most, and
+    ///    discarding is how a create ends up with settings he did not choose.
+    ///
+    /// Ordered so the first accepted rung is also the most faithful copy of his own alarm.
+    static func cloneVariants(
+        _ template: [String: Any],
+        days: Set<Locale.Weekday>,
+        time: WallClockTime
+    ) -> [(name: String, payload: [String: Any])] {
+        let full = clone(template, days: days, time: time)
+
+        var untagged = full
+        untagged.removeValue(forKey: "tags")
+
+        let keep: Set<String> = ["time", "enabled", "repeat", "vibration", "thermal", "audio"]
+        let minimal = untagged.filter { keep.contains($0.key) }
+
+        return [("full", full), ("no tags", untagged), ("schedule only", minimal)]
+    }
+
     /// Which existing alarm to copy settings from.
     ///
     /// Prefers one that can actually fire. An inert alarm, no days and switched off, is the one
@@ -797,11 +843,22 @@ actor EightSleepAdapter: DeviceAdapter {
                     continue
                 }
 
-                switch try await postAlarm(
-                    Self.clone(template, days: entry.weekdays, time: entry.timeToWrite),
-                    token: token,
-                    user: user
-                ) {
+                // Try each shape in turn, stopping at the first the server accepts. Every rung is
+                // reported, accepted or refused, so one round trip answers which field was the
+                // problem instead of producing another "it still does not create them".
+                var outcome: CreateOutcome = .refused("not attempted")
+                var attempts: [String] = []
+                for variant in Self.cloneVariants(template, days: entry.weekdays, time: entry.timeToWrite) {
+                    outcome = try await postAlarm(variant.payload, token: token, user: user)
+                    if case .refused(let why) = outcome {
+                        attempts.append("\(variant.name): \(why)")
+                        continue
+                    }
+                    attempts.append("\(variant.name): accepted")
+                    break
+                }
+
+                switch outcome {
                 case .created(let newID):
                     created.append(entry.routineName)
                     createdIDs.insert(newID)
@@ -823,9 +880,19 @@ actor EightSleepAdapter: DeviceAdapter {
                     // The alarm is real, it just cannot be verified this run. Reported as created,
                     // because sending him looking for something that is not there is the worse lie.
                     created.append(entry.routineName)
-                case .refused(let detail):
-                    createNotes.append("Eight Sleep refused the new \(entry.routineName) alarm: \(detail)")
+                case .refused:
+                    // Every rung, with the server's own words for each. This is the dump, and it is
+                    // the only thing that can end this without another guess.
+                    createNotes.append("Eight Sleep refused the new \(entry.routineName) alarm. Tried \(attempts.joined(separator: " | ")).")
                 }
+
+                // Which rung landed, when it was not the first. Worth saying out loud so the shape
+                // can be pinned and this ladder deleted: the Whoop leg still sends three bodies
+                // every night because nobody ever read the equivalent line.
+                if attempts.count > 1, attempts.last?.hasSuffix("accepted") == true {
+                    createNotes.append("\(entry.routineName) was created on attempt \(attempts.count). Ladder: \(attempts.joined(separator: " | ")).")
+                }
+
             }
             // The create already carried the right time, so these need no follow up PUT.
             report.routinesWithNoAlarm.removeAll { created.contains($0) }

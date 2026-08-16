@@ -457,10 +457,12 @@ final class PreviewTests: XCTestCase {
             entries: [
                 RoutinePlan.Entry(routineID: "weekdays", routineName: "Weekdays",
                                   weekdays: Locale.Weekday.weekdaysOnly,
-                                  localTime: WallClockTime(hour: 6, minute: 50), bentTo: nil),
+                                  localTime: WallClockTime(hour: 6, minute: 50), bentTo: nil,
+                                  isOn: true, isSkippedNextMorning: false),
                 RoutinePlan.Entry(routineID: "weekend", routineName: "Weekend",
                                   weekdays: [.saturday, .sunday],
-                                  localTime: WallClockTime(hour: 8, minute: 50), bentTo: nil),
+                                  localTime: WallClockTime(hour: 8, minute: 50), bentTo: nil,
+                                  isOn: true, isSkippedNextMorning: false),
             ],
             skipsNextMorning: false
         )
