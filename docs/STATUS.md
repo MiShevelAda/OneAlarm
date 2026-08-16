@@ -1,78 +1,97 @@
 # Status
 
-Updated 2026-08-15.
+Updated 2026-08-16, after the first night of real use.
 
 ## Where this is
 
-**Built and pushed: a complete Xcode project.** Open `alarm-app/OneAlarm.xcodeproj`, set your Apple
-ID as the signing team, press play. `BUILD.md` walks through it step by step.
+**It works.** The app is installed on Alex's iPhone and all three legs were verified against live
+accounts on the night of 15 to 16 August.
 
-**Never compiled.** This session runs on Linux with no Swift toolchain and no Xcode, verified rather
-than assumed. Every line is written against the pinned API surface in `RESEARCH.md` and reviewed by
-a panel, but no compiler has seen it. Expect at least one build error and send over the first one.
+| Leg | State | How it was verified |
+|---|---|---|
+| iPhone | **working** | rang through Silent, through Focus, phone locked and face down |
+| Eight Sleep | **working** | written and read back, absolute instant compared |
+| Whoop | **working** | written, and the new time confirmed in the Whoop app |
 
-## What works without anything from you
+The previous version of this file said "never compiled". That stopped being true on 15 August. It
+builds, installs, and rings.
 
-The **iPhone leg needs no credentials, no network and no accounts.** Install, grant the alarm
-permission once, set a time, press Set all alarms. That is a real system alarm that rings through
-Silent mode and Focus, shows on the Lock Screen and Dynamic Island, and mirrors to a paired Apple
-Watch with no extra work.
+## What the app actually does today
 
-That was the deliberate shape of v1: the thing that must never fail depends on nothing.
+One master time, seven day chips, a Set button. Eight Sleep is written at master minus 10, Whoop at
+master minus 5, the iPhone at master. Each row reports what happened, and the two remote legs are
+read back rather than trusted.
 
-## What needs you
+That is the whole app. Everything under "designed, not built" below is on paper.
 
-| | Why |
+## What is designed and not built
+
+| Document | What it holds |
 |---|---|
-| **A Mac with Xcode 26** | No way around it. iPhone apps are built by Xcode, and Xcode is macOS only. |
-| **An existing Eight Sleep alarm** | OneAlarm moves the alarm you already have rather than creating one. |
-| **An existing Whoop smart alarm** | Same reason. |
-| **Your Whoop model** | If it is a 4.0, the Bluetooth path is better than what is built and worth switching to. |
+| `docs/SETTINGS.md` | the full settings and scheduling spec from a 39 agent design round |
+| `docs/USER-CASES.md` | Alex's own words on who uses this and how, plus the cases they expose |
+| `docs/SCHEDULING.md` | the routines and override design, with its corrections |
+| `design/prototype-v2.html` | a clickable prototype of the redesigned screen and its failure states |
 
-## Decisions taken without asking
+The spec **did not reach consensus**: nineteen of twenty one persona votes were no across three
+rounds, and eight disagreements are recorded at the end of it, unresolved on purpose. A second run
+is attacking it now, with an adversary at every stage.
 
-The goal was something testable today, so these were made rather than queued.
+## Known problems, worst first
 
-**Alert only, no snooze.** Snooze requires a countdown presentation, which makes a Widget Extension
-mandatory. Skip the extension and the system dismisses alarms and fails to alert, silently. A whole
-extra target for a feature nobody asked for.
+1. 🔴 **The phone leg creates a second alarm.** OneAlarm's alarm sits beside the iOS Sleep Schedule
+   alarm, which still fires at its own time. iOS exposes no way to read or change a Clock alarm or a
+   sleep schedule, so this cannot be fixed in code. The remedy is to turn the **Alarm** toggle off
+   inside the Sleep Schedule, keeping the schedule itself, and for the app to say so permanently.
+2. 🔴 **Alex's Whoop schedule was rewritten by our own test.** Turning on all seven days for the ring
+   test collapsed his Monday to Friday schedule into every day, because the Whoop write replaces
+   rather than merges. Whether his Saturday and Sunday schedule survived is **unconfirmed**.
+3. 🟠 **`sleep_goal` is hardcoded to `""`.** Harmless in `EXACT_TIME`, but if he ever selects Sleep
+   Goal mode, the next write wipes his 100/85/70 percentage.
+4. 🟠 **The strap may not know.** `PUT /smart-alarm-service/v1/strap-status` is what pushes a time
+   into strap firmware and the Whoop app sends it after an edit. We do not, and it is outside the
+   allowlist. Whoop's server holding the new time and the wrist buzzing at the new time are still two
+   different claims, and only the first is verified.
+5. 🟠 **The Whoop write sends up to three body shapes** and stops at the first accepted. Which one was
+   accepted is printed in the green text on the row and has not been read back yet. Pinning it drops
+   the write from three requests to one.
+6. 🟡 **No snooze.** Apple's sleep alarm has a nine minute snooze; ours has none. Needs a widget
+   extension.
+7. 🟡 **The test suite has never run.** No Swift toolchain here. The tests are written and are code
+   shaped text until Xcode says otherwise.
 
-**Read modify write on both remote legs.** Neither adapter creates an alarm. This is what makes the
-Eight Sleep leg safe rather than a gamble: the reference library's create payload and its documented
-read shape disagree about field names, in the same file, thirty lines apart. Echoing back whatever
-the server sent means the contradiction cannot bite, and your vibration, thermal and smart wake
-settings survive untouched.
+## Next, in order
 
-**Whoop over HTTP, not Bluetooth.** The BLE path is better in almost every respect, no credentials
-stored, no terms of service exposure, nothing to break when Whoop changes a backend, and it is
-already Swift. But it is only hardware verified on a WHOOP 4.0 and the model is unknown. HTTP works
-on all of them. Worth revisiting.
+**1. Confirm the damage from item 2.** Open Whoop, check whether the Saturday and Sunday schedule
+still exists, and put the weekday one back to Monday to Friday. Alex only; nothing here can see it.
 
-**iOS 26.1 minimum, not 26.0.** Lets the current AlarmKit alert initialiser be used with no
-availability branching.
+**2. Turn off the iOS Sleep Schedule alarm.** Health, Sleep, Change Wake Up, the `Alarm` toggle. Keep
+the schedule, keep the sleep goal, stop the second alarm. Until this is done, an override in OneAlarm
+cannot work, because Apple's alarm fires regardless.
 
-**Swift 5 language mode.** Strict concurrency violations stay warnings instead of errors, which
-matters a lot for code that cannot be iterated against a compiler here.
+**3. Read the Whoop row's green text once** and pin the write to the shape that was accepted.
 
-## Not built, on purpose
+**4. Let the red team land**, feed it the three findings it has not seen (the phone leg creating
+rather than moving, the anchor row being the plan, and Apple's own two-verb prompt), and run a third
+pass.
 
-Snooze and its widget extension. The webhook and Home Assistant output. Background token refresh
-via `BGTaskScheduler`, since refresh on foreground carries this on its own and the background path
-is unreliable enough that promising it would be dishonest. Biometric lock on the connections screen.
-Fitbit, whose legacy API deprecates next month anyway.
+**5. Then build, in this order:**
 
-## Known limits, stated rather than buried
+| | Why it is first |
+|---|---|
+| Routines and derived next alarm | removes the daily settings trip, which is the actual complaint |
+| Skip one date | one tap, expires by itself, replaces "turn the routine off and forget" |
+| Bend one date | keyed by date, suppresses the routine's weekday, restores it after |
+| Ranges instead of points | a row reading 07:55 for a leg that may fire at 07:25 is lying |
+| Foreign change detection | compare against what we last wrote, adopt or ask, never overwrite silently |
 
-- **Whoop stops working after roughly a month** and needs a fresh sign in with an SMS code. Their
-  refresh token is opaque, so its expiry cannot be read in advance and there is no way to warn you
-  before it happens.
-- **Eight Sleep alarms are gated behind an active subscription.** If that lapses, sign in still
-  succeeds and the alarm call returns 403. It surfaces as its own message rather than a generic
-  failure.
-- **The Whoop write may not reach the strap.** The reference project deliberately skips the
-  `strap-status` push and relies on the official app to sync. Whether the strap actually buzzes
-  without it is genuinely unknown. The read back confirms Whoop's servers accepted the time; it
-  cannot confirm the band vibrated.
-- **Neither remote API is official.** Both can change without warning. The Whoop client fingerprint
-  in particular was captured in May and goes stale around November.
-- **This cannot go on the App Store**, and was not designed to.
+Snooze, the anchor device, and Diary mode come after those five.
+
+## What is genuinely uncertain
+
+- Whether the strap fires at the new time, as opposed to Whoop's server holding it.
+- Whether OneAlarm's alarm plays on a paired Apple Watch, and what happens when it does. Apple's own
+  alarm moves to the watch when `Always Play on iPhone` is off, which is Alex's current setting.
+- Whether an Eight Sleep account can expose both sides of one bed under one user id.
+- Whether omitting the `repeat` key on an Eight Sleep PUT produces a one-off or silently leaves the
+  recurrence unchanged. The spec depends on the first and has never tested it.
