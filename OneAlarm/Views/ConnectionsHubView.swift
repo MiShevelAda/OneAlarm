@@ -869,7 +869,6 @@ struct BedConfirmScreen: View {
     ///
     /// Not hidden behind a failure. A diagnostic that only appears when parsing breaks cannot answer
     /// a question about a parse that succeeded, which has cost this project two answers already.
-    @ViewBuilder
     /// Which alarms are firing at a moment their weekly time does not describe.
     ///
     /// Reads the line `EightSleepAdapter.describe` already computes, rather than recomputing it, so
@@ -881,6 +880,7 @@ struct BedConfirmScreen: View {
             .map(\.summary)
     }
 
+    @ViewBuilder
     private var serverTruth: some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 12) {

@@ -170,6 +170,30 @@ for (const module of ['OneAlarm', 'OneAlarmTests']) {
 // caught by reading the property declaration before writing the assignment, which is the practice
 // that actually worked and costs one grep.
 
+// An attribute separated from its declaration by a doc comment.
+//
+// `@ViewBuilder` followed by `/// ...` followed by a property applies the attribute to **that**
+// property, silently. On 18 August a new computed property was inserted between `@ViewBuilder` and
+// the view it belonged to, so the attribute landed on a `[String]` and the build failed with
+// "Static method 'buildExpression' requires that '[String]' conform to 'View'", which names neither
+// the attribute nor the property that lost it.
+//
+// Legal Swift, so the parser cannot see it. Always a mistake, because an attribute belongs against
+// its declaration or above the doc comment, never between the two. Cheap to detect and it just cost
+// a build.
+for (const [file] of trees) {
+  const rel = path.relative(root, file);
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (!/^\s*@[A-Za-z_]\w*(\(|\s*$)/.test(lines[i])) continue;
+    if (!/^\s*\/\/\//.test(lines[i + 1])) continue;
+    failures++;
+    console.log(`  FAIL ${rel}:${i + 1}  attribute separated from its declaration by a doc comment`);
+    console.log(`       ${lines[i].trim()}`);
+    console.log('       Move it directly above the declaration, or above the doc comment.');
+  }
+}
+
 for (const [file, tree] of trees) {
   const rel = path.relative(root, file);
   (function visit(node) {

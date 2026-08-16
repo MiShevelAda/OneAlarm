@@ -266,11 +266,15 @@ final class WhoopCreatePathTests: XCTestCase {
         Stub.responses = [
             Stub.key("GET", listPath): (200, envelope([
                 schedule(id: "week", time: "06:50:00", days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]),
+                // **Two schedules, not one, and that is what this test was missing.** `write(_:plan:)`
+                // only takes the per routine path when the account holds more than one; with a single
+                // schedule it falls to `writeSingle`, which has no create in it at all. So the ladder
+                // was never reached and the assertion compared an empty list against two paths.
+                schedule(id: "spare", time: "09:00:00", days: ["SATURDAY"]),
             ])),
             Stub.key("PUT", "/smart-alarm-bff/v1/schedule/week"): accepted,
             Stub.key("POST", createPath): (404, ["message": "not found"]),
-            Stub.key("POST", "/smart-alarm-bff/v1/schedule/all"): (422, ["message": "day_of_week_list invalid"]),
-            Stub.key("POST", "/smart-alarm-bff/v1/schedule/create"): (201, ["schedule_id": "never"]),
+            Stub.key("POST", "/smart-alarm-bff/v1/schedule/create"): (422, ["message": "day_of_week_list invalid"]),
         ]
         RemoteAlarmLink.link(routine: "weekdays", to: "week", on: .whoop)
 
@@ -286,9 +290,12 @@ final class WhoopCreatePathTests: XCTestCase {
         let receipt = try await adapter().write(target, plan: plan)
         let note = try XCTUnwrap(receipt.note)
 
+        // `POST /schedule/all` was a third rung and was removed on 17 August: it is the one candidate
+        // where "a create cannot destroy anything" is false, because a POST to a collection endpoint
+        // named `all` is as plausibly a bulk replace as a create.
         let posts = Stub.calls.filter { $0.method == "POST" }.map(\.path)
-        XCTAssertEqual(posts, [createPath, "/smart-alarm-bff/v1/schedule/all"],
-                       "past the 404, stopped by the 422, never reaching the third")
+        XCTAssertEqual(posts, [createPath, "/smart-alarm-bff/v1/schedule/create"],
+                       "past the 404, stopped by the 422")
         XCTAssertTrue(note.contains("404"), "every rung is reported, so one round trip settles it")
         XCTAssertTrue(note.contains("422"))
         XCTAssertTrue(note.contains("day_of_week_list invalid"), "including what the server actually said")
@@ -302,8 +309,11 @@ final class WhoopCreatePathTests: XCTestCase {
         Stub.responses = [
             Stub.key("GET", listPath): (200, envelope([
                 schedule(id: "week", time: "06:00:00", days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]),
+                // Two, so the per routine path runs and the create is actually reached. See above.
+                schedule(id: "spare", time: "09:00:00", days: ["SATURDAY"]),
             ])),
             Stub.key("PUT", "/smart-alarm-bff/v1/schedule/week"): accepted,
+            Stub.key("PUT", "/smart-alarm-bff/v1/schedule/spare"): accepted,
             Stub.key("POST", createPath): (403, ["message": "forbidden"]),
         ]
         RemoteAlarmLink.link(routine: "weekdays", to: "week", on: .whoop)

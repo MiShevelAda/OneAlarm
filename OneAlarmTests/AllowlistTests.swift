@@ -35,6 +35,7 @@ final class AllowlistTests: XCTestCase {
             ("PUT", "https://app-api.8slp.net/v2/users/\(user)/routines/\(routine)", "routine write"),
             ("GET", "https://client-api.8slp.net/v1/users/me", "currentBed"),
             ("GET", "https://app-api.8slp.net/v1/household/users/\(user)/summary", "pod name"),
+            ("DELETE", "https://app-api.8slp.net/v1/users/\(user)/alarms/\(alarm)", "delete an alarm OneAlarm created"),
         ]
     }
 
@@ -55,7 +56,15 @@ final class AllowlistTests: XCTestCase {
     /// these is needed, so none of them is listed, and this test is what notices if one appears.
     func testTheDestructiveEndpointsStayUnreachable() throws {
         let forbidden = [
-            ("DELETE", "https://app-api.8slp.net/v1/users/\(user)/alarms/\(alarm)", "alarm delete"),
+            // **The alarm delete used to be on this list and Alex took it off**, 17 August: *"the one
+            // alarm app should be able to delete alarms if there are changes."* It is allowlisted
+            // now, and what keeps it safe is not the allowlist, it is provenance: only an id
+            // `RemoteAlarmLink.created` recorded OneAlarm posting can ever be deleted, and only once
+            // no live routine claims it. `testAnAlarmHeMadeIsNeverDeleted` is the assertion that
+            // matters, and it stubs the endpoint to succeed and requires it never to be called.
+            //
+            // Everything else here stays forbidden, and the routine delete especially: a routine is
+            // his, OneAlarm never made one, so there is no provenance that could ever justify it.
             ("DELETE", "https://app-api.8slp.net/v2/users/\(user)/routines/\(routine)", "routine delete"),
             ("PUT", "https://app-api.8slp.net/v1/users/\(user)/temperature", "runs the pump"),
             ("PUT", "https://app-api.8slp.net/v1/users/\(user)/base", "moves the bed frame"),

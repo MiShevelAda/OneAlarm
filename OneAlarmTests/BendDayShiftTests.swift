@@ -43,8 +43,18 @@ final class BendDayShiftTests: XCTestCase {
                     weekdayIndices: WeekdaySetCoding.encode(Locale.Weekday.weekdaysOnly),
                     time: time),
         ]
-        // Saturday the 16th, the morning after `now`.
-        schedule.override = DayOverride(day: CalendarDay(year: 2027, month: 1, day: 16),
+        // **Monday the 18th, and the date is the whole fixture.**
+        //
+        // This said "Saturday the 16th, the morning after `now`" and put the override there. `now` is
+        // Friday at 22:00, so the next *calendar* morning is indeed Saturday, but these routines are
+        // **Monday to Friday** and their next firing is Monday the 18th. `RulesEngine.plan` finds the
+        // bent routine with `schedule.routine(covering:)` on the override's weekday, nothing covers
+        // Saturday, so `bentTo` came out nil and every assertion about a bent time failed against the
+        // unbent one.
+        //
+        // The fixture was wrong, not the engine. Worth the paragraph because the failure reads as a
+        // bend bug and is a calendar bug, and the two live in different files.
+        schedule.override = DayOverride(day: CalendarDay(year: 2027, month: 1, day: 18),
                                         time: bentTo, routineTime: time, routineName: "Weekdays")
         return schedule
     }

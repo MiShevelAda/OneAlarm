@@ -12,7 +12,7 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 05:40 · the panel names the overridden alarm"
+    static let marker = "18 Aug, 06:20 · the panel names the overridden alarm, and it builds"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
