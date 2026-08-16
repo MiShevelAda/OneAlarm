@@ -695,6 +695,85 @@ The same file confirms the read/write divergence already recorded here: the read
 `days_of_week`, `timezone_offset` and `schedule_id` where the write uses `day_of_week_list` and
 `time_zone_offset`.
 
+### 2.3c The sweep of 19 August, and what it settled
+
+Alex asked for outside research on the one-off problem. Everything below was read at raw source.
+
+**First, a correction to how this project counts sources.** `briangaoo/whoop-mcp` and
+`thebriangao/totem` are **the same repository**, byte identical at the same commit. This file and the
+handover have cited them side by side. They are **one** source, and the two-source rule has to be met
+somewhere else.
+
+**`wbl` is answered and it is telemetry.** `POST /smart-alarm-service/v1/smartalarm/wbl` is
+**wake-by-log**: an array of `{timestamp, event_type, mobile_event_metadata}` with an enum of
+`PHONE_DISABLED_ALARM`, `PHONE_SET_ALARM_TIME`, `STRAP_DRIVEN_ALARM_SET`, and metadata carrying strap
+id, firmware versions, device model and battery optimiser state. It reports what happened; it sets
+nothing. It was the only POST in the smart alarm surface and therefore the standing candidate for a
+hidden create. **It is not one.** And it is a concrete vindication of the blanket ban on that prefix
+in `CLAUDE.md`, written on the general ground that the prefix carries telemetry.
+
+**No create and no delete is published, and the absence is now stronger than "not found".** The
+capture inventory records seven `DELETE` calls against other services, so the capture was capable of
+recording one. There is none for a smart alarm schedule. The repo's prose claims its author "ran
+Smart Alarm CRUD"; its own inventory shows only R and U. Trust the inventory.
+
+**Per schedule `enabled` is architecturally distinct from the master switch**, which is what the
+19 August silencing fix relies on. Three separate levels exist:
+
+| Level | Where | Reach |
+|---|---|---|
+| `enabled` | the six key PUT body on `/schedule/{id}` | one schedule |
+| `schedule_enabled` | top level of `GET /schedule/all` | account wide |
+| `PUT /alarm-schedule/enable` and `/disable` | no body, 204 | master, all schedules |
+
+OneAlarm uses only the first. **Still unpublished:** anyone actually observing that one schedule's
+`enabled: false` leaves the others firing. It is the obvious reading of the design and it is not
+evidence.
+
+**The preferences endpoint is a dead end** for wake times, verified live by that repo's author:
+`lower/upper_time_bound` return 200 and do not persist when an explicit schedule exists. The per
+schedule PUT is the only thing that moves a wake time.
+
+**A contradiction in this project's own notes, unresolved.** `CLAUDE.md` and the handover both say
+Whoop's own one-off is mutually exclusive with the recurring schedule "per its own dialog". The
+sweep found four WHOOP Community threads whose titles ask for exactly that feature, and the closest,
+*"Change alarm for tomorrow only"*, sits in **Product Feedback**, which is where requests go rather
+than where features are documented. Those cannot both be right. Nobody could read the threads: every
+`whoop.com`, `community.whoop.com` and `reddit.com` URL is blocked at this session's proxy, checked
+rather than assumed. **Alex has the app and can settle it by looking.** Until then neither claim
+should be repeated as fact.
+
+### 2.3d `strap-status`: the one real lead, and it is behind a ban
+
+**This is the most promising thing the sweep found and OneAlarm must not call it without Alex saying
+so**, because `CLAUDE.md` bans the whole `smart-alarm-service` prefix by name, `strap-status`
+included.
+
+```http
+PUT https://api.prod.whoop.com/smart-alarm-service/v1/strap-status
+{ "strap_driven_alarm_time": "2026-05-25T07:30:00.000-0700" }
+```
+
+An **absolute instant**, not a weekly schedule. The capture's note: *"pushes the alarm time to the
+strap firmware. The iOS app does this on a delay after a schedule edit."*
+
+Corroborated at the device layer by two independent BLE projects: the strap holds **one** alarm, id
+`1`, as an absolute epoch time, with commands `CMD_SET_ALARM_TIME 0x42` and `CMD_DISABLE_ALARM 0x45`.
+One of them: *"The next 4 bytes are unix timestamp that corresponds to the next time an alarm needs
+to ring."*
+
+So the recurring schedule is planning data on the server, and what actually fires is a single next
+alarm timestamp the phone computes and pushes down. **That is exactly the shape a one time change
+needs**, and it is why the current answer has to switch the schedule off rather than move it.
+
+**What is unknown, and it is the whole question:** whether calling `strap-status` on its own moves the
+next firing, or whether the app recomputes from the schedule and overwrites it. Nobody has published
+either.
+
+**Three reasons this stays untouched until Alex rules.** It is on a banned prefix. The ban exists
+because that prefix also carries telemetry and the master switch he sets by hand. And a wrong write
+here does not fail loudly, it changes the instant his wrist buzzes.
+
 ### 2.4 Whoop hazards
 
 **Never build a retry loop around `USER_PASSWORD_AUTH`.** `429 TooManyRequestsException` is real on

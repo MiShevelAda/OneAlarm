@@ -1139,6 +1139,41 @@ no raw block at all.
 
 
 
+## E29 🔴 Does `strap-status` move the next firing on its own? **Blocked on Alex's ruling.**
+
+**Not scheduled, not coded, and not to be called until he says so.** `CLAUDE.md` bans the whole
+`smart-alarm-service` prefix by name, `strap-status` included. This entry exists so the question is
+written down rather than rediscovered, and so the decision is his rather than a session's.
+
+The lead, from the 19 August sweep and recorded in `RESEARCH.md` 2.3d:
+
+```http
+PUT /smart-alarm-service/v1/strap-status
+{ "strap_driven_alarm_time": "2026-05-25T07:30:00.000-0700" }
+```
+
+An absolute instant. Two independent BLE projects confirm the strap holds **one** alarm as an epoch
+time, so the weekly schedule is planning data and this is what actually fires.
+
+**The prediction, written before anything runs.** More likely than not this is a mirror rather than a
+control: the phone computes the next firing from the schedule and pushes it here, and it recomputes
+after any schedule edit. If so, writing it alone is overwritten on the next app open and the current
+design, switching the schedule off for the moved morning, stays the answer.
+
+| Outcome | Reading | What follows |
+|---|---|---|
+| the strap fires at the written instant and stays | it is a control | a real one time change on the strap, and the silencing goes |
+| it fires correctly then reverts after opening Whoop's app | it is a mirror the app recomputes | leave it alone, keep silencing |
+| refused | not reachable this way | closed |
+
+**Why it is not simply worth trying.** Three reasons, and they compound. The prefix is banned, and the
+ban was written on the general ground that it carries telemetry, which the same sweep has now proved
+by identifying `wbl` as a diagnostics log. The prefix also carries `alarm-schedule/enable` and
+`/disable`, the master switch Alex sets by hand. And a wrong write here fails **quietly**: it changes
+the instant his wrist buzzes, and the failure is discovered by not waking up.
+
+**Whose:** Alex's, and only his. It widens what this app touches on his account.
+
 ## E28 🟢 The cleanup can be tested without waiting for the morning
 
 **Found 19 August while writing Alex a test plan, and it removes a day from every one-off
