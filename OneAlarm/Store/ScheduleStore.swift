@@ -70,6 +70,7 @@ final class ScheduleStore {
         var weekday: Locale.Weekday
         var time: WallClockTime
         var routineName: String?
+        var routineID: String?
         var isOverridden: Bool
         var isSkipped: Bool
         /// What the routine would have said, when an override is in force.
@@ -110,7 +111,8 @@ final class ScheduleStore {
                 date: date,
                 weekday: weekday,
                 time: time,
-                routineName: routine?.name,
+                routineName: routine?.displayName,
+                routineID: routine?.id,
                 isOverridden: override != nil,
                 isSkipped: false,
                 routineTime: override != nil ? routine?.time : nil

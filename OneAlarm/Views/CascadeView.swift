@@ -179,7 +179,7 @@ struct CascadeView: View {
             Text("My routines").themeLabel()
 
             ForEach(store.schedule.routines) { routine in
-                RoutineCard(routine: routine, isNext: store.next?.routineName == routine.name)
+                RoutineCard(routine: routine, isNext: store.next?.routineID == routine.id)
             }
 
             if let uncovered = store.uncoveredDays, !uncovered.isEmpty {
@@ -533,6 +533,8 @@ private struct RoutineCard: View {
     let routine: Routine
     let isNext: Bool
 
+    @State private var editing = false
+
     private var hasDays: Bool { !routine.weekdays.isEmpty }
 
     var body: some View {
@@ -540,6 +542,7 @@ private struct RoutineCard: View {
             header
             chips
             footer
+            picker
         }
         .padding(14)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
@@ -551,7 +554,7 @@ private struct RoutineCard: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 9) {
-            Text(routine.name).font(.system(size: 15, weight: .semibold))
+            Text(routine.displayName).font(.system(size: 15, weight: .semibold))
             if isNext {
                 Text("NEXT")
                     .font(.system(size: 9, weight: .bold))
@@ -562,9 +565,14 @@ private struct RoutineCard: View {
                     .foregroundStyle(Theme.State.confirmed)
             }
             Spacer(minLength: 6)
-            Text(hasDays ? routine.time.hhmm : "no days")
-                .font(Theme.numeral(26))
-                .foregroundStyle(hasDays ? Color.white : Theme.greyDim)
+            Button { editing.toggle() } label: {
+                Text(hasDays ? routine.time.hhmm : "no days")
+                    .font(Theme.numeral(26))
+                    .foregroundStyle(hasDays ? Color.white : Theme.greyDim)
+                    .underline(editing, color: Theme.State.confirmed)
+            }
+            .buttonStyle(.plain)
+            .disabled(!hasDays)
         }
     }
 
@@ -596,20 +604,48 @@ private struct RoutineCard: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 6) {
-            Button { shift(-15) } label: { StepChip("−15") }
-                .buttonStyle(.plain)
-            Button { shift(15) } label: { StepChip("+15") }
-                .buttonStyle(.plain)
-            Spacer(minLength: 6)
-            Text(hasDays ? "Every \(routine.daysSentence)" : "No days, so this routine never fires.")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.greyDim)
-        }
+        Text(hasDays ? "Every \(routine.daysSentence)" : "No days, so this routine never fires.")
+            .font(.system(size: 11))
+            .foregroundStyle(Theme.greyDim)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func shift(_ minutes: Int) {
-        let moved = WallClockTime(minutesSinceMidnight: routine.time.minutesSinceMidnight + minutes)
-        store.setRoutineTime(moved, routineID: routine.id)
+    /// Deliberately a picker rather than a pair of steppers.
+    ///
+    /// The main screen already carries minus fifteen and plus fifteen, and there they mean **bend
+    /// tomorrow only**. The same control inside this card would mean **change it permanently**, six
+    /// inches away on the same screen. One affordance with two meanings and nothing to tell them
+    /// apart is exactly what made the day chips wrong, and Alex caught it here before it shipped.
+    @ViewBuilder
+    private var picker: some View {
+        if editing {
+            DatePicker(
+                "Routine time",
+                selection: Binding(
+                    get: {
+                        var c = DateComponents()
+                        c.hour = routine.time.hour
+                        c.minute = routine.time.minute
+                        return Calendar.current.date(from: c) ?? Date()
+                    },
+                    set: {
+                        let c = Calendar.current.dateComponents([.hour, .minute], from: $0)
+                        store.setRoutineTime(
+                            WallClockTime(hour: c.hour ?? 7, minute: c.minute ?? 0),
+                            routineID: routine.id
+                        )
+                    }
+                ),
+                displayedComponents: .hourAndMinute
+            )
+            .datePickerStyle(.wheel)
+            .labelsHidden()
+            .colorScheme(.dark)
+            .frame(height: 120)
+
+            Text("Every \(routine.displayName == "No days" ? "day this covers" : routine.daysSentence), from now on.")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.State.unconfirmed)
+        }
     }
 }

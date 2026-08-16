@@ -245,6 +245,13 @@ struct EightSleepLinkView: View {
             Task { await finish() }
         } onBack: {
             dismiss()
+        } onDisconnect: {
+            Task {
+                await store.eightSleep.signOut()
+                RemoteAlarmSelection.select(nil, for: .eightSleep)
+                await store.refreshAuthStates()
+                dismiss()
+            }
         }
     }
 
@@ -520,6 +527,13 @@ struct WhoopLinkView: View {
             Task { await finish() }
         } onBack: {
             dismiss()
+        } onDisconnect: {
+            Task {
+                await store.whoop.signOut()
+                RemoteAlarmSelection.select(nil, for: .whoop)
+                await store.refreshAuthStates()
+                dismiss()
+            }
         }
     }
 
@@ -645,6 +659,7 @@ struct AlarmPickerScreen: View {
     let choices: [RemoteAlarmChoice]
     let onPick: (RemoteAlarmChoice) -> Void
     let onBack: () -> Void
+    let onDisconnect: () -> Void
 
     @State private var selected: String? = nil
 
@@ -739,6 +754,21 @@ struct AlarmPickerScreen: View {
                 }
 
                 Notice("You can change this later from Connections. Nothing else on the account is touched.")
+
+                // There was no way to sign out of anything. `signOut()` has existed on both
+                // adapters since the first build and no screen ever called it, so the only way off
+                // an account was deleting the app.
+                Button {
+                    onDisconnect()
+                } label: {
+                    Text("Disconnect this account")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.State.failed)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+
+                Notice("Disconnecting forgets the password on this phone and stops OneAlarm writing. It does not change or delete the alarm itself, which stays exactly where it is now.")
             }
             .padding(.bottom, 20)
         } footer: {

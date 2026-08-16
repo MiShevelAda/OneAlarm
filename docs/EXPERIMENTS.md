@@ -112,6 +112,23 @@ not far-fetched, because the alarm may route to a device that is asleep on a cha
 
 ---
 
+> **E3 ANSWERED, 2026-08-16.** The account returned three alarms and this field list:
+> `audio, dismissedUntil, enabled, id, repeat, skipNext, skippedUntil, smart, snoozedUntil,
+> snoozing, tags, thermal, time, vibration`.
+>
+> **No name, no label, no side, no deviceId.** Eight Sleep alarms are account level, not bed level,
+> so grouping by bed cannot come from this object. Whether `tags` carries one is the only thread
+> left, and its value has never been printed.
+>
+> Three fields nobody had looked at, and two of them change the design:
+>
+> - **`skipNext`** and `skippedUntil`. Eight Sleep has a **native skip next occurrence**. That is
+>   the third verb, built in, with no restore task and no risk of a failed restore leaving a real
+>   alarm wrong. The whole "disable then re-enable" hazard may not apply to this leg at all.
+> - **`smart`**. The thirty minute window is a **readable field** rather than a number taken from a
+>   sentence in their UI. Read it instead of assuming it.
+> - `audio` and `tags`, unexamined.
+
 ## E6 🟡 Can one Eight Sleep account expose both sides of one bed?
 
 **Why.** It decides whether the couple case is a real product case or out of scope. The spec

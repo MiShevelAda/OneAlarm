@@ -75,6 +75,29 @@ struct Routine: Codable, Equatable, Sendable, Identifiable {
         set { weekdayIndices = WeekdaySetCoding.encode(newValue) }
     }
 
+    /// The routine's name, derived from the days rather than stored.
+    ///
+    /// Alex, 2026-08-16: *"don't redefine the name of the routine. It might be weekdays, but maybe
+    /// some people will have a routine Monday to Wednesday."* A stored "Weekdays" is a label that
+    /// was true when it was written and becomes a lie the moment the days change, and nothing warns
+    /// you. Derived, it cannot disagree with the chips directly beneath it.
+    var displayName: String {
+        let days = Locale.Weekday.displayOrder.filter { weekdays.contains($0) }
+        if days.isEmpty { return "No days" }
+        if Set(days) == Locale.Weekday.everyDay { return "Every day" }
+        if Set(days) == Locale.Weekday.weekdaysOnly { return "Weekdays" }
+        if Set(days) == Set([Locale.Weekday.saturday, .sunday]) { return "Weekend" }
+        if days.count == 1 { return days[0].shortLabel + "s" }
+
+        // A contiguous run reads as a range. Monday to Wednesday, not Mon, Tue, Wed.
+        let order = Locale.Weekday.displayOrder
+        if let first = order.firstIndex(of: days[0]), let last = order.firstIndex(of: days[days.count - 1]),
+           last - first + 1 == days.count {
+            return "\(days[0].shortLabel) to \(days[days.count - 1].shortLabel)"
+        }
+        return days.map(\.shortLabel).joined(separator: " ")
+    }
+
     /// "Monday to Friday", "Saturday and Sunday", "Tuesday". Written out rather than abbreviated,
     /// because the chips above it are already the short version and repeating them says nothing.
     var daysSentence: String {
