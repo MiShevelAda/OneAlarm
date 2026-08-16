@@ -134,8 +134,9 @@ actor EightSleepAdapter: DeviceAdapter {
                 time: time,
                 weekdays: days,
                 isEnabled: (alarm["enabled"] as? Bool) ?? true,
-                detail: nil,
-                rawKeys: alarm.keys.sorted()
+                detail: Self.describeSettings(alarm),
+                rawKeys: Self.describe(alarm),
+                group: Self.groupName(alarm)
             )
         }
     }
@@ -341,6 +342,75 @@ actor EightSleepAdapter: DeviceAdapter {
             body: HTTPClient.redactedPreview(sketch, showing: Self.previewKeys),
             reconstructed: true
         )
+    }
+
+    /// Which bed, pod or side this alarm belongs to.
+    ///
+    /// Searched rather than assumed. The reference write-up's alarm object carries no name, and an
+    /// earlier comment in this project turned that absence into the claim that Eight Sleep does not
+    /// label its alarms at all. The same reasoning about Whoop was wrong, because the object being
+    /// read was not the object being described. So: look for every plausible spelling, take the
+    /// first that yields a non-empty string, and when none does, say so on screen instead of
+    /// quietly falling back to time and days.
+    ///
+    /// `side` is included because a Pod has two, and two people on one bed is precisely the case
+    /// where two alarms are otherwise indistinguishable.
+    static func groupName(_ alarm: [String: Any]) -> String? {
+        let direct = ["name", "label", "deviceName", "podName", "bedName", "displayName", "title"]
+        for key in direct {
+            if let text = alarm[key] as? String, !text.trimmingCharacters(in: .whitespaces).isEmpty {
+                return text
+            }
+        }
+
+        // A side on its own is a name a human recognises; a side plus a device is better.
+        let side = (alarm["side"] as? String) ?? (alarm["bedSide"] as? String)
+        for key in ["device", "pod", "bed"] {
+            if let nested = alarm[key] as? [String: Any],
+               let text = (nested["name"] as? String) ?? (nested["label"] as? String),
+               !text.isEmpty {
+                return side.map { "\(text), \($0) side" } ?? text
+            }
+        }
+        if let side, !side.isEmpty { return "\(side.capitalized) side" }
+
+        // An opaque identifier is not a name, but it does separate two pods, which is most of the
+        // point. Shortened because a full uuid in a picker row is noise.
+        for key in ["deviceId", "device_id", "podId"] {
+            if let id = alarm[key] as? String, !id.isEmpty {
+                return "Pod " + String(id.suffix(4))
+            }
+        }
+        return nil
+    }
+
+    /// The per-alarm settings we deliberately never author, shown so the row says what it will keep.
+    static func describeSettings(_ alarm: [String: Any]) -> String? {
+        var parts: [String] = []
+        if let vibration = alarm["vibration"] as? [String: Any],
+           (vibration["enabled"] as? Bool) == true {
+            let level = (vibration["level"] ?? vibration["powerLevel"]).map { "\($0)" }
+            parts.append(level.map { "vibration \($0)" } ?? "vibration on")
+        }
+        if let thermal = alarm["thermal"] as? [String: Any],
+           (thermal["enabled"] as? Bool) == true {
+            parts.append("thermal on")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
+    /// Field names, plus the values of the few that decide which bed this is.
+    ///
+    /// Shown whether or not the parse succeeded. A diagnostic that only appears on failure cannot
+    /// answer "does this account name its pods", because the parse succeeds either way.
+    static func describe(_ alarm: [String: Any]) -> [String] {
+        var lines = alarm.keys.sorted()
+        for key in ["name", "label", "side", "deviceId", "device", "pod"] {
+            if let value = alarm[key], !(value is NSNull) {
+                lines.append("\(key) = \(value)")
+            }
+        }
+        return lines
     }
 
     /// The allowlist recurses, so the weekday keys inside `weekDays` have to be named too or the

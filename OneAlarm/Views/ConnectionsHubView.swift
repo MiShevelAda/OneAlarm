@@ -659,8 +659,19 @@ struct AlarmPickerScreen: View {
                 }
                 .padding(.top, 4)
 
-                VStack(spacing: 9) {
-                    ForEach(choices) { choice in
+                ForEach(Array(choices.byGroup.enumerated()), id: \.offset) { _, group in
+                  VStack(alignment: .leading, spacing: 9) {
+                    // The bed's own name, when the service gives one. Two alarms at the same time on
+                    // two different pods are otherwise identical on screen, and picking the wrong
+                    // one moves the wrong bed with no symptom until somebody does not wake up.
+                    if let name = group.name {
+                        Text(name)
+                            .font(.system(size: 11, weight: .bold)).tracking(1.4)
+                            .textCase(.uppercase)
+                            .foregroundStyle(Theme.grey)
+                            .padding(.top, 6)
+                    }
+                    ForEach(group.choices) { choice in
                         Button {
                             selected = choice.id
                         } label: {
@@ -708,14 +719,23 @@ struct AlarmPickerScreen: View {
                         }
                         .buttonStyle(.plain)
                     }
+                  }
                 }
 
-                // Only when the parse failed. Nothing here is a credential: these are field names
-                // from an alarm schedule, and they are what turns a guess into a fix.
                 if let unparsed = choices.first(where: { !$0.parsedCleanly }) {
                     Notice(.warn,
                            title: "This account returned a shape OneAlarm did not recognise.",
                            "Fields returned: " + unparsed.rawKeys.joined(separator: ", "))
+                } else if choices.contains(where: { $0.group == nil }), let sample = choices.first {
+                    // Shown when the parse SUCCEEDED but no name was found, which is the only way to
+                    // tell "this service does not name its alarms" apart from "we looked in the
+                    // wrong place". A diagnostic that appears only on failure cannot answer that,
+                    // because the parse succeeds either way. Field names from an alarm schedule,
+                    // never a credential.
+                    Notice(.warn,
+                           title: "This account did not name its beds.",
+                           "OneAlarm found no name, label or side on these alarms, so they are listed by time only. Fields returned: "
+                               + sample.rawKeys.joined(separator: ", "))
                 }
 
                 Notice("You can change this later from Connections. Nothing else on the account is touched.")

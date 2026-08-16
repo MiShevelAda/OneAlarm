@@ -331,6 +331,50 @@ final class WhoopMutationTests: XCTestCase {
 
 /// The allowlist is the security boundary for two APIs that can run a pump, move a bed frame, or
 /// delete an account's data. These assertions are the boundary written down.
+/// Two alarms on two pods at the same time are identical on screen unless the bed is named, and
+/// picking the wrong one moves the wrong bed with no symptom until somebody does not wake up.
+final class AlarmGroupingTests: XCTestCase {
+
+    private func choice(_ id: String, _ group: String?) -> RemoteAlarmChoice {
+        RemoteAlarmChoice(id: id, time: WallClockTime(hour: 7, minute: 0), weekdays: [.monday],
+                          isEnabled: true, detail: nil, rawKeys: [], group: group)
+    }
+
+    func testNamedBedsAreGroupedInFirstSeenOrder() {
+        let grouped = [choice("a", "Alex"), choice("b", "Guest room"), choice("c", "Alex")].byGroup
+
+        XCTAssertEqual(grouped.map(\.name), ["Alex", "Guest room"])
+        XCTAssertEqual(grouped[0].choices.map(\.id), ["a", "c"])
+    }
+
+    /// Unnamed alarms go last and are labelled, so a partly labelled account does not read as a
+    /// rendering bug.
+    func testUnnamedGoLastAndAreLabelledOnlyWhenSomethingElseIsNamed() {
+        let mixed = [choice("a", nil), choice("b", "Alex")].byGroup
+        XCTAssertEqual(mixed.map(\.name), ["Alex", "Not named by the service"])
+
+        let none = [choice("a", nil), choice("b", nil)].byGroup
+        XCTAssertEqual(none.count, 1)
+        XCTAssertNil(none[0].name)
+        XCTAssertEqual(none[0].choices.count, 2)
+    }
+
+    /// Searched, not assumed. The write-up's alarm object carries no name, and turning that absence
+    /// into "Eight Sleep does not name its alarms" is the same reasoning that was wrong about Whoop.
+    func testTheBedNameIsFoundWhereverTheServicePutIt() {
+        XCTAssertEqual(EightSleepAdapter.groupName(["name": "Alex"]), "Alex")
+        XCTAssertEqual(EightSleepAdapter.groupName(["deviceName": "Master bedroom"]), "Master bedroom")
+        XCTAssertEqual(
+            EightSleepAdapter.groupName(["device": ["name": "Master bedroom"], "side": "left"]),
+            "Master bedroom, left side"
+        )
+        XCTAssertEqual(EightSleepAdapter.groupName(["side": "right"]), "Right side")
+        XCTAssertEqual(EightSleepAdapter.groupName(["deviceId": "9f3c-11ea-beef"]), "Pod beef")
+        XCTAssertNil(EightSleepAdapter.groupName(["name": "   "]))
+        XCTAssertNil(EightSleepAdapter.groupName(["time": "07:00:00"]))
+    }
+}
+
 final class AllowlistTests: XCTestCase {
 
     private let eightSleep = HTTPClient(allowedPatterns: [
