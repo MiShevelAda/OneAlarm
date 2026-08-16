@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "17 Aug, 23:30 · OneAlarm tries to make Whoop schedules"
+    static let marker = "18 Aug, 00:10 · print every Eight Sleep field"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "A routine with no Whoop schedule now gets one made, the same as your bed. Nobody has ever published how Whoop creates a schedule, so OneAlarm tries the most likely request first and tells you exactly what the server replied, whichever way it goes."
+    static let whatIsNew = "The Eight Sleep raw panel now prints every field with its value, not just the fourteen this app already knew about. Your UPCOMING ALARM ONLY override is live right now, so the field that carries it will be in there."
 }

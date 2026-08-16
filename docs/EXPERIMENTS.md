@@ -776,6 +776,61 @@ capped at `WhoopAdapter.scheduleCeiling`.
 
 
 
+---
+
+## E23 🔴 Which field carries Eight Sleep's "UPCOMING ALARM ONLY" override?
+
+**This is the most valuable open question in the project, and Alex found it.** 17 August, from his own
+Eight Sleep home screen:
+
+```
+UPCOMING ALARM ONLY
+09:10   0̶9̶:̶3̶0̶            [on]
+08:40 - 09:10   Gradual
+```
+
+**Eight Sleep has a native one-off.** It moves the next occurrence and leaves the weekly series
+untouched, and their app shows the routine time struck through beside it. Alex: *"right now, if I only
+change the alarm for Monday, Eight Sleep changes the entire Monday to Friday series and not only the
+Monday alarm."*
+
+**He is describing a real bug and it is ours.** OneAlarm implements a bend by writing `time` on the
+recurring alarm. That is not a one-off, it is an edit to his whole schedule that happens to be
+reverted later, and `restoreAfterOverride` is a repair for damage that never needed doing. Every risk
+that carries, a failed restore leaving a real alarm wrong, a bend that outlives the app being opened,
+exists only because OneAlarm is using the wrong mechanism.
+
+**Why the field has never been seen.** It almost certainly appears on the alarm object **only while an
+override is active**, and until 17 August the raw panel printed values for **fourteen named keys** and
+nothing else. Every one of them was a field somebody already knew to look for. So the panel could show
+the new field's name and hide its value, which is the one thing needed. Fixed the same hour: it now
+prints every key with its value.
+
+The rule this is the twin of: `CLAUDE.md` says a diagnostic that only fires on failure answers
+nothing. **A diagnostic that only reports fields already known answers nothing either.**
+
+**Test, and it is time sensitive.** The override is switched on right now, so his account is currently
+returning the field. Open Connections, Eight Sleep, "What Eight Sleep returns right now", and
+screenshot the alarm showing 09:10. Zero requests beyond a read.
+
+**Predictions, written before it runs.**
+
+| What appears | Means | Then |
+|---|---|---|
+| a timestamp field naming the next occurrence, next to an override time | the one-off is a pair of fields on the alarm | write those two instead of `time`, and `restoreAfterOverride` is deleted rather than fixed |
+| a nested object, for example `nextOverride` or `oneOff` | a sub-resource | read it, echo it, author only its time |
+| `skipNext` / `skippedUntil` change shape | the same mechanism carries skip and bend | one code path for both, which is what their UI implies |
+| nothing new at all | the override lives on the routine object or a separate endpoint | the routines read is already built and returns empty, so it is a separate endpoint and needs a capture |
+
+**Why this outranks everything else open.** It is the difference between OneAlarm being a thing that
+edits his real schedule twice a day and hopes both writes land, and a thing that uses the native
+feature Eight Sleep built for exactly this. It also makes the whole `restoreAfterOverride` machinery,
+and the class of bug where a bend outlives its morning, disappear rather than get guarded.
+
+**Whose.** Alex, one screenshot, while the override is still on.
+
+
+
 ## Completed
 
 | | Question | Answer | Date |

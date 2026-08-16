@@ -975,19 +975,32 @@ actor EightSleepAdapter: DeviceAdapter {
     /// answer "does this account name its pods", because the parse succeeds either way.
     static func describe(_ alarm: [String: Any]) -> [String] {
         var lines = alarm.keys.sorted()
-        // `time` and `nextTimestamp` lead, because they are the two that settle the question Alex
-        // asked on 16 Aug: the write lands on this API, and his Eight Sleep app shows the old time.
-        // Those are different claims and only one of them is ours. Printing what the server returns,
-        // verbatim, is the difference between knowing that and arguing about it.
+
+        // **Every key gets its value printed, and the curated list this replaces was a trap.**
         //
-        // `tags` and `smart` follow. Neither has a known shape, and `tags` holds a `routine-<uuid>`
-        // pointing at something in their app nobody here has looked at, which makes it the best
-        // remaining lead if the server object turns out to be right and their app still disagrees.
-        for key in ["time", "nextTimestamp", "enabled", "name", "label", "side", "deviceId",
-                    "device", "pod", "tags", "smart", "audio", "skipNext", "skippedUntil"] {
-            if let value = alarm[key], !(value is NSNull) {
-                lines.append("\(key) = \(value)")
-            }
+        // Until 17 August this printed values for fourteen named keys and nothing else. Every one of
+        // them was a field somebody already knew to look for, which makes it a diagnostic that can
+        // only ever confirm what is already believed. `CLAUDE.md` has a rule for exactly this shape,
+        // "a diagnostic that only fires on failure answers nothing", and this is its twin: a
+        // diagnostic that only reports fields already known answers nothing either.
+        //
+        // Found the moment it mattered. Alex sent a screenshot of the Eight Sleep app showing
+        // **UPCOMING ALARM ONLY, 09:10, with 09:30 struck through**: a native one-off that changes the
+        // next occurrence and leaves the weekly series alone. OneAlarm has no idea that exists and
+        // implements a one-off by rewriting the recurring alarm's `time`, which is why bending Monday
+        // moves his whole Monday to Friday series. Whatever field carries that override was never in
+        // the list above, so the panel would have shown its name and hidden its value, which is the
+        // one thing needed.
+        //
+        // Ordering is kept: `time` and `nextTimestamp` first because they settle whether a write
+        // landed, then the rest alphabetically so a new field is easy to spot between two runs.
+        let first = ["time", "nextTimestamp", "enabled"]
+        for key in first where alarm[key] != nil {
+            if let value = alarm[key], !(value is NSNull) { lines.append("\(key) = \(value)") }
+        }
+        for key in alarm.keys.sorted() where !first.contains(key) {
+            guard let value = alarm[key], !(value is NSNull) else { continue }
+            lines.append("\(key) = \(value)")
         }
         return lines
     }

@@ -15,6 +15,25 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**Eight Sleep has a native one-off and OneAlarm has been faking it.** `[observed, 17 August, Alex's own
+screenshot]` Their home screen shows `UPCOMING ALARM ONLY  09:10  0̶9̶:̶3̶0̶`: the next occurrence moved,
+the routine struck through beside it, the weekly series untouched.
+
+Alex: *"right now, if I only change the alarm for Monday, Eight Sleep changes the entire Monday to
+Friday series and not only the Monday alarm."*
+
+OneAlarm implements a bend by writing `time` on the recurring alarm and putting it back afterwards.
+That is not a one-off. It is an edit to his real schedule with a repair scheduled behind it, and every
+risk it carries exists only because the wrong mechanism was used. `E23`.
+
+**How it stayed hidden, which is the transferable part.** The raw panel printed values for **fourteen
+named keys**, every one of them a field somebody already knew to look for. A field that appears only
+while an override is active would have shown its **name** and hidden its **value**. `CLAUDE.md`
+already says a diagnostic that only fires on failure answers nothing; this is its twin, and it is now
+written down: **a diagnostic that only reports fields you already knew about answers nothing either.**
+Print everything.
+
+
 **Research before guessing, and it changed the answer.** `[17 August]` Alex asked why the Whoop leg
 cannot behave like the Eight Sleep one and told me to find out or bring in help. I had already written
 a create ladder of three POST paths I reasoned my way to. A search of every public Whoop reverse
