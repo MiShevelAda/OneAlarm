@@ -244,6 +244,53 @@ final class ScheduleStore {
         persistAndRecompute()
     }
 
+    /// Set one device's own wake time. Everything else stays where it is.
+    ///
+    /// The offsets have existed since the first build and nothing has ever called this, so they
+    /// have been stuck at minus ten and minus five and unreachable.
+    func setDeviceTime(_ time: WallClockTime, for device: DeviceID) {
+        let delta = time.minutesSinceMidnight - schedule.masterTime.minutesSinceMidnight
+        // Shortest way round the clock, so 23:55 against an 00:05 anchor reads as ten minutes
+        // earlier rather than fourteen hours later.
+        let wrapped = (((delta + 720) % 1440) + 1440) % 1440 - 720
+        setOffset(wrapped, for: device)
+    }
+
+    /// Make this device the one whose clock the routine time is written in.
+    ///
+    /// Every device keeps the exact moment it already had. The routine time moves into the new
+    /// anchor's clock and every offset is re-based against it, so the arithmetic changes and not a
+    /// single alarm does.
+    func makeAnchor(_ device: DeviceID) {
+        guard device != schedule.anchorDevice,
+              let shift = schedule.rule(for: device)?.offsetMinutes else { return }
+
+        for index in schedule.rules.indices {
+            schedule.rules[index].offsetMinutes -= shift
+        }
+        for index in schedule.routines.indices {
+            schedule.routines[index].time = WallClockTime(
+                minutesSinceMidnight: schedule.routines[index].time.minutesSinceMidnight + shift
+            )
+        }
+        if let time = schedule.override?.time {
+            schedule.override?.time = WallClockTime(minutesSinceMidnight: time.minutesSinceMidnight + shift)
+        }
+        if let time = schedule.override?.routineTime {
+            schedule.override?.routineTime = WallClockTime(minutesSinceMidnight: time.minutesSinceMidnight + shift)
+        }
+        schedule.anchorDevice = device
+        persistAndRecompute()
+    }
+
+    /// Every device at the same moment. A stated choice rather than a set of coincidences.
+    func ringTogether() {
+        for index in schedule.rules.indices {
+            schedule.rules[index].offsetMinutes = 0
+        }
+        persistAndRecompute()
+    }
+
     func setOffset(_ minutes: Int, for device: DeviceID) {
         guard let index = schedule.rules.firstIndex(where: { $0.device == device }) else { return }
         schedule.rules[index].offsetMinutes = max(-120, min(120, minutes))

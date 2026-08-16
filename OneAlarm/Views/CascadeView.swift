@@ -248,7 +248,18 @@ struct CascadeView: View {
 
     private var cascade: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("The descent").themeLabel()
+            HStack {
+                Text("The descent").themeLabel()
+                Spacer()
+                // A stated choice rather than three coincidences. Spacing devices out is the point
+                // of the app, so wanting them together has to be one tap rather than three.
+                if store.schedule.rules.contains(where: { $0.offsetMinutes != 0 }) {
+                    Button("Ring together") { store.ringTogether() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.grey)
+                }
+            }
 
             VStack(spacing: 9) {
                 ForEach(store.targets, id: \.device) { target in
@@ -351,6 +362,43 @@ private struct CascadeRow: View {
                 }
                 Text(target.device.displayName).font(.system(size: 15, weight: .semibold))
 
+                // Each device's own time, editable here rather than nowhere. The offsets have
+                // existed since the first build and no screen ever reached them.
+                HStack(spacing: 6) {
+                    Button {
+                        store.setDeviceTime(WallClockTime(
+                            minutesSinceMidnight: target.localTime.minutesSinceMidnight - 5
+                        ), for: target.device)
+                    } label: { stepLabel("−5") }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        store.setDeviceTime(WallClockTime(
+                            minutesSinceMidnight: target.localTime.minutesSinceMidnight + 5
+                        ), for: target.device)
+                    } label: { stepLabel("+5") }
+                    .buttonStyle(.plain)
+
+                    if store.schedule.anchorDevice == target.device {
+                        Text("MAIN")
+                            .font(.system(size: 9, weight: .bold)).tracking(1)
+                            .padding(.horizontal, 7).padding(.vertical, 4)
+                            .background(Theme.State.confirmed.opacity(0.16), in: RoundedRectangle(cornerRadius: 5))
+                            .foregroundStyle(Theme.State.confirmed)
+                    } else {
+                        Button { store.makeAnchor(target.device) } label: {
+                            Text("Set as main")
+                                .font(.system(size: 11, weight: .bold))
+                                .padding(.horizontal, 8).padding(.vertical, 5)
+                                .background(Theme.card, in: RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.line, lineWidth: 1))
+                                .foregroundStyle(Theme.grey)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.top, 2)
+
                 HStack(spacing: 8) {
                     statusPill
                     if target.crossesMidnight {
@@ -382,6 +430,16 @@ private struct CascadeRow: View {
                 .strokeBorder(Theme.line, lineWidth: 1)
         )
         .onLongPressGesture(perform: onPreview)
+    }
+
+    private func stepLabel(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.numeral(13))
+            .frame(width: 38, height: 28)
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(Theme.line, lineWidth: 1))
+            .foregroundStyle(.white)
     }
 
     @ViewBuilder

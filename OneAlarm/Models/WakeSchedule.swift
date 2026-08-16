@@ -136,6 +136,19 @@ struct WakeSchedule: Codable, Equatable, Sendable {
     var rules: [DeviceRule]
     var routines: [Routine] = WakeSchedule.defaultRoutines
     var override: DayOverride?
+    /// Whose clock the routine time is expressed in. Its offset is zero by definition.
+    ///
+    /// **Not the same as which device has to wake you**, and the two must not be merged. The anchor
+    /// is arithmetic: type 07:55 against the strap and everything else derives from it. The phone
+    /// stays the leg that carries the guarantee, because it is the only one that arms with no
+    /// account, no network and no server. Whoop can be refused, rate limited, signed out, or hold a
+    /// value its strap never syncs, and all four happened on the first night of use.
+    var anchorDeviceRaw: String = DeviceID.iphone.rawValue
+
+    var anchorDevice: DeviceID {
+        get { DeviceID(rawValue: anchorDeviceRaw) ?? .iphone }
+        set { anchorDeviceRaw = newValue.rawValue }
+    }
 
     var weekdays: Set<Locale.Weekday> {
         get { WeekdaySetCoding.decode(weekdayIndices) }
