@@ -242,7 +242,16 @@ final class ScheduleStore {
     func addRoutine() -> String {
         let covered = schedule.routines.reduce(into: Set<Locale.Weekday>()) { $0.formUnion($1.weekdays) }
         let free = Locale.Weekday.displayOrder.filter { !covered.contains($0) }
-        let id = "routine-\(Int(Date().timeIntervalSince1970))"
+        // A UUID, not a timestamp. `Int(Date().timeIntervalSince1970)` was the first version and two
+        // taps of Add inside one second produced two routines with the same id, which is a second
+        // away on a button that sits right there.
+        //
+        // A duplicate id is not cosmetic. `RemoteAlarmLink` is keyed on it, so both routines would
+        // own one alarm and each sync would have them overwrite each other's time and days.
+        // `toggleDay` takes `firstIndex(where:)`, so the second routine's day chips would silently
+        // edit the first. `deleteRoutine` uses `removeAll`, so deleting one would delete both. And
+        // `Routine` is `Identifiable`, so SwiftUI would drop a row from `ForEach`.
+        let id = "routine-\(UUID().uuidString)"
 
         schedule.routines.append(
             Routine(
