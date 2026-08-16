@@ -799,7 +799,12 @@ capped at `WhoopAdapter.scheduleCeiling`.
 
 ---
 
-## E23 🔴 Which field carries Eight Sleep's "UPCOMING ALARM ONLY" override?
+## E23 🟠 Which field carries Eight Sleep's "UPCOMING ALARM ONLY" override?
+
+> **Downgraded 18 August, not closed.** The bug it describes is now fixed a different way, by
+> `E25`, which needs no unknown field. Finding the native override is still worth doing, because it
+> would be one write instead of three and would need no cleanup at all. It is no longer blocking
+> anything.
 
 > **THE BUG IS CONFIRMED ON HIS BED, 17 August 17:02.** He bent tomorrow to 09:40 against a Weekdays
 > routine of 09:05. OneAlarm's own screen was correct:
@@ -945,6 +950,51 @@ between. If the first is yellow and the second green, it is 1 or 2 and the times
 say which. If both are green, it was 3, and this entry closes as a side effect of `E23`.
 
 **Whose.** Alex, two taps, any afternoon.
+
+
+
+## E25 🔴 Does a one day override work as its own single day alarm?
+
+**Shipped 18 August, untested on hardware.** `E23` asked which field carries Eight Sleep's native
+`UPCOMING ALARM ONLY`. Three raw dumps have now come back with the same sixteen keys and nothing
+moving, which is the last row of `E23`'s own prediction table: the override does not live on the
+alarm object at all. That answer is still worth having, and waiting for it is not, because the
+one-off has been broken on his bed since 17 August and the fix needs no unknown field.
+
+**What was built instead.** The override stops riding the routine's own alarm and becomes an alarm of
+its own, using only mechanisms already confirmed working on his account:
+
+1. The routine's alarm is written with the **routine's** time, always. Nothing about it changes.
+2. A new alarm is created by `clone`, one weekday, at the override time. Same create that put
+   `EVERY WEEKEND 09:55` on his bed on 17 August.
+3. It is filed under `oneoff:<routine>:<yyyymmdd>`, a key shaped like a routine id. While the
+   morning is ahead the key counts as a living routine and the alarm is protected. Once the morning
+   passes, `RulesEngine` stops emitting the override, the key stops being generated, and the sweep
+   that clears alarms belonging to deleted routines deletes it. Expiry needed no new machinery.
+4. The routine's own alarm is skipped for that one morning through `skipNext`, and **only** when the
+   server's `nextTimestamp` says that morning is genuinely the next one.
+
+**The deliberate asymmetry, which is the part to argue with.** Step 4 does not fall back to switching
+the weekly alarm off. Everywhere else in this adapter a failed skip does exactly that and repairs it
+on the next sync. Here it does not, because if there is no next sync the cost is a **whole week with
+no alarm**, against one morning ringing at 07:45 instead of 09:45. Between an alarm that rings early
+and an alarm that does not ring, this leg picks early and says which it did.
+
+**Predictions, in order of what each would mean:**
+
+| What he sees in the Eight Sleep app | Reading | What follows |
+|---|---|---|
+| `EVERY WEEKDAY 07:45` unchanged, plus a new `TUESDAY 09:45` | it works | `E23` drops to a nice-to-have and this is the mechanism |
+| the new alarm exists but the weekly one also rings that morning | the skip did not take | `E11` is answered negative, and the receipt already says so |
+| the new alarm does not appear in his app but the API returns it | the create needs a routine to live in, as in `E14` | the `alarmsToCreate` path used elsewhere in `write` is the fix |
+| the whole weekday series moved again | something still writes `bentTo` to the routine's alarm | grep for `timeToWrite` on this leg; the map to `withoutBend()` did not take |
+
+**Whose.** Alex. Set a one time change for tomorrow, press Set all alarms, then open the Eight Sleep
+app and screenshot the alarm list. Two minutes.
+
+**And the morning after**, open OneAlarm once and check the extra alarm is gone. That half cannot be
+tested any other way, and an override alarm that outlives its morning is a weekly alarm at the wrong
+time, which is the failure this whole change exists to prevent.
 
 
 

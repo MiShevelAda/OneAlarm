@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 06:20 · the panel names the overridden alarm, and it builds"
+    static let marker = "18 Aug, 07:10 · one time changes stop moving the whole week"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "The Eight Sleep raw panel now names which alarm is firing at a different time from its weekly setting, right at the top. You should not have to read sixteen fields to find the one I need."
+    static let whatIsNew = "A one time change no longer moves your whole Monday to Friday alarm on Eight Sleep. It gets its own alarm for that one day, your routine keeps its real time, and the extra alarm deletes itself the morning after."
 }

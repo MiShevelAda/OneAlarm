@@ -106,7 +106,19 @@ enum RemoteAlarmLink {
         all(for: device).filter { !livingRoutines.contains($0.key) }
     }
 
+    /// Everything this app remembers about one device's alarms. Called on sign out.
+    ///
+    /// **Both maps, not just the links.** Until 18 August this cleared the ownership map and left the
+    /// created list behind, so signing out of one Eight Sleep account and into another kept a list of
+    /// ids marked "OneAlarm made these, safe to delete". Eight Sleep ids are opaque and nothing says
+    /// they cannot collide across accounts, and this list is the **only** thing standing between the
+    /// orphan sweep and a delete. An alarm on somebody else's bed deleted because its id was on a
+    /// stale list is the worst outcome this app has available.
+    ///
+    /// Found while adding the one day override, which writes to both maps. It was never reachable
+    /// from a test, because the test helper had the same gap.
     static func forget(for device: DeviceID) {
         UserDefaults.standard.removeObject(forKey: key(device))
+        UserDefaults.standard.removeObject(forKey: createdKey(device))
     }
 }

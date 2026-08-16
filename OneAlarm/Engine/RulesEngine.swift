@@ -134,13 +134,22 @@ enum RulesEngine {
                 let shifted = routine.time.minutesSinceMidnight + rule.offsetMinutes
                 let dayShift = Int(floor(Double(shifted) / 1440.0))
 
+                let days = Set(routine.weekdays.map { $0.shifted(by: dayShift) })
+
                 var bent: WallClockTime?
-                if routine.id == bentRoutineID, let bentTime = override?.time {
+                var bendDay: RoutinePlan.BendDay?
+                if routine.id == bentRoutineID, let override, let bentTime = override.time,
+                   let date = override.day.date(in: calendar) {
                     let bentShifted = bentTime.minutesSinceMidnight + rule.offsetMinutes
                     bent = WallClockTime(minutesSinceMidnight: bentShifted)
+                    // Shifted by this device's own lead, exactly as the routine's day set is. An
+                    // override on Saturday morning for a bed that fires the night before is a
+                    // Friday alarm, and writing it to Saturday would ring a day late.
+                    let landed = Locale.Weekday
+                        .from(calendarIndex: calendar.component(.weekday, from: date))
+                        .shifted(by: dayShift)
+                    bendDay = RoutinePlan.BendDay(date: override.day, weekday: landed)
                 }
-
-                let days = Set(routine.weekdays.map { $0.shifted(by: dayShift) })
                 return RoutinePlan.Entry(
                     routineID: routine.id,
                     routineName: routine.displayName,
@@ -154,7 +163,8 @@ enum RulesEngine {
                     // suppress it.
                     isSkippedNextMorning: skippedWeekday.map {
                         days.contains($0.shifted(by: dayShift))
-                    } ?? false
+                    } ?? false,
+                    bendDay: bendDay
                 )
             }
 

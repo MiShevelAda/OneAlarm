@@ -31,6 +31,29 @@ import Foundation
 /// routine. The original ban was never about days being sacred. It was about writing them to an
 /// alarm nobody had established was ours.
 struct RoutinePlan: Equatable, Sendable {
+    /// The one morning an override applies to, in both the forms a device leg needs.
+    ///
+    /// Kept together in one type rather than as two optionals on `Entry`, because they are only ever
+    /// correct as a pair: the weekday is what an alarm's day set is written from, the date is what
+    /// tells a later sync that this override is over and its alarm can go. Two optionals that must
+    /// agree is an invariant nobody can enforce.
+    struct BendDay: Equatable, Sendable {
+        /// The calendar day the user chose.
+        let date: CalendarDay
+        /// The weekday it lands on **for this device**, after the lead has been applied. A bed
+        /// firing at 23:55 on Friday is Saturday's alarm.
+        let weekday: Locale.Weekday
+
+        /// `oneoff:<routine>:20270118`. The key an override's own alarm is filed under.
+        ///
+        /// Deliberately shaped like a routine id, because that is what it is used as: while the
+        /// override is still ahead the key counts as a living routine, so the alarm is protected
+        /// from the sweep that clears alarms whose routine is gone. The morning the override passes,
+        /// the key stops being generated, the sweep finds the alarm orphaned, and deletes it because
+        /// OneAlarm is recorded as having created it. Expiry needed no new machinery.
+        func linkKey(routine: String) -> String { "oneoff:\(routine):\(date.sortKey)" }
+    }
+
     /// One routine, already offset for this device.
     struct Entry: Equatable, Sendable, Identifiable {
         let routineID: String
@@ -54,9 +77,39 @@ struct RoutinePlan: Equatable, Sendable {
         /// passed. It suppresses the alarm for one night and is put back by the next sync.
         let isSkippedNextMorning: Bool
 
+        /// The date the bend falls on, and the weekday it lands on for **this** device.
+        ///
+        /// `bentTo` alone cannot drive a correct one day override anywhere. It says what time to use
+        /// and not which morning, so the only thing a service leg could do with it was rewrite the
+        /// routine's own alarm, which moves every morning that routine covers. Alex, 18 August:
+        /// *"instead of changing it for one time, it changes the entire Monday to Friday routine on
+        /// Eight Sleep."*
+        ///
+        /// A `var` with a default rather than a `let`, so the twenty-seven places that build an
+        /// `Entry` without a bend keep working. Both fields are set together or neither is.
+        var bendDay: BendDay? = nil
+
         var id: String { routineID }
         var timeToWrite: WallClockTime { bentTo ?? localTime }
         var isBent: Bool { bentTo != nil }
+
+        /// This routine with any one day override taken off it.
+        ///
+        /// For a leg that expresses an override as its own alarm rather than by moving this one. The
+        /// routine's alarm then gets the routine's real time, which is what it should have had all
+        /// along on every morning except the one.
+        func withoutBend() -> Entry {
+            Entry(
+                routineID: routineID,
+                routineName: routineName,
+                weekdays: weekdays,
+                localTime: localTime,
+                bentTo: nil,
+                isOn: isOn,
+                isSkippedNextMorning: isSkippedNextMorning,
+                bendDay: nil
+            )
+        }
 
         /// Whether the remote alarm this routine owns should be able to fire.
         var shouldBeEnabled: Bool { isOn && !isSkippedNextMorning && !weekdays.isEmpty }

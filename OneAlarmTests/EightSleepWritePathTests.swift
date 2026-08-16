@@ -198,6 +198,29 @@ final class EightSleepWritePathTests: XCTestCase {
         )
     }
 
+    /// The Monday to Friday routine with a one day override armed on a given January 2027 date.
+    ///
+    /// The date is what makes these tests real. `bentTo` on its own says what time and not which
+    /// morning, which is precisely why this leg could only ever rewrite the routine's own alarm.
+    private func bent(onDay day: Int, at hour: Int, _ minute: Int) -> RoutinePlan.Entry {
+        var base = entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)
+        base.bendDay = RoutinePlan.BendDay(
+            date: CalendarDay(year: 2027, month: 1, day: day),
+            weekday: Locale.Weekday.from(
+                calendarIndex: Calendar(identifier: .gregorian).component(
+                    .weekday,
+                    from: CalendarDay(year: 2027, month: 1, day: day)
+                        .date(in: Calendar(identifier: .gregorian)) ?? Date()
+                )
+            )
+        )
+        return RoutinePlan.Entry(
+            routineID: base.routineID, routineName: base.routineName, weekdays: base.weekdays,
+            localTime: base.localTime, bentTo: WallClockTime(hour: hour, minute: minute),
+            isOn: base.isOn, isSkippedNextMorning: false, bendDay: base.bendDay
+        )
+    }
+
     private var target: ResolvedTarget {
         ResolvedTarget(
             device: .eightSleep,
@@ -655,37 +678,306 @@ final class EightSleepWritePathTests: XCTestCase {
     // bend; nothing covered what reaches Eight Sleep. So the three cases below are the ones his own
     // two minute check on the phone is about to exercise, written first.
 
-    /// A bend writes the bent time to the bed, and leaves the routine's days and switch alone.
-    func testABendWritesTheOneOffTimeToTheBed() async throws {
+    /// A bend leaves the routine's own alarm alone and adds a single day alarm beside it.
+    ///
+    /// **This test asserted the opposite until 18 August, and the opposite was the bug.** It checked
+    /// that the bent time landed on the routine's own alarm, which is exactly what Alex reported:
+    /// *"the one time change, even though it's placed correctly on the OneAlarm app, instead of
+    /// changing it for one time, it changes the entire Monday to Friday routine on Eight Sleep."*
+    /// An Eight Sleep alarm has one wall clock for its whole day set, so writing the override into
+    /// `time` moves every morning that routine covers, and only a later sync puts it back.
+    ///
+    /// A green test asserting the broken behaviour is worse than no test. It is the reason nobody
+    /// looked here.
+    func testABendLeavesTheRoutineAlarmAloneAndAddsItsOwn() async throws {
         StubServer.responses = [
             StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
                 "alarms": [alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil)],
             ]),
             StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
             StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["id": "oneoff-1"] as [String: Any]),
         ]
         RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
 
-        var bent = entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)
-        bent = RoutinePlan.Entry(
-            routineID: bent.routineID, routineName: bent.routineName, weekdays: bent.weekdays,
-            localTime: bent.localTime,
-            // +15 on his home screen, carried through the bed's 10 minute lead by the rules engine.
-            bentTo: WallClockTime(hour: 6, minute: 20),
-            isOn: true, isSkippedNextMorning: false
+        _ = try await adapter().write(
+            target,
+            // Tuesday 19 January 2027, and the routine runs Monday to Friday, so the override falls
+            // on a morning this routine actually covers.
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20)],
+                              skipsNextMorning: false)
         )
+
+        let weekly = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")])
+        XCTAssertEqual(weekly["time"] as? String, "06:05:00",
+                       "the routine keeps its own time. Bending it moves every weekday, which is the bug")
+        XCTAssertEqual(weekly["enabled"] as? Bool, true, "and is not switched off")
+        let weeklyDays = (weekly["repeat"] as? [String: Any])?["weekDays"] as? [String: Bool]
+        XCTAssertEqual(weeklyDays?["monday"], true, "and keeps all five days")
+        XCTAssertEqual(weeklyDays?["friday"], true)
+
+        let created = try XCTUnwrap(StubServer.bodies[StubServer.key("POST", "/v1/users/\(userID)/alarms")],
+                                    "the override has to go somewhere, and its own alarm is the only place")
+        XCTAssertEqual(created["time"] as? String, "06:20:00", "the new alarm carries the override time")
+        let oneDay = (created["repeat"] as? [String: Any])?["weekDays"] as? [String: Bool]
+        XCTAssertEqual(oneDay?["tuesday"], true, "on the one weekday the override falls on")
+        XCTAssertEqual(oneDay?["monday"], false, "and on no other")
+        XCTAssertEqual(oneDay?["wednesday"], false)
+        // His settings ride along, because the new alarm is a copy of one he already has.
+        XCTAssertNotNil(created["vibration"])
+        XCTAssertNotNil(created["thermal"])
+    }
+
+    /// The override's alarm is recorded as OneAlarm's, which is the only thing that can delete it.
+    ///
+    /// Without the link it is litter: an alarm on his bed that rings every Tuesday at 06:20 forever,
+    /// that OneAlarm will not touch because it cannot prove it made it. The expiry sweep is driven
+    /// entirely off this record.
+    func testTheOverrideAlarmIsRecordedSoItCanBeCleanedUp() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil)],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["id": "oneoff-1"] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
 
         _ = try await adapter().write(
             target,
-            plan: RoutinePlan(device: .eightSleep, entries: [bent], skipsNextMorning: false)
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20)],
+                              skipsNextMorning: false)
         )
 
-        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")])
-        XCTAssertEqual(body["time"] as? String, "06:20:00", "the bed follows the one-off, not the routine")
-        XCTAssertEqual(body["enabled"] as? Bool, true, "a bend moves an alarm, it does not switch it off")
-        let days = (body["repeat"] as? [String: Any])?["weekDays"] as? [String: Bool]
-        XCTAssertEqual(days?["monday"], true, "and the routine's days are untouched")
-        XCTAssertEqual(days?["saturday"], false)
+        XCTAssertTrue(RemoteAlarmLink.created(for: .eightSleep).contains("oneoff-1"),
+                      "provenance, or it can never be deleted")
+        let key = "oneoff:weekdays:20270119"
+        XCTAssertEqual(RemoteAlarmLink.all(for: .eightSleep)[key], "oneoff-1",
+                       "filed under a key carrying the date, which is what expires it")
+    }
+
+    /// A second sync moves the override's alarm rather than making another one.
+    ///
+    /// He changes his mind about the time. The first version of this feature would have posted a
+    /// second alarm, and the one after that a third, until the eight alarm ceiling stopped it. The
+    /// recorded link is what makes the difference.
+    func testChangingTheOverrideMovesTheSameAlarm() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil),
+                    alarm(id: "oneoff-1", time: "06:20:00", days: ["tuesday"], routine: nil),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/oneoff-1"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["id": "oneoff-2"] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+        RemoteAlarmLink.link(routine: "oneoff:weekdays:20270119", to: "oneoff-1", on: .eightSleep)
+
+        _ = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 7, 30)],
+                              skipsNextMorning: false)
+        )
+
+        XCTAssertNil(StubServer.bodies[StubServer.key("POST", "/v1/users/\(userID)/alarms")],
+                     "no second override alarm")
+        let moved = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/oneoff-1")])
+        XCTAssertEqual(moved["time"] as? String, "07:30:00", "the one he already has is moved")
+    }
+
+    /// The override's alarm is not adopted by another routine, and is not reported as stranded.
+    ///
+    /// It has exactly one day, so a one day routine of his could match it on days alone and take it
+    /// over, and then the expiry sweep would be deleting an alarm somebody else was using. The
+    /// recorded link claims it before matching runs.
+    func testTheOverrideAlarmIsNotAdoptedByARoutine() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil),
+                    alarm(id: "oneoff-1", time: "06:20:00", days: ["tuesday"], routine: nil),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/oneoff-1"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+        RemoteAlarmLink.link(routine: "oneoff:weekdays:20270119", to: "oneoff-1", on: .eightSleep)
+
+        // A Tuesday-only routine of his own, with nothing to match but the override's alarm.
+        let tuesday = entry("tuesdays", "Tuesdays", [.tuesday], hour: 8)
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20), tuesday],
+                              skipsNextMorning: false)
+        )
+
+        let stillTheOverride = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/oneoff-1")])
+        XCTAssertEqual(stillTheOverride["time"] as? String, "06:20:00",
+                       "the override's alarm was not taken over and rewritten to 08:00")
+        XCTAssertFalse(receipt.note.contains("match no routine"),
+                       "and it is not reported to him as an alarm nobody is using")
+    }
+
+    /// Signing out forgets which alarms OneAlarm made, not just which routine owns which.
+    ///
+    /// The created list is the only thing that licenses a delete. Left behind across a sign out it
+    /// would be a list of ids from a previous account marked safe to delete, checked against a new
+    /// account's alarms. Eight Sleep ids are opaque and nothing promises they do not collide.
+    func testSigningOutForgetsProvenanceAndNotJustLinks() {
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+        RemoteAlarmLink.markCreated("his", on: .eightSleep)
+
+        RemoteAlarmLink.forget(for: .eightSleep)
+
+        XCTAssertTrue(RemoteAlarmLink.all(for: .eightSleep).isEmpty)
+        XCTAssertTrue(RemoteAlarmLink.created(for: .eightSleep).isEmpty,
+                      "or the next account inherits a licence to delete")
+    }
+
+    /// The override's alarm is deleted once its morning has passed.
+    ///
+    /// `RulesEngine` stops emitting an override whose day is behind, so its key stops appearing among
+    /// the living routines and the sweep that clears alarms belonging to deleted routines finds it.
+    /// Deleted rather than switched off, because OneAlarm made it: leaving it switched off is the
+    /// litter Alex cleared by hand and asked never to do again.
+    func testTheOverrideAlarmIsDeletedOnceItsMorningHasPassed() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil),
+                    alarm(id: "oneoff-1", time: "06:20:00", days: ["tuesday"], routine: nil),
+                ],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("DELETE", "/v1/users/\(userID)/alarms/oneoff-1"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+        RemoteAlarmLink.link(routine: "oneoff:weekdays:20270119", to: "oneoff-1", on: .eightSleep)
+        RemoteAlarmLink.markCreated("oneoff-1", on: .eightSleep)
+
+        // The override is gone from the plan, which is what an expired one looks like from here.
+        _ = try await adapter().write(
+            target,
+            plan: RoutinePlan(
+                device: .eightSleep,
+                entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)],
+                skipsNextMorning: false
+            )
+        )
+
+        XCTAssertTrue(StubServer.calls.contains { $0.method == "DELETE" && $0.path.hasSuffix("/oneoff-1") },
+                      "the override's alarm goes away by itself")
+        XCTAssertNil(RemoteAlarmLink.all(for: .eightSleep)["oneoff:weekdays:20270119"],
+                     "and its link with it")
+    }
+
+    /// The routine's own alarm is skipped for that one morning, so the bed does not ring twice.
+    ///
+    /// Only when the override's morning is genuinely the next one, checked against the server's own
+    /// `nextTimestamp` rather than against a calendar of ours. `skipNext` skips the next occurrence
+    /// and nothing else, so asking for it three days early would silence the wrong morning.
+    func testTheRoutineAlarmIsSkippedOnTheOverrideMorning() async throws {
+        // Midday UTC rather than an early morning instant, deliberately. `fires(_:on:)` compares
+        // calendar days in the **local** zone, and 05:05Z falls on the day before anywhere west of
+        // about UTC-6. A test that passes in Zurich and fails in New York is a test nobody trusts.
+        let before = alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil)
+        var withStamp = before
+        withStamp["nextTimestamp"] = "2027-01-19T12:00:00Z"
+        var afterSkip = before
+        afterSkip["nextTimestamp"] = "2027-01-20T12:00:00Z"
+
+        StubServer.sequences = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): [
+                (200, ["alarms": [withStamp]] as [String: Any]),   // the first read
+                (200, ["alarms": [withStamp]] as [String: Any]),   // re-read before the one-off pass
+                (200, ["alarms": [afterSkip]] as [String: Any]),   // the check that the skip took
+            ],
+        ]
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["id": "oneoff-1"] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20)],
+                              skipsNextMorning: false)
+        )
+
+        let last = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")])
+        XCTAssertEqual(last["skipNext"] as? Bool, true, "Eight Sleep's own skip, not enabled: false")
+        XCTAssertNotEqual(last["enabled"] as? Bool, false,
+                          "and never switched off: no next sync would mean a week with no alarm")
+        XCTAssertTrue(receipt.note.contains("Skipped"), "and he is told, on the row he reads")
+    }
+
+    /// A skip that does nothing leaves the weekly alarm ringing, and says so.
+    ///
+    /// The deliberate asymmetry in this leg. Everywhere else a failed skip falls back to switching the
+    /// alarm off and repairing it later, and here it does not: if there is no next sync, that costs a
+    /// whole week with no alarm, against one morning rung at 06:05 instead of 06:20. Between an alarm
+    /// that rings early and an alarm that does not ring, this picks early.
+    func testAFailedSkipLeavesTheWeeklyAlarmOn() async throws {
+        var withStamp = alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil)
+        withStamp["nextTimestamp"] = "2027-01-19T12:00:00Z"
+
+        StubServer.responses = [
+            // Same answer every time, so `nextTimestamp` never moves: the skip was taken and ignored.
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, ["alarms": [withStamp]] as [String: Any]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["id": "oneoff-1"] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20)],
+                              skipsNextMorning: false)
+        )
+
+        let last = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")])
+        XCTAssertNotEqual(last["enabled"] as? Bool, false, "the weekly alarm is never switched off here")
+        XCTAssertTrue(receipt.note.contains("Could not skip"), "and the failure is named, not swallowed")
+    }
+
+    /// A refused create leaves the routine exactly as it was, and says the override did not land.
+    ///
+    /// The dangerous version of this would silence the routine's alarm first and then fail to add the
+    /// replacement, which ends with no alarm at all on a morning he asked to be woken.
+    func testARefusedOverrideLeavesTheRoutineRinging() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil)],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (400, ["error": "no"] as [String: Any]),
+            StubServer.key("POST", "/v2/users/\(userID)/alarms"): (400, ["error": "no"] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20)],
+                              skipsNextMorning: false)
+        )
+
+        let weekly = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")])
+        XCTAssertEqual(weekly["time"] as? String, "06:05:00", "the routine is untouched")
+        XCTAssertNotEqual(weekly["enabled"] as? Bool, false, "and still rings")
+        XCTAssertNotEqual(weekly["skipNext"] as? Bool, true, "and was not skipped for a morning nothing replaces")
+        XCTAssertTrue(receipt.note.contains("refused"), "and he is told the one time change did not land")
     }
 
     /// A skip switches the bed's alarm off, and changes nothing else about it.
@@ -778,28 +1070,24 @@ final class EightSleepWritePathTests: XCTestCase {
             StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
             StubServer.key("PUT", "/v1/users/\(userID)/alarms/week"): accepted,
             StubServer.key("PUT", "/v1/users/\(userID)/alarms/wend"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["id": "oneoff-1"] as [String: Any]),
         ]
         RemoteAlarmLink.link(routine: "weekdays", to: "week", on: .eightSleep)
         RemoteAlarmLink.link(routine: "weekend", to: "wend", on: .eightSleep)
 
-        let plain = entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 5, minute: 51)
-        let bent = RoutinePlan.Entry(
-            routineID: plain.routineID, routineName: plain.routineName, weekdays: plain.weekdays,
-            localTime: plain.localTime,
-            bentTo: WallClockTime(hour: 6, minute: 20),
-            isOn: true, isSkippedNextMorning: false
-        )
         let weekend = entry("weekend", "Weekend", [.saturday, .sunday], hour: 10, minute: 45)
 
         _ = try await adapter().write(
             // `target` carries the collapsed single day a bend produces upstream. If this leg ever
             // starts taking days from the target rather than the plan, this is where it shows.
             target,
-            plan: RoutinePlan(device: .eightSleep, entries: [bent, weekend], skipsNextMorning: false)
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20), weekend],
+                              skipsNextMorning: false)
         )
 
         let bentBody = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/week")])
-        XCTAssertEqual(bentBody["time"] as? String, "06:20:00", "the bent routine follows the one-off")
+        XCTAssertEqual(bentBody["time"] as? String, "06:05:00",
+                       "the bent routine keeps its own time. The override rides its own alarm now")
 
         let otherBody = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/wend")])
         XCTAssertEqual(otherBody["time"] as? String, "10:45:00", "the other routine keeps its own time")

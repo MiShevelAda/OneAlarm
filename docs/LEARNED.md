@@ -541,6 +541,22 @@ The fix that worked was to stop the confirm step depending on the adapter having
 the ring rewrote Alex's real Whoop schedule from Monday-to-Friday into every day. Silently, because
 the write replaces. **A test that mutates a live account is not a test, it is a change.**
 
+**A green test asserting the broken behaviour.** `[observed]` The Eight Sleep one-off had a test
+called `testABendWritesTheOneOffTimeToTheBed`, and it passed, and what it asserted was the bug: that
+the override's time lands on the routine's **own** alarm. An Eight Sleep alarm has one wall clock for
+its whole day set, so that moves every morning the routine covers. Alex found it on his bed:
+*"instead of changing it for one time, it changes the entire Monday to Friday routine on Eight
+Sleep."* The test was written from what the code did rather than from what the feature is, and it is
+worse than no test, because it is the reason nobody looked there. **Write the assertion from the
+behaviour he asked for, before looking at the implementation.**
+
+**Waiting on a capture when the fix needed no capture.** `[observed]` Three raw dumps of the alarm
+object went out hunting for the field behind `UPCOMING ALARM ONLY`, and all three came back
+identical. Meanwhile the override could be built out of two things already confirmed working on his
+account: creating an alarm by cloning, and deleting one OneAlarm created. Four days of a broken
+one-off were spent looking for a nicer answer to a question that did not have to be answered. **Ask
+what can be built from what is already confirmed, before asking what still needs discovering.**
+
 ## 3. Product decisions, in Alex's words
 
 > *"It's not feasible to go every time into the settings app before the weekend and select when I

@@ -647,6 +647,23 @@ actor EightSleepAdapter: DeviceAdapter {
         return now > was
     }
 
+    /// Whether this alarm's **next** firing falls on a given day, according to the server.
+    ///
+    /// Against `nextTimestamp`, the absolute instant Eight Sleep issues, rather than against the day
+    /// set and a calendar of our own. Same reason `skipTookEffect` reads it: the server already knows
+    /// when this alarm next rings, including whatever it does about skips and overrides, and a second
+    /// opinion computed here is a second thing that can be wrong.
+    ///
+    /// Used to decide whether a one day override's morning is close enough to suppress the weekly
+    /// alarm for. `skipNext` skips the **next** occurrence and nothing else, so asking for it while
+    /// the override is still three days out would silence the wrong morning.
+    static func fires(_ alarm: [String: Any], on day: CalendarDay, in calendar: Calendar = .current) -> Bool {
+        guard let text = alarm["nextTimestamp"] as? String,
+              let instant = ISO8601DateFormatter.parseFlexible(text)
+        else { return false }
+        return CalendarDay(instant, in: calendar) == day
+    }
+
     static func silence(_ alarm: [String: Any]) -> [String: Any] {
         var payload = alarm
         for field in computedFields { payload.removeValue(forKey: field) }
@@ -1145,11 +1162,30 @@ actor EightSleepAdapter: DeviceAdapter {
 
         // Fall back to the single target when no plan came in, so this path has one behaviour rather
         // than two. A one-entry plan is just a plan with one routine in it.
-        let entries = plan.entries.isEmpty
+        let planned = plan.entries.isEmpty
             ? [RoutinePlan.Entry(routineID: "target", routineName: "your alarm",
                                  weekdays: target.weekdays, localTime: target.localTime,
                                  bentTo: nil, isOn: true, isSkippedNextMorning: false)]
             : plan.entries
+
+        // **A one day override never rides the routine's own alarm on this leg.**
+        //
+        // This is the fix for the thing Alex reported on 18 August: *"the one time change, even
+        // though it's placed correctly on the OneAlarm app, instead of changing it for one time, it
+        // changes the entire Monday to Friday routine on Eight Sleep."* He was describing exactly
+        // what the code did. An Eight Sleep alarm has a weekly wall clock and a day set and no
+        // per-day time, so writing the override into `time` moved every morning that routine covers,
+        // and the only thing putting it back was a later sync. If the app never ran again, his whole
+        // week kept the one morning's time.
+        //
+        // It is not narrower than it looks. A Saturday-only routine has the same defect: bending it
+        // moves **every future Saturday**, not just this one.
+        //
+        // So the routine's alarm is written with the routine's real time, always, and the override
+        // becomes its own single day alarm. Two alarms is how Eight Sleep can express "Tuesday at
+        // 09:45 and the rest of the week at 07:45", and it is the shape their own app produces.
+        let entries = planned.map { $0.withoutBend() }
+        let bends = planned.filter { $0.bentTo != nil && $0.bendDay != nil }
 
         // Alarms Eight Sleep's own app hides are not candidates for anything.
         //
@@ -1461,6 +1497,137 @@ actor EightSleepAdapter: DeviceAdapter {
             written.insert(pair.alarmID)
         }
 
+        // **A one day override, written as its own single day alarm.**
+        //
+        // The routine's alarm has already been written above with the routine's real time, so all
+        // this has to add is the one morning. Three steps, and each one reports what happened:
+        //
+        // 1. The override's own alarm, one weekday, at the override time. Created by cloning, like
+        //    every other alarm this app makes, and recorded in `RemoteAlarmLink.created`.
+        // 2. Filed under a key that behaves like a routine id and carries the date. That is what
+        //    expires it: once the morning has passed the key stops being generated, the sweep at the
+        //    bottom of this function finds the alarm orphaned, and deletes it. No new cleanup path.
+        // 3. The routine's own alarm skipped for that morning, so the bed does not ring twice, but
+        //    **only through Eight Sleep's own `skipNext` and only when that morning is genuinely the
+        //    next one.**
+        //
+        // Step 3 does not fall back to switching the weekly alarm off, and that is deliberate. The
+        // fallback used elsewhere in this file repairs itself on the next sync, and if there is no
+        // next sync the cost here is a whole week with no alarm. Leaving it alone costs one morning
+        // rung at 07:45 instead of 09:45. Between an alarm that rings early and an alarm that does
+        // not ring, this leg picks early, every time, and says which it did.
+        var oneOffNotes: [String] = []
+        var oneOffKeys = Set<String>()
+        // Whether the one time change he just made actually reached the bed. Reported as a partial
+        // sync rather than a success, because "Set all alarms" going green while the override was
+        // refused is the exact shape of lie this project keeps writing rules against.
+        var oneOffFailed = false
+        if !bends.isEmpty {
+            // Re-read, because the loop above has just written to some of these alarms and step 3
+            // compares against `nextTimestamp`, which the write moves.
+            let current = (try? await fetchAlarms()) ?? alarms
+            let owned = RemoteAlarmLink.all(for: .eightSleep)
+
+            for entry in bends {
+                guard let bend = entry.bendDay, let bentTime = entry.bentTo else { continue }
+                let key = bend.linkKey(routine: entry.routineID)
+                // Added whatever happens below. A create that failed leaves no link and no alarm, and
+                // a key with nothing behind it costs nothing; a key missing while its alarm exists
+                // would have the sweep delete the override the moment it was made.
+                oneOffKeys.insert(key)
+                let when = "\(bend.weekday.shortLabel) \(bentTime.hhmm)"
+
+                var overrideAlarmID: String?
+
+                if let existingID = owned[key],
+                   let existing = current.first(where: { Self.alarmID($0) == existingID }),
+                   let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms/\(existingID)") {
+                    // Already made on an earlier sync. Moved rather than remade, so changing his mind
+                    // about the time does not leave two override alarms on the bed.
+                    let body = try HTTPClient.json(
+                        Self.author(existing, time: bentTime, days: [bend.weekday], enabled: entry.isOn)
+                    )
+                    let response = try await http.send("PUT", url, headers: Self.baseHeaders(token: token), body: body)
+                    if response.isSuccess {
+                        overrideAlarmID = existingID
+                        oneOffNotes.append("Set your one time \(when) alarm on your bed.")
+                    } else {
+                        oneOffFailed = true
+                        oneOffNotes.append("Could not move your one time \(when) alarm on your bed (HTTP \(response.status)).")
+                    }
+                } else if let template = Self.template(from: alarms) {
+                    guard current.count < Self.alarmCeiling else {
+                        oneOffFailed = true
+                        oneOffNotes.append("Did not add your one time \(when) alarm: this account is already at the \(Self.alarmCeiling) alarm limit OneAlarm will not go past.")
+                        continue
+                    }
+                    var outcome: CreateOutcome = .refused("not attempted")
+                    var attempts: [String] = []
+                    outer: for variant in Self.cloneVariants(template, days: [bend.weekday], time: bentTime) {
+                        for version in Self.createPaths {
+                            outcome = try await postAlarm(variant.payload, version: version,
+                                                          token: token, user: user)
+                            if case .refused(let why) = outcome {
+                                attempts.append("\(version) \(variant.name): \(why)")
+                                continue
+                            }
+                            break outer
+                        }
+                    }
+                    switch outcome {
+                    case .created(let newID):
+                        overrideAlarmID = newID
+                        RemoteAlarmLink.link(routine: key, to: newID, on: .eightSleep)
+                        RemoteAlarmLink.markCreated(newID, on: .eightSleep)
+                        oneOffNotes.append("Added a one time \(when) alarm to your bed for \(entry.routineName), and it goes away by itself after that morning.")
+                    case .createdUnknownID:
+                        // Real, but not identifiable, so it cannot be linked and therefore cannot be
+                        // deleted later. Named for exactly that reason: this is the one path that
+                        // leaves him something to tidy up by hand.
+                        oneOffNotes.append("Added a one time \(when) alarm to your bed, but could not tell which one it is, so it will not clear itself. Delete it in the Eight Sleep app after that morning.")
+                    case .refused:
+                        oneOffFailed = true
+                        oneOffNotes.append("Eight Sleep refused a one time \(when) alarm, so \(entry.routineName) is unchanged and will ring at \(entry.localTime.hhmm). Tried \(attempts.joined(separator: " | ")).")
+                    }
+                } else {
+                    oneOffFailed = true
+                    oneOffNotes.append("No alarm on your bed to copy, so the one time \(when) alarm was not made.")
+                }
+
+                // Step 3. Only once the override's own alarm actually exists: silencing the routine
+                // and then failing to add the replacement is the one combination that ends with no
+                // alarm at all on a morning he asked to be woken.
+                guard overrideAlarmID != nil,
+                      let pair = report.pairs.first(where: { $0.routineID == entry.routineID }),
+                      let routineAlarm = current.first(where: { Self.alarmID($0) == pair.alarmID }),
+                      let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms/\(pair.alarmID)")
+                else { continue }
+
+                guard Self.fires(routineAlarm, on: bend.date) else {
+                    // The override is further out than the next morning. Nothing to do yet, and
+                    // saying so beats silence, because "both will ring" is a real outcome he would
+                    // otherwise discover in bed.
+                    oneOffNotes.append("\(entry.routineName) still rings at \(entry.localTime.hhmm) that morning too. Open OneAlarm the day before and it gets skipped.")
+                    continue
+                }
+
+                let skipBody = try HTTPClient.json(Self.skipNextOccurrence(routineAlarm))
+                let attempt = try await http.send("PUT", url, headers: Self.baseHeaders(token: token), body: skipBody)
+                // Written out rather than folded into a ternary. A `try? await` inside a `?:` has
+                // twice defeated this project's type checker for reasons no message explained.
+                var reread: [String: Any]?
+                if attempt.isSuccess {
+                    let after = (try? await fetchAlarms()) ?? []
+                    reread = after.first { Self.alarmID($0) == pair.alarmID }
+                }
+                if let reread, Self.skipTookEffect(before: routineAlarm, after: reread) {
+                    oneOffNotes.append("Skipped \(entry.routineName) for that one morning, so only the \(bentTime.hhmm) alarm rings.")
+                } else {
+                    oneOffNotes.append("Could not skip \(entry.routineName) for that morning, so your bed rings at \(entry.localTime.hhmm) as well and the earlier one wins. Switch it off in the Eight Sleep app if you want only \(bentTime.hhmm).")
+                }
+            }
+        }
+
         // The routine each owned alarm belongs to, brought into line.
         //
         // This is the half that was missing, and it is the half Alex asked for by name: *"be able to
@@ -1526,7 +1693,11 @@ actor EightSleepAdapter: DeviceAdapter {
         var deleted: [String] = []
         var deleteProblems: [String] = []
         if !plan.entries.isEmpty {
-            let living = Set(entries.map(\.routineID))
+            // One day override alarms count as living while their morning is still ahead. The moment
+            // it is behind, `RulesEngine` stops emitting the override, this set stops containing its
+            // key, and the sweep below deletes the alarm because OneAlarm made it. That is the whole
+            // expiry mechanism, and it reuses a path that already exists rather than adding one.
+            let living = Set(entries.map(\.routineID)).union(oneOffKeys)
             let ours = RemoteAlarmLink.created(for: .eightSleep)
             for (routineID, alarmID) in RemoteAlarmLink.orphans(for: .eightSleep, livingRoutines: living) {
                 guard let existing = alarms.first(where: { Self.alarmID($0) == alarmID }) else {
@@ -1592,11 +1763,11 @@ actor EightSleepAdapter: DeviceAdapter {
         if !failures.isEmpty {
             note += " Failed: \(failures.joined(separator: ", "))."
         }
-        if let bent = entries.first(where: \.isBent) {
-            // Named because it is a real liability. Eight Sleep has no one-day override, so a bend is
-            // held in the routine's own alarm and put back on the next sync after the morning. If
-            // the app never runs again, the bed keeps the bent time.
-            note += " \(bent.routineName) is holding \(bent.timeToWrite.hhmm) for one morning, and goes back to \(bent.localTime.hhmm) on the next sync."
+        if !oneOffNotes.isEmpty {
+            // First after the headline, because a one time change is the thing he just did and the
+            // thing this leg got wrong until 18 August. Every outcome above writes a line here,
+            // including the ones where nothing happened.
+            note += " " + oneOffNotes.joined(separator: " ")
         }
         if !routineNotes.isEmpty {
             note += " " + routineNotes.joined(separator: " ")
@@ -1655,7 +1826,7 @@ actor EightSleepAdapter: DeviceAdapter {
             remoteID: verifiableID.flatMap { written.contains($0) ? $0 : nil },
             note: note,
             isPartial: !report.isComplete || !failures.isEmpty || !createProblems.isEmpty
-                || routineNotes.contains { $0.hasPrefix("Could not") }
+                || oneOffFailed || routineNotes.contains { $0.hasPrefix("Could not") }
         )
     }
 

@@ -1,6 +1,7 @@
 # Status
 
-Updated 2026-08-17. **All three legs are confirmed at the layer Alex sees.**
+Updated 2026-08-18. **All three legs are confirmed at the layer Alex sees. The one-off on
+Eight Sleep is rebuilt and awaiting one run on his bed, `E25`.**
 
 ## Where this is
 
@@ -13,7 +14,7 @@ follows. This is the first day that sentence has been true.
 | Leg | State | How it was verified |
 |---|---|---|
 | iPhone | **working** | rang through Silent, through Focus, phone locked and face down |
-| Eight Sleep | **routines work, confirmed 17 Aug 14:21. One-offs are CONFIRMED BROKEN, 17 Aug 17:02** | his Eight Sleep app now lists `EVERY WEEKDAY 05:51` and `EVERY WEEKEND 09:55`, both created or moved by OneAlarm, and it follows a routine being split and merged. **But a one-off moves the whole weekly series**: bending one Monday to 09:40 set `EVERY WEEKDAY` to 09:30 on his bed. Eight Sleep has a native one-off, `UPCOMING ALARM ONLY`, and OneAlarm does not use it. `E23` |
+| Eight Sleep | **routines work, confirmed 17 Aug 14:21. One-offs were CONFIRMED BROKEN 17 Aug 17:02, and rebuilt 18 Aug. Not yet run on his bed** | his Eight Sleep app now lists `EVERY WEEKDAY 05:51` and `EVERY WEEKEND 09:55`, both created or moved by OneAlarm, and it follows a routine being split and merged. The one-off used to move the whole weekly series, because it was written into the recurring alarm's `time`. It is now its own single day alarm that deletes itself the morning after, and the routine's alarm is never touched. `E25` is the test |
 | Whoop | **working** | written, and the new time confirmed in the Whoop app |
 
 **This header used to say "It works. All three legs were verified", directly above a table saying one

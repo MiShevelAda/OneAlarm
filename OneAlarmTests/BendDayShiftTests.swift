@@ -106,6 +106,47 @@ final class BendDayShiftTests: XCTestCase {
         )
     }
 
+    /// A bend carries the date and weekday it falls on, not just a time.
+    ///
+    /// Added 18 August, and it is what made the Eight Sleep one-off fixable. `bentTo` says what time
+    /// to use and never which morning, so the only thing a service leg could do with it was rewrite
+    /// the routine's own alarm, which moves every morning that routine covers. Alex: *"instead of
+    /// changing it for one time, it changes the entire Monday to Friday routine on Eight Sleep."*
+    ///
+    /// With the day carried, the leg can write the override as its own single day alarm and leave the
+    /// routine alone.
+    func testABendCarriesTheDayItFallsOn() throws {
+        let plan = RulesEngine.plan(
+            for: bedLead,
+            in: schedule(routineAt: WallClockTime(hour: 6, minute: 5),
+                         bentTo: WallClockTime(hour: 6, minute: 20)),
+            calendar: calendar,
+            now: now
+        )
+
+        let entry = try XCTUnwrap(plan.entries.first)
+        let bend = try XCTUnwrap(entry.bendDay, "a bend with no day is a bend nothing can write")
+        XCTAssertEqual(bend.date, CalendarDay(year: 2027, month: 1, day: 18))
+        XCTAssertEqual(bend.weekday, .monday, "the 18th of January 2027 is a Monday")
+        XCTAssertEqual(bend.linkKey(routine: "weekdays"), "oneoff:weekdays:20270118",
+                       "the key an override's own alarm is filed under, and what expires it")
+    }
+
+    /// A routine with no bend carries no day. The control for the one above.
+    ///
+    /// If this ever fails, every routine looks bent and the Eight Sleep leg starts adding an override
+    /// alarm on every sync.
+    func testAnUnbentRoutineCarriesNoDay() throws {
+        let plan = RulesEngine.plan(
+            for: bedLead,
+            in: schedule(routineAt: WallClockTime(hour: 6, minute: 5), bentTo: nil),
+            calendar: calendar,
+            now: now
+        )
+
+        XCTAssertNil(try XCTUnwrap(plan.entries.first).bendDay)
+    }
+
     /// An ordinary bend, nowhere near midnight, is unaffected. The control.
     ///
     /// This is the shape Alex can actually produce from the home screen: the minus and plus fifteen
