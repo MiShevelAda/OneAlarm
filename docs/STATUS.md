@@ -1,7 +1,33 @@
 # Status
 
-Updated 2026-08-18. **All three legs are confirmed at the layer Alex sees. The one-off on
-Eight Sleep is rebuilt and awaiting one run on his bed, `E25`.**
+Updated 2026-08-18. **Routines are confirmed on all three legs at the layer Alex sees. One time
+changes were rebuilt on 18 August and no hardware has seen any of it, `E25`.** The section directly
+below is the inventory of what is intention rather than observation.
+
+## The seven things built on 18 August that no hardware has seen
+
+Written as one list because ten rounds of work went in without a compiler or a device, and a reader
+needs to know which parts of this file are observation and which are intention. **Everything in this
+section is intention.** Each row says what would prove it wrong, so the first run is worth something
+whichever way it goes.
+
+| Built | What proves it works | What it looks like when it does not |
+|---|---|---|
+| A one time change is its own single day alarm on the bed, and the routine is untouched | the Eight Sleep app lists the routine at its usual time **plus** a new one day alarm | the whole weekday series has moved again, which is the bug this replaced |
+| That alarm deletes itself the morning after | open OneAlarm the next day, press Set all alarms, and it is gone | it is still there, ringing weekly at the override time from then on |
+| The routine's alarm is skipped for that one morning through `skipNext` | the row says "Skipped ... so only the 08:05 alarm rings" | the row says "Could not skip", and both ring, earliest wins. `E11` answered negative |
+| `ONE TIME CHECK` reports the truth about his bed | the row and the Good night screen carry a sentence about the one time change | either says nothing, and a delivery defect survived the six already found |
+| The phone splits a bent routine instead of standing the week down | a bend days away leaves every other morning armed | mornings go missing on the leg that must ring, the way they did before |
+| A bend across midnight arms the evening before | only reachable through the picker at a near-midnight time. Not worth testing by hand | the bed warms and rings roughly a day out |
+| The week check names a morning with no alarm on it | it stays quiet on a healthy week, and speaks when an alarm is missing | it fires on a healthy week, and he learns to scroll past it |
+
+**Two of these can only be tested by waiting**: the self-deletion needs the next morning, and the
+skip needs the morning itself to pass. The rest are one press of Set all alarms.
+
+**Nothing in this section has been compiled either.** There is no Swift toolchain in a session
+environment, which is checked rather than assumed. `npm run check` parses every file and catches
+syntax errors, duplicate types, orphaned attributes and memberwise argument order, and it cannot see
+a wrong type or a missing label.
 
 ## Where this is
 
