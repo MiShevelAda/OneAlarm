@@ -1,8 +1,19 @@
 # Status
 
-Updated 2026-08-18. **Routines are confirmed on all three legs at the layer Alex sees. One time
+Updated 2026-08-19. **Routines are confirmed on all three legs at the layer Alex sees. One time
 changes were rebuilt on 18 August and no hardware has seen any of it, `E25`.** The section directly
 below is the inventory of what is intention rather than observation.
+
+> **Late on 18 August the one-off mechanism stopped being a guess.** `lukas-clarke/eight_sleep`, the
+> maintained Home Assistant integration, has `set_one_off_alarm`: a POST to `v1/users/{id}/alarms`
+> carrying `time`, `enabled`, `vibration` and `thermal`, and **no `repeat` block**. That is a second
+> source for a line that had been sitting in `RESEARCH.md` 1.5 unread since day one, so it now meets
+> this project's bar for a capture. The one-shot is rung 1 of the create ladder and the single day
+> alarm shipped earlier that day is the fallback behind it. `E25`.
+>
+> **What that does not change:** none of it has touched his bed. The mechanism is confirmed in
+> someone else's code, which is not the same as confirmed on his Pod, and this file has been wrong
+> about that distinction before.
 
 ## The seven things built on 18 August that no hardware has seen
 
@@ -13,8 +24,9 @@ whichever way it goes.
 
 | Built | What proves it works | What it looks like when it does not |
 |---|---|---|
-| A one time change is its own single day alarm on the bed, and the routine is untouched | the Eight Sleep app lists the routine at its usual time **plus** a new one day alarm | the whole weekday series has moved again, which is the bug this replaced |
-| That alarm deletes itself the morning after | open OneAlarm the next day, press Set all alarms, and it is gone | it is still there, ringing weekly at the override time from then on |
+| A one time change is its own alarm on the bed, and the routine is untouched | the Eight Sleep app lists the routine at its usual time **plus** a new one | the whole weekday series has moved again, which is the bug this replaced |
+| It is created as a **one-shot**, no `repeat` block, which is what Eight Sleep's own client sends | the row names the rung: *"using one-shot, no repeat on v1"* | the row names the single day fallback instead, and the one-shot was refused. Still a working override, and now it definitely needs the cleanup below |
+| That alarm goes away after its morning | open OneAlarm the next day, press Set all alarms, and it is gone | it is still there, ringing at the override time from then on. **Two ways it can go**: a one-shot may clear itself, and the fallback needs OneAlarm's delete, which is `E20` and unconfirmed |
 | The routine's alarm is skipped for that one morning through `skipNext` | the row says "Skipped ... so only the 08:05 alarm rings" | the row says "Could not skip", and both ring, earliest wins. `E11` answered negative |
 | `ONE TIME CHECK` reports the truth about his bed | the row and the Good night screen carry a sentence about the one time change | either says nothing, and a delivery defect survived the six already found |
 | The phone splits a bent routine instead of standing the week down | a bend days away leaves every other morning armed | mornings go missing on the leg that must ring, the way they did before |
