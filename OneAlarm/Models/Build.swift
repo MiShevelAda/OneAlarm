@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "20 Aug, 03:55 · the Whoop error says which switch"
+    static let marker = "20 Aug, 04:30 · a read only Why is it off button for Whoop"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "The red Whoop error now tells you exactly which switch: the toggle at the top right of MY SCHEDULE in the Whoop app. Your account has three different on switches and the old message fitted all of them. Turn that one on and press Set all alarms."
+    static let whatIsNew = "When Whoop says a schedule is off, there is now a Why is it off button on the Whoop screen. It only reads, and it tells you whether the whole account is switched off or just that one schedule, which are different problems with different fixes."
 }

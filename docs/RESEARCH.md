@@ -815,6 +815,86 @@ alarm, because whenever I want to set a new alarm manually, the schedule is bein
 app, then press Set all alarms. If the schedule comes back on, `enabled` works and the one-off was
 blocking it. If it stays off, `E30` stands.
 
+### 2.3f The read shape has been renamed since the only public capture, and ours is newer
+
+**The most consequential thing the 20 August sweep found, and it was hiding in plain sight.**
+
+`briangaoo/whoop-mcp` hits **the same `?apiVersion=7`** we do. Its projection reads, from raw source:
+
+```ts
+const list = asArray(sched.alarm_schedule_list)   // TOP level
+  ...
+  enabled: asBool(s.enabled) ?? false             // a boolean called `enabled`
+```
+
+Alex's account, today, returns something else:
+
+| That capture, May 2026 | His account, 20 August |
+|---|---|
+| `alarm_schedule_list` at the top level | nested under `schedules` |
+| `enabled`, boolean | **`alarm_on`, as `1` or `0`** |
+| `day_of_week_list` | **`scheduled_days`** |
+| `latest_wake_time: "07:30:00"` | **`"9:36 AM"`**, a rendered string |
+| no display keys | `*_label_display` throughout |
+
+Same version parameter, different shape. **Run that MCP against this account today and it would report
+`enabled: false` for every schedule**, because `s.enabled` no longer exists.
+
+**Why this matters beyond a curiosity.** The write body this project uses is from that same May capture.
+Its read half has since been renamed. **Nobody has ever validated `enabled` on the write against the
+schema we are actually served.** So a live hypothesis for the whole bug: `enabled` was renamed on the
+write side too, is now silently ignored, and since the PUT replaces rather than merges, an absent
+on/off defaults to off.
+
+**And there is a confirmed precedent for exactly that on this exact service.** From the same repo's
+changelog, verified live by its author: `PUT /smartalarm/preferences` accepts `lower_time_bound` and
+`upper_time_bound`, returns 200, and **ignores them** whenever an explicit schedule exists. These
+endpoints already have a documented habit of accepting a field and doing nothing with it.
+
+**We send `enabled: true` on every write and never `false`, so if it is ignored nothing breaks.** The
+cost is only that we cannot turn a schedule on, which is `E30`.
+
+### 2.3g The account-level gate, which is very likely the real answer
+
+Three layers, and they are genuinely separate:
+
+| Layer | Where | Reach |
+|---|---|---|
+| `alarm_on` per row | `/schedule/all` | one schedule |
+| `schedule_enabled` | top level of `/schedule/all`, **and writable** in the `preferences` PUT body | account |
+| `PUT /alarm-schedule/enable` and `/disable` | no body, 204 | master, all schedules |
+
+Two pieces of evidence that the row is gated by the account, not independent of it:
+
+1. `/schedule/all` also returns `should_show_overlay` and `schedule_disabled_text`, which is precisely
+   what a screen needs to grey every row out and caption why.
+2. `/coaching-service/v2/sleepneed` returns a **three** value enum, `ACTIVE`, `INACTIVE`,
+   `ALL_DISABLED`. `ALL_DISABLED` being distinct from `INACTIVE` is hard to explain unless the account
+   gate and the row state are different layers.
+
+**And Alex's own app has already reported `schedule_enabled` false.** The red row on 20 August is that
+guard firing. So the account gate was down, which is sufficient on its own to explain everything
+`E30` was built on, without any field rename.
+
+**`turn_off_schedule_modal` is a real documented key**, returned by `/coaching-service/v2/sleepneed`,
+alongside `turn_off_all_modal`. So the modal he photographed is server delivered, it comes from the
+**coaching** service rather than either smart alarm service, and there are two distinct scopes of
+turning off. That is why nothing in the smart alarm capture describes the flow.
+
+**Not captured by anyone:** what `TURN OFF & SET NEW ALARM` actually sends. The bodiless
+`PUT /alarm-schedule/disable` matches the modal's singular "your schedule" in scope, but that is an
+inference from wording, not an observation.
+
+**One mechanical fact worth carrying.** At BLE level the strap holds **one** alarm, a single unix
+timestamp for the next firing, whatever the mode. A recurring schedule and a one-off compete for one
+register. Whoop's exclusivity is a hardware constraint surfaced as product behaviour, not a UX whim,
+which makes it unlikely to be worked around.
+
+**`strap_driven_alarm_time` is probably not the one-off's home.** It was observed being pushed after
+an ordinary **schedule** edit, in a session that never touched the one-off flow, and the strap takes
+one absolute instant regardless of mode. The natural reading is a derived push of whatever is
+currently active. That lowers `E29`'s value considerably.
+
 ### 2.4 Whoop hazards
 
 **Never build a retry loop around `USER_PASSWORD_AUTH`.** `429 TooManyRequestsException` is real on

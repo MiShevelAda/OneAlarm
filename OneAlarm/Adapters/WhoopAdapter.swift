@@ -795,6 +795,40 @@ actor WhoopAdapter: DeviceAdapter {
 
     /// The whole `schedule/all` payload, since the master enable flag lives beside the list rather
     /// than inside it.
+    /// The account level gate, read only, in words. `E31`.
+    ///
+    /// **The one observation that separates two explanations of the same bug**, per the 20 August
+    /// sweep. A schedule can read `alarm_on = 0` for two entirely different reasons:
+    ///
+    /// - the account gate is down, and every row is greyed out beneath it
+    /// - the gate is up and this row's own switch is off, which would point at the write body
+    ///
+    /// One read tells them apart, and it needs no write and no permission. `schedule_enabled` sits at
+    /// the top level of the same response the app already fetches, next to `should_show_overlay` and
+    /// `schedule_disabled_text`, which are exactly what a screen needs to grey rows out and caption
+    /// why. Shown here so the answer is on his screen rather than inferred from a failed write.
+    func accountGate() async -> String {
+        // `fetchScheduleEnvelope` is deliberately the ungated read: the master switch guard lives on
+        // `fetchSchedules`, one level up. So this can report the very state that guard refuses on,
+        // which is the entire point of the diagnostic.
+        guard let envelope = try? await fetchScheduleEnvelope() else {
+            return "Could not read Whoop just now."
+        }
+        var lines: [String] = []
+        for key in ["schedule_enabled", "should_show_overlay", "schedule_disabled_text"] {
+            guard let value = envelope[key] else { continue }
+            lines.append("\(key) = \(Self.describeValue(value))")
+        }
+        if lines.isEmpty {
+            return "This account returns no schedule_enabled at all. Top level keys: \(envelope.keys.sorted().joined(separator: ", "))"
+        }
+        let gateDown = Self.isFalse(envelope["schedule_enabled"] ?? true)
+        lines.append(gateDown
+            ? "So the master switch is OFF, and no schedule can ring under it whatever its own setting says. Turn on the toggle at the top right of MY SCHEDULE in the Whoop app."
+            : "So the master switch is ON. If a schedule still reads alarm_on = 0, that one is off on its own.")
+        return lines.joined(separator: "\n")
+    }
+
     private func fetchScheduleEnvelope() async throws -> [String: Any] {
         let token = try await currentToken()
         guard let url = URL(string: "\(Self.host)/smart-alarm-bff/v1/schedule/all?apiVersion=7") else {

@@ -353,6 +353,8 @@ struct WhoopLinkView: View {
     @State private var failure: String?
     @State private var busy = false
     @State private var choices: [RemoteAlarmChoice] = []
+    /// The account level master switch, once asked for. `E31`.
+    @State private var gate: String?
     /// Held here so confirming the code cannot depend on the adapter still remembering it.
     @State private var challenge: WhoopAdapter.Challenge?
     /// The `/schedule/all` envelope, printed on the linked screen. See `whoopTruth`.
@@ -661,6 +663,32 @@ struct WhoopLinkView: View {
                 Notice(.warn, title: "One thing left, in the Whoop app.", failure ?? "")
 
                 Notice("Your bed and your phone are unaffected and will still be set.")
+
+                // **The account level gate, read only. `E31`.**
+                //
+                // A schedule reading `alarm_on = 0` has two possible causes with opposite fixes: the
+                // account gate is down and every row is greyed out beneath it, or the gate is up and
+                // that one row is off. One read separates them, and it is the same response the app
+                // already fetches. Behind a button because it is a live request.
+                VStack(alignment: .leading, spacing: 6) {
+                    Button {
+                        Task {
+                            gate = "Reading..."
+                            gate = await store.whoop.accountGate()
+                        }
+                    } label: {
+                        Text("Why is it off? (read only)")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.State.unconfirmed)
+                    }
+                    if let gate {
+                        Text(gate)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(Theme.grey)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
             }
         } footer: {
             SolidButton(title: "I have fixed it, check again", busy: busy) {
