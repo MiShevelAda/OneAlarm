@@ -1367,6 +1367,8 @@ struct AlarmPickerScreen: View {
 
     @State private var selected: String? = nil
     @State private var bed: EightSleepAdapter.BedIdentity?
+    /// The Whoop account level master switch, once asked for. `E31`.
+    @State private var gate: String?
 
     /// Says why this list can be longer than the one in the device's own app.
     ///
@@ -1500,6 +1502,39 @@ struct AlarmPickerScreen: View {
                 }
 
                 Notice("You can change this later from Connections. Nothing else on the account is touched.")
+
+                // **The account level gate, on the screen he actually opens. `E31`.**
+                //
+                // This shipped on the `blocked` screen only, which is reached when Whoop refuses a
+                // write. Alex went looking for it here, on the picker, and it was not there: *"I
+                // don't see the why is it off button."* Wrong place. The picker is where somebody
+                // goes to ask what state Whoop is in, and being blocked is precisely when you cannot
+                // get to a screen that needs a successful read.
+                //
+                // A diagnostic you can only reach while broken is a diagnostic nobody reaches.
+                if device == .whoop {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Button {
+                            Task {
+                                gate = "Reading..."
+                                gate = await store.whoop.accountGate()
+                            }
+                        } label: {
+                            Text("Is the whole account switched off? (read only)")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.State.unconfirmed)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                        if let gate {
+                            Text(gate)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(Theme.grey)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
 
                 // There was no way to sign out of anything. `signOut()` has existed on both
                 // adapters since the first build and no screen ever called it, so the only way off

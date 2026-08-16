@@ -498,6 +498,18 @@ fact, and twice it existed in an endpoint nobody had called. The third time the 
 better still: the field was missing because the **relationship does not exist**, and the question
 had to be rephrased rather than answered.
 
+**A diagnostic you can only reach while broken is a diagnostic nobody reaches.** `[20 August]` The
+Whoop account level check shipped on the `blocked` screen, which appears when a write is refused.
+That felt right: it answers the question the block raises. Alex went looking for it on the Whoop
+screen he actually opens, the schedule list, and reported *"I don't see the why is it off button."*
+
+Two things wrong with the placement. The picker is where somebody goes to ask what state a service is
+in, whether or not anything has failed. And being blocked is precisely when you may not be able to
+reach a screen that needs a successful read in the first place.
+
+**The rule.** Put a diagnostic where the question gets asked, not where the failure gets reported.
+Those are different screens, and the second one is often unreachable exactly when you need it.
+
 **A feature request thread is not evidence the feature is missing.** `[20 August]` A research sweep
 found WHOOP Community threads asking for "change alarm for tomorrow only", filed under Product
 Feedback, and inferred the feature does not exist. That inference then cast doubt on a correct older

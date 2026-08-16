@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "20 Aug, 05:05 · the strap warning tells the truth both ways"
+    static let marker = "20 Aug, 05:35 · the account check is on the screen you open"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Whoop works: your Monday to Thursday schedule took Friday from OneAlarm. A one time change still never reaches the strap, and now the row says which way that cuts. Moved a morning LATER and it warns you the strap will buzz early. Moved it earlier and it tells you the buzz lands harmlessly after you are up."
+    static let whatIsNew = "The Whoop account check was on a screen you only reach when a write fails, which is not where you went looking. It is now on the Whoop screen itself, under the schedule list: Is the whole account switched off. It only reads."
 }
