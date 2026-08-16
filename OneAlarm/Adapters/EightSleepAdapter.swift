@@ -1722,10 +1722,34 @@ actor EightSleepAdapter: DeviceAdapter {
                         RemoteAlarmLink.markCreated(newID, on: .eightSleep)
                         oneOffNotes.append("Added a one time \(when) alarm to your bed for \(entry.routineName), and it goes away by itself after that morning.")
                     case .createdUnknownID:
-                        // Real, but not identifiable, so it cannot be linked and therefore cannot be
-                        // deleted later. Named for exactly that reason: this is the one path that
-                        // leaves him something to tidy up by hand.
-                        oneOffNotes.append("Added a one time \(when) alarm to your bed, but could not tell which one it is, so it will not clear itself. Delete it in the Eight Sleep app after that morning.")
+                        // **The alarm is real and its id is not in the response, so go and find it.**
+                        //
+                        // This used to give up here and tell him to delete it by hand after the
+                        // morning. That is the exact chore he asked never to do again: *"I had to
+                        // delete all the alarms in the eight sleep app and set all alarms again from
+                        // the one alarm app."* An override alarm nobody can prove OneAlarm made can
+                        // never be deleted by the sweep, so it rings every week at the override time
+                        // until he notices.
+                        //
+                        // The routine create path a few hundred lines above already solves this: read
+                        // the account back and take the id that was not there before. Exactly one new
+                        // alarm, or nothing is claimed, because guessing which of two is which would
+                        // put a delete licence on an alarm that might be his.
+                        let after = (try? await fetchAlarms()) ?? []
+                        let known = Set(current.compactMap(Self.alarmID))
+                        let fresh = after.compactMap(Self.alarmID).filter { !known.contains($0) }
+                        if fresh.count == 1, let newID = fresh.first {
+                            overrideAlarmID = newID
+                            RemoteAlarmLink.link(routine: key, to: newID, on: .eightSleep)
+                            RemoteAlarmLink.markCreated(newID, on: .eightSleep)
+                            oneOffNotes.append("Added a one time \(when) alarm to your bed for \(entry.routineName), and it goes away by itself after that morning.")
+                        } else {
+                            // Named rather than swallowed, because this is now the only path that
+                            // leaves him something to tidy by hand, and he is the only one who can
+                            // see it.
+                            oneOffFailed = true
+                            oneOffNotes.append("Added a one time \(when) alarm to your bed, but could not tell which one it is (\(fresh.count) appeared), so it will not clear itself. Delete it in the Eight Sleep app after that morning.")
+                        }
                     case .refused:
                         oneOffFailed = true
                         oneOffNotes.append("Eight Sleep refused a one time \(when) alarm, so \(entry.routineName) is unchanged and will ring at \(entry.localTime.hhmm). Tried \(attempts.joined(separator: " | ")).")

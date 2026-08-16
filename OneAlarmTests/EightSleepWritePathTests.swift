@@ -1146,6 +1146,83 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertTrue(receipt.highlights.contains { $0.contains("not be woken") }, "\(receipt.highlights)")
     }
 
+    /// A create that returns no id is found by reading the account back.
+    ///
+    /// **The one path that used to leave litter on his bed.** The alarm is real either way; without
+    /// an id it cannot be linked, and an alarm OneAlarm cannot prove it made is never deleted by the
+    /// sweep. So a one time change would have rung every week at the override time until he noticed
+    /// and cleared it by hand, which is the chore he asked never to do again: *"I had to delete all
+    /// the alarms in the eight sleep app and set all alarms again from the one alarm app."*
+    ///
+    /// Solved the way the routine create path already solves it: take the id that was not there
+    /// before.
+    func testACreateWithNoIdIsIdentifiedByReadingBack() async throws {
+        let his = alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)
+        let mystery = alarm(id: "oneoff-1", time: "06:20:00", days: ["tuesday"], routine: nil)
+        StubServer.sequences = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): [
+                (200, ["alarms": [his]] as [String: Any]),            // the first read
+                (200, ["alarms": [his]] as [String: Any]),            // before the one-off pass
+                (200, ["alarms": [his, mystery]] as [String: Any]),   // the hunt for the new id
+                (200, ["alarms": [his, mystery]] as [String: Any]),   // the final read back
+            ],
+        ]
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            // Accepted, and the body carries no id anywhere.
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["ok": true] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20)],
+                              skipsNextMorning: false)
+        )
+
+        XCTAssertEqual(RemoteAlarmLink.all(for: .eightSleep)["oneoff:weekdays:20270119"], "oneoff-1")
+        XCTAssertTrue(RemoteAlarmLink.created(for: .eightSleep).contains("oneoff-1"),
+                      "provenance, or the sweep can never remove it")
+        XCTAssertFalse(receipt.note.contains("Delete it in the Eight Sleep app"), receipt.note)
+    }
+
+    /// Two new alarms at once claims neither, and says so.
+    ///
+    /// Guessing which of two is the override would put a delete licence on an alarm that might be
+    /// his. Being told to tidy one thing by hand is a far smaller cost than an alarm of his being
+    /// deleted by a sweep that was sure.
+    func testTwoNewAlarmsAtOnceClaimsNeither() async throws {
+        let his = alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)
+        let a = alarm(id: "new-a", time: "06:20:00", days: ["tuesday"], routine: nil)
+        let b = alarm(id: "new-b", time: "06:20:00", days: ["tuesday"], routine: nil)
+        StubServer.sequences = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): [
+                (200, ["alarms": [his]] as [String: Any]),
+                (200, ["alarms": [his]] as [String: Any]),
+                (200, ["alarms": [his, a, b]] as [String: Any]),
+                (200, ["alarms": [his, a, b]] as [String: Any]),
+            ],
+        ]
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["ok": true] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20)],
+                              skipsNextMorning: false)
+        )
+
+        XCTAssertTrue(RemoteAlarmLink.created(for: .eightSleep).isEmpty,
+                      "neither is claimed, because either could be his")
+        XCTAssertTrue(receipt.isPartial, "and it is a warning, not a green tick")
+        XCTAssertTrue(receipt.note.contains("could not tell which one it is"), receipt.note)
+    }
+
     // MARK: The gate has to describe what will actually be sent
 
     /// The preview shows the routine's own time, not the override's.

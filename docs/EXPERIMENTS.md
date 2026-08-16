@@ -1015,6 +1015,15 @@ no screenshot, and no going into the Eight Sleep app at all.
 tested any other way, and an override alarm that outlives its morning is a weekly alarm at the wrong
 time, which is the failure this whole change exists to prevent.
 
+**One path used to make that impossible and no longer does.** If the create is accepted and the
+response carries no id, the alarm is real and unidentifiable, so it can never be linked and therefore
+never deleted by the sweep. It would ring every week at the override time until Alex cleared it by
+hand, which is the chore he asked never to do again. The account is now read back and the id that was
+not there before is claimed, the same way the routine create path already worked. If **two** appear,
+neither is claimed and the sync reports as a warning: guessing which is which would put a delete
+licence on an alarm that might be his, and being told to tidy one thing by hand is far cheaper than
+an alarm of his deleted by a sweep that was certain.
+
 
 
 ## Completed
