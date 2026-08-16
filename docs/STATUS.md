@@ -13,7 +13,7 @@ follows. This is the first day that sentence has been true.
 | Leg | State | How it was verified |
 |---|---|---|
 | iPhone | **working** | rang through Silent, through Focus, phone locked and face down |
-| Eight Sleep | **works, confirmed in his own app 17 Aug 14:21** | his Eight Sleep app now lists `EVERY WEEKDAY 05:51` and `EVERY WEEKEND 09:55`, both created or moved by OneAlarm. The weekend one is the first alarm this app has ever made that he can actually see. Cause of the two weeks before it: `E14` |
+| Eight Sleep | **routines work, confirmed 17 Aug 14:21. One-offs are CONFIRMED BROKEN, 17 Aug 17:02** | his Eight Sleep app now lists `EVERY WEEKDAY 05:51` and `EVERY WEEKEND 09:55`, both created or moved by OneAlarm, and it follows a routine being split and merged. **But a one-off moves the whole weekly series**: bending one Monday to 09:40 set `EVERY WEEKDAY` to 09:30 on his bed. Eight Sleep has a native one-off, `UPCOMING ALARM ONLY`, and OneAlarm does not use it. `E23` |
 | Whoop | **working** | written, and the new time confirmed in the Whoop app |
 
 **This header used to say "It works. All three legs were verified", directly above a table saying one

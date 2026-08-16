@@ -780,6 +780,38 @@ capped at `WhoopAdapter.scheduleCeiling`.
 
 ## E23 🔴 Which field carries Eight Sleep's "UPCOMING ALARM ONLY" override?
 
+> **THE BUG IS CONFIRMED ON HIS BED, 17 August 17:02.** He bent tomorrow to 09:40 against a Weekdays
+> routine of 09:05. OneAlarm's own screen was correct:
+>
+> ```
+> TOMORROW ONLY
+> 09:40  0̶9̶:̶0̶5̶
+> ```
+>
+> His Eight Sleep app one minute later:
+>
+> ```
+> EVERY WEEKDAY   09:30      <- the whole series, moved
+> EVERY WEEKEND   10:55
+> ```
+>
+> 09:30 is 09:40 minus the ten minute bed lead, applied to **every weekday**. Tuesday through Friday
+> moved for a bend that was only ever about Monday. Alex: *"even though this displays correctly on the
+> OneAlarm app, instead of changing it for one time, it changes the entire Monday to Friday routine on
+> Eight Sleep."*
+>
+> So the display half of this is done and the write half is wrong, exactly as predicted. **The one-off
+> is the last thing on this leg that does not work**, and it does not work because OneAlarm is using
+> `time` on the recurring alarm instead of the mechanism Eight Sleep built for it.
+>
+> **The raw dump he sent is not the one that answers this.** It carries no override field, and it
+> could not: the alarm he dumped is one of the old nap-tagged ghosts, and more importantly **no
+> Eight Sleep native override was active at the time**. OneAlarm's bend does not set one, it rewrites
+> `time`, which is the whole problem. The field only exists on the object while an override set **in
+> the Eight Sleep app** is live. That is the capture still needed.
+
+
+
 **This is the most valuable open question in the project, and Alex found it.** 17 August, from his own
 Eight Sleep home screen:
 

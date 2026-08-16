@@ -594,7 +594,19 @@ final class ScheduleStore {
         if override.isSkip {
             return "No alarm on \(dayLabel(override.day)). \(routine) is back after that, unchanged."
         }
-        return "\(routine) is back the next day. Nothing about it changed."
+        // **"Nothing about it changed" was false on the bed, and he caught it.** 17 August 17:02: he
+        // bent one Monday to 09:40 and his Eight Sleep app went to `EVERY WEEKDAY 09:30`. The whole
+        // series, for a bend about one morning.
+        //
+        // True of the routine in OneAlarm, and OneAlarm is not the only thing he looks at. Eight
+        // Sleep has a native one-off, `UPCOMING ALARM ONLY`, and this app writes `time` on the
+        // recurring alarm instead, so a bend really does move his week there until the next sync
+        // puts it back. `E23` is the fix. Until it lands the screen says so, because a sentence
+        // promising nothing changed, above a bed where something did, is the exact kind of claim
+        // this project keeps having to retract.
+        let bedIsLinked = authStates[.eightSleep]?.isConnected == true
+        guard bedIsLinked else { return "\(routine) is back the next day. Nothing about it changed." }
+        return "\(routine) is back the next day. Your bed shows the whole week at this time until then, which is an Eight Sleep limit OneAlarm is working around."
     }
 
     func dayLabel(_ day: CalendarDay) -> String {

@@ -15,6 +15,43 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**The one-off write to Eight Sleep is confirmed broken on his bed, and the display half is confirmed
+right.** `[observed, 17 August 17:02 and 17:03]` He bent one Monday to 09:40 against a 09:05 routine.
+
+OneAlarm showed exactly what was asked for:
+
+```
+TOMORROW ONLY
+09:40  0̶9̶:̶0̶5̶
+```
+
+His Eight Sleep app, one minute later:
+
+```
+EVERY WEEKDAY   09:30      <- the whole series
+EVERY WEEKEND   10:55
+```
+
+Alex: *"even though this displays correctly on the OneAlarm app, instead of changing it for one time,
+it changes the entire Monday to Friday routine on Eight Sleep."*
+
+**The screen was right and the write was wrong, which is the most dangerous combination this app can
+produce** and the reason a green row has never been allowed to count as evidence here. Everything
+OneAlarm could check said the bend worked. Only his bed disagreed, and only because he looked.
+
+The cause is `E23`: Eight Sleep has a native `UPCOMING ALARM ONLY` and OneAlarm writes `time` on the
+recurring alarm instead. Until that is fixed the screen says so, rather than continuing to promise
+"nothing about it changed" above a bed where something did.
+
+**A Swift type checker that gives up tells you nothing, and the shape that does it is worth knowing.**
+`[observed]` A multi-line ternary choosing between two heterogeneous `(Int, Any)` tuple literals
+produced "Failed to produce diagnostic for expression; please submit a bug report". Not an error about
+the code, an error about being unable to describe the code. Splitting it into plain statements fixed
+it in one edit. Third distinct member of the family this project has now hit, after the oversized view
+body and the extracted generic return type: **when the compiler stops making sense, stop reading the
+error and start making the expression smaller.**
+
+
 **A test suite goes stale in the same way copy does, and it is more dangerous.** `[observed,
 17 August]` Alex's first full `Cmd+U` after the day's work returned five failures. One was a real
 compile error, actor isolation on a pure function. **The other four were tests asserting rules this

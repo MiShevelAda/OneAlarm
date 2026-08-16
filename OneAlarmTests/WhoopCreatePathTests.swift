@@ -71,11 +71,19 @@ final class WhoopCreatePathTests: XCTestCase {
             }
 
             let lookup = Self.key(method, path)
-            let fallback: (Int, Any) = (Self.upsertWorks
+
+            // Split into plain statements rather than one ternary, and it is not a style choice.
+            // A multi-line condition choosing between two heterogeneous `(Int, Any)` tuple literals
+            // made the Swift type checker give up entirely: "Failed to produce diagnostic for
+            // expression; please submit a bug report". Not an error in the code, an error about not
+            // being able to describe the code, which is the least useful failure a compiler has.
+            let isNewSchedulePut = Self.upsertWorks
                 && method == "PUT"
-                && path.hasPrefix("/smart-alarm-bff/v1/schedule/"))
-                ? (200, [String: Any]())
-                : (404, ["message": "no stub"])
+                && path.hasPrefix("/smart-alarm-bff/v1/schedule/")
+            var fallback: (Int, Any) = (404, ["message": "no stub"] as [String: Any])
+            if isNewSchedulePut {
+                fallback = (200, [String: Any]())
+            }
             let (status, payload) = Self.responses[lookup] ?? fallback
             let response = HTTPURLResponse(url: request.url!, statusCode: status,
                                            httpVersion: "HTTP/1.1", headerFields: nil)!
