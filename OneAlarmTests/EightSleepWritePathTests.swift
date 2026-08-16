@@ -31,13 +31,30 @@ final class EightSleepWritePathTests: XCTestCase {
         }
 
         nonisolated(unsafe) static var responses: [String: (Int, Any)] = [:]
+        /// Answers that change between calls to the same address.
+        ///
+        /// Needed because the create path reads the account, writes, and reads again to find what
+        /// appeared. A stub that answers identically both times cannot express that, and a test
+        /// written against one would fail for a reason that has nothing to do with the code. The
+        /// first version of the create test did exactly that.
+        ///
+        /// Consumed front to back; once empty, `responses` answers.
+        nonisolated(unsafe) static var sequences: [String: [(Int, Any)]] = [:]
         nonisolated(unsafe) static var calls: [Call] = []
         nonisolated(unsafe) static var bodies: [String: [String: Any]] = [:]
 
         static func reset() {
             responses = [:]
+            sequences = [:]
             calls = []
             bodies = [:]
+        }
+
+        static func next(_ key: String) -> (Int, Any)? {
+            guard var queued = sequences[key], !queued.isEmpty else { return nil }
+            let head = queued.removeFirst()
+            sequences[key] = queued
+            return head
         }
 
         static func key(_ method: String, _ path: String) -> String { "\(method) \(path)" }
@@ -66,7 +83,8 @@ final class EightSleepWritePathTests: XCTestCase {
                 }
             }
 
-            let (status, payload) = Self.responses[Self.key(method, path)] ?? (404, ["error": "no stub"])
+            let lookup = Self.key(method, path)
+            let (status, payload) = Self.next(lookup) ?? Self.responses[lookup] ?? (404, ["error": "no stub"])
             let response = HTTPURLResponse(url: request.url!, statusCode: status,
                                            httpVersion: "HTTP/1.1", headerFields: nil)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -378,23 +396,27 @@ final class EightSleepWritePathTests: XCTestCase {
         let after = before + [alarm(id: "brand-new", time: "08:50:00", days: [], routine: "r2")]
 
         StubServer.responses = [
-            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, ["alarms": before]),
             StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, [
                 "routines": [routine(id: "r2", days: ["saturday", "sunday"])],
             ]),
             StubServer.key("PUT", "/v2/users/\(userID)/routines/r2"): accepted,
+            // Every read after the first one sees the new alarm.
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, ["alarms": after]),
+        ]
+        // The **first** read is the account before the create. Sequenced rather than mutated
+        // mid-test: `write` reads, writes, then reads again, and the whole point is that the second
+        // read differs from the first.
+        StubServer.sequences[StubServer.key("GET", "/v2/users/\(userID)/alarms")] = [
+            (200, ["alarms": before] as Any),
         ]
 
-        let subject = await adapter()
         let plan = RoutinePlan(
             device: .eightSleep,
             entries: [entry("weekend", "Weekend", [.saturday, .sunday], hour: 8, minute: 50)],
             skipsNextMorning: false
         )
 
-        // The re-read after the create returns the account with the new alarm on it.
-        StubServer.responses[StubServer.key("GET", "/v2/users/\(userID)/alarms")] = (200, ["alarms": after])
-        _ = try await subject.write(target, plan: plan)
+        _ = try await adapter().write(target, plan: plan)
 
         XCTAssertEqual(
             RemoteAlarmLink.alarmID(for: "weekend", on: .eightSleep), "brand-new",
