@@ -440,6 +440,24 @@ PUT https://api.prod.whoop.com/smart-alarm-bff/v1/schedule/{schedule_id}?apiVers
 > like a discovery. What broke the loop was dumping the response and reading it, not reasoning
 > harder. That worked twice tonight and nothing else worked at all.
 
+> **The schedule row's real field list, off Alex's account, 17 August 15:53.** Printed rather than
+> inferred, which is the only thing that has ever worked on this service:
+>
+> ```
+> alarm_mode, alarm_mode_label_display, alarm_on, days_scheduled_label_display,
+> delete_label_display, edit_label_display, latest_wake_time, schedule_id, scheduled_days
+> latest_wake_time = 6:55 AM
+> scheduled_days   = (MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY)
+> alarm_on         = 1
+> ```
+>
+> **`delete_label_display` and `edit_label_display` are new**, and neither appears anywhere in this
+> document or in the reference work. They are rendered labels, so they are not endpoints, but they
+> say that this screen's model **describes a delete and an edit action per schedule**. That is the
+> most promising lead yet for the two things this leg still cannot do, creating a schedule and
+> removing one. Their **values** have never been printed, only their names, and the value is where
+> an action target would live if one exists. `E21`.
+
 **Read format and write format are different objects, and this is the durable fact.**
 
 | | `GET /schedule/all` | `PUT /schedule/{id}` |

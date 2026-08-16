@@ -702,6 +702,39 @@ no credentials and cannot be run here.
 
 
 
+---
+
+## E21 🟠 Do `delete_label_display` and `edit_label_display` name a Whoop action?
+
+**Why.** Alex deleted every Whoop schedule on 17 August and neither OneAlarm nor Whoop's own
+`CREATE SCHEDULE` button could make one. The six field write body is confirmed; what is missing is the
+address and verb for a create, and nothing public documents it.
+
+His schedule row carries `delete_label_display` and `edit_label_display`, which are not in this
+project's record and not in the reference work. They are **rendered labels**, so most likely they hold
+the words "Delete" and "Edit" and nothing more. But this endpoint is a screen description, and screen
+descriptions sometimes carry the action alongside the label.
+
+**Test.** The raw envelope panel already prints one level into each nested object. Read the **values**
+of those two keys, not just their names. Zero requests: the panel is already built and the data is
+already on his phone.
+
+**Predictions, written before it runs.**
+
+| Value | Means | Then |
+|---|---|---|
+| `"Delete"` and `"Edit"`, plain strings | labels only, as expected | dead end, close this and look at `schedule_button_component` instead |
+| an object carrying a path, method or action name | the screen names its own actions | that is the create and delete contract, taken from the server rather than guessed |
+| absent from the panel | the values are nested deeper than one level | print two levels |
+
+**Most likely the first**, and it is still worth one screenshot he is already taking, because the
+alternative is inventing a request against a private API and that has cost this project five hours
+once already.
+
+**Whose.** Alex, one screenshot of the Whoop raw panel.
+
+
+
 ## Completed
 
 | | Question | Answer | Date |

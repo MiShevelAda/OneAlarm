@@ -1087,7 +1087,13 @@ struct AlarmPickerScreen: View {
     /// inventing an alarm, which is worse than the clutter it causes.
     private var pickerSubtitle: String {
         let inert = choices.filter { !$0.canFire }.count
-        let base = "This account has \(choices.count). OneAlarm changes one of them and leaves the rest alone."
+        // **"OneAlarm changes one of them" stopped being true on the Whoop leg on 17 August.** It now
+        // writes one schedule per routine, matched by days, after Alex's account proved Whoop holds
+        // more than one. A screen still promising the old behaviour is the sort of stale copy that
+        // gets read as a statement of intent and then defended.
+        let base = device == .whoop
+            ? "This account has \(choices.count). Each of your routines drives the schedule with its own days, so you do not usually pick one here."
+            : "This account has \(choices.count). OneAlarm changes one of them and leaves the rest alone."
         guard inert > 0 else { return base }
         let word = inert == 1 ? "one" : "\(inert)"
         return base + " The \(device.displayName) app may show fewer: \(word) of these can never go off, and their app hides those."
@@ -1097,7 +1103,7 @@ struct AlarmPickerScreen: View {
         Screen(title: device.displayName, onBack: onBack) {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Which alarm should OneAlarm move?")
+                    Text(device == .whoop ? "Which schedule is the fallback?" : "Which alarm should OneAlarm move?")
                         .font(.system(size: 25, weight: .bold)).tracking(-0.6)
                     Text(pickerSubtitle).font(.system(size: 15)).foregroundStyle(Theme.grey)
                 }
@@ -1190,9 +1196,21 @@ struct AlarmPickerScreen: View {
                     // wrong place". A diagnostic that appears only on failure cannot answer that,
                     // because the parse succeeds either way. Field names from an alarm schedule,
                     // never a credential.
+                    // **Device aware, because it was not and Alex saw the result.** On 17 August this
+                    // printed "This account did not name its beds. Eight Sleep does not put a bed or
+                    // a side on an alarm" on the **Whoop** screen. `device` has been a property of
+                    // this screen since it was written; the copy simply never asked.
+                    //
+                    // Worth more than a typo fix: the whole point of this notice is telling a real
+                    // absence apart from looking in the wrong place, and a notice naming the wrong
+                    // service answers that question about a service nobody asked about.
                     Notice(.warn,
-                           title: "This account did not name its beds.",
-                           "Eight Sleep does not put a bed or a side on an alarm, so these are listed by time. To be certain which is which, open the Eight Sleep app and compare the times.\n\nWhat this account returned: "
+                           title: device == .whoop
+                               ? "Whoop does not label its schedules."
+                               : "This account did not name its beds.",
+                           (device == .whoop
+                            ? "A Whoop schedule carries days and a wake time and no name, so these are listed by time. Since 17 August you do not usually have to choose: each of your routines drives the schedule with its own days. This list is here for the case where that cannot be worked out.\n\nWhat this account returned: "
+                            : "Eight Sleep does not put a bed or a side on an alarm, so these are listed by time. To be certain which is which, open the Eight Sleep app and compare the times.\n\nWhat this account returned: ")
                                + sample.rawKeys.joined(separator: ", "))
                 }
 
