@@ -45,6 +45,37 @@ where the work was.
 **Test at the layer the user sees.** `[observed]` A written file is not a scheduled alarm. A 200 is
 not a moved alarm. A moved alarm on a server is not a buzzing strap. Each of those gaps was real.
 
+**Reading code back finds what writing it did not.** `[observed, five times in one night]` On 16 to 17
+August, tracing freshly written code found: a create loop that would have put eight alarms on his
+bed while reporting success every time, a test that would have failed for a reason unrelated to the
+code, a member that landed one line outside its own type, a refused alarm leaving untrackable alarms
+on his phone, and a completely successful run reporting as a warning. None of these was found by
+writing more carefully. All five were found by going back over it as a reader. **They are different
+activities and the second one is not optional.**
+
+**Grep finds a compile error that reading does not.** `[observed, twice]` An unannotated
+heterogeneous dictionary literal, and eleven empty collection literals in an `Any` position. Both are
+hard Swift errors, both survived several readings, and both fell out of a one line sweep. When there
+is no compiler, the substitute is a pattern search for the specific shapes the compiler would reject,
+not more attention.
+
+**A blocked route is not the same as no route.** `[observed]` "There is no Swift toolchain here" was
+true and was treated as the end of it for a whole day. `download.swift.org` is refused by the proxy;
+`registry.npmjs.org` is in the proxy's own bypass list, and tree-sitter's Swift grammar is on it. A
+real parse of every file followed, and it immediately paid for itself. **Ask what else is reachable
+before accepting a limit.**
+
+**When a probe is refused, say so and stop guessing.** `[observed]` Four unauthenticated GETs
+established that `app-api.8slp.net` is unreachable from a session, which settles two open questions
+about API versions as unanswerable here rather than leaving them to be re-attempted. A checked "no"
+is worth as much as a "yes" and costs a minute.
+
+**Two structural changes to the leg that must ring, in one night, with no compiler, is the limit.**
+`[decided, 17 Aug]` A third was declined and written down instead: in the code, in `STATUS.md`, and
+as a test that passes today so the next person knows the behaviour moved deliberately. The rule is
+not "never change it", it is that a stated gap beats an unstated one and the count of unverified
+changes to that leg is the thing to watch.
+
 **Ask what the object is, not just what is in it.** `[16 Aug]` Three separate conclusions were
 drawn from missing fields: Whoop's names did not exist, Eight Sleep did not name beds, alarms could
 not be attributed to a Pod. All three were wrong, and all three were the same error: **absence in
