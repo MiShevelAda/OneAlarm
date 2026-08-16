@@ -53,12 +53,27 @@ finished.
 
 ## Do not
 
-- Send anything to `smart-alarm-service`, including `strap-status` and `wbl`. The whole prefix is
-  outside the Whoop allowlist on purpose.
-- **Create** an alarm on Whoop. Alex deleted every Whoop schedule on 2026-08-17 and neither OneAlarm
-  nor Whoop's own `CREATE SCHEDULE` button could make one, so this is being reopened, but **only
-  against a captured request**. The six-field body is confirmed; the address and verb for a create
-  are not, and guessing on this service already cost five hours. See the raw envelope panel.
+- **Send anything to a Whoop create address that is not in the ladder.** Creating a Whoop schedule
+  was banned outright until 2026-08-17, when Alex deleted every schedule on his account, could not
+  remake one from Whoop's own app, and said *"do everything needed to get it done."*
+
+  The research is done and is in `RESEARCH.md` §2.3: **no public source documents a create or a
+  delete**, and the most thorough public capture of the Whoop app deliberately exercised Smart Alarm
+  CRUD and recorded only an update. So the create is a **ladder of four candidates**, first of which
+  is the evidence-backed upsert, `PUT /schedule/{a-new-uuid}`, on an address already confirmed
+  working with a body already confirmed working. Every rung reports its status. `E22`.
+
+  What keeps this honest: a create cannot destroy anything, the account is capped at
+  `WhoopAdapter.scheduleCeiling`, and a refusal is reported with its status rather than swallowed.
+  **Do not add a fifth rung, and never a DELETE, without a capture behind it.**
+- **Touch `smart-alarm-service`**, including `strap-status`, `wbl`, `smartalarm/preferences`, and
+  `alarm-schedule/enable` and `/disable`. The last two are the master switch Alex turns on by hand,
+  and they are real: captured, documented, and still deliberately out of reach. A blanket ban on a
+  prefix is worth more than a carve out nobody remembers, and that prefix also carries telemetry.
+- **Trust an endpoint that came from a summary rather than from raw source.** On 2026-08-17 a
+  summarising fetch invented a clean `POST /smart-alarm-service/v1/smart-alarm` create and a matching
+  DELETE, neither of which exists in the file it claimed to be reading. It was caught by downloading
+  the raw source. Anything that is going to become code gets read at the source.
 - **Delete an Eight Sleep alarm OneAlarm did not create.** Deleting is otherwise allowed as of
   2026-08-17, when Alex overruled the blanket ban: *"the one alarm app should be able to delete
   alarms if there are changes because right now for whatever reason I had three alarms in my sleep

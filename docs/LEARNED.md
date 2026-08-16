@@ -15,6 +15,49 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**Research before guessing, and it changed the answer.** `[17 August]` Alex asked why the Whoop leg
+cannot behave like the Eight Sleep one and told me to find out or bring in help. I had already written
+a create ladder of three POST paths I reasoned my way to. A search of every public Whoop reverse
+engineering project found that **none of those three exists anywhere**, and found something better:
+every published capture of the Whoop app records a schedule **update** and no create and no delete,
+including one whose author deliberately exercised Smart Alarm CRUD. So the update is probably an
+**upsert**, and a PUT to a client minted id went to the top of the ladder, ahead of everything I had
+invented. Confirmed address, confirmed body, only the id is new.
+
+Thirty minutes of searching beat an hour of reasoning, again, and the lesson is the same one this
+project keeps paying for in a new costume: **absence in a thorough capture is evidence, and it points
+somewhere.** "Nobody has ever seen this app POST" is not a dead end, it is a fact that narrows the
+search.
+
+⚠️ **And one caution worth more than the finding.** During that search, a summarising fetch of a
+source file **fabricated** a clean create endpoint and a matching delete, neither of which is in the
+file. It was caught by downloading the raw source and reading it. A confident, well formatted, plausible
+endpoint invented by a summariser is exactly the shape of thing this project would have built on. **Read
+the raw source, not a summary of it**, whenever the answer is going to become code.
+
+
+**The Whoop assignment picker works and is the wrong design. Alex, 17 August, after it succeeded:**
+*"Now it worked, but this is not how it's supposed to work as the functionality of the app. Right? We
+need to find a better solution, because intuitively I think I'm selecting one alarm, and I'm only
+changing the Sunday alarm. This is not user friendly, and this is not gonna be understood by the
+user."*
+
+He is right, and the tell is that he could describe what he expected to happen and it was not what
+happened. The screen shows a **list of alarms** with a radio button and "Use this alarm", which is the
+old one-schedule model wearing new words. What the tap actually does is hand a schedule to a
+**routine**, and nothing on that screen names the routine, says its days will be rewritten, or
+explains why one schedule needed picking when the other did not.
+
+**The rule underneath, which is bigger than this screen:** this app's premise is that routines are the
+source of truth and devices follow. **Every screen should read in that direction.** A screen that asks
+him to start from the device's list and work backwards to a routine is inverted, whatever its words
+say, and it will keep being confusing however the copy is rewritten.
+
+**And the deeper point: he should never be asked at all.** Assignment only exists because Whoop cannot
+create a schedule. On Eight Sleep the same situation needs no screen, because a routine with no alarm
+gets one made. Fixing the create removes the question rather than wording it better.
+
+
 **Whoop holds MORE THAN ONE schedule per account. The opposite was written down as structural and it
 was wrong.** `[observed, 17 August, on his account]` He made a Monday to Thursday schedule in the
 Whoop app, OneAlarm extended it to Friday on the next Set, and then he made a **second** schedule for

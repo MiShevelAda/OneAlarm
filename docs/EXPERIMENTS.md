@@ -735,6 +735,47 @@ once already.
 
 
 
+---
+
+## E22 🔴 Is `PUT /smart-alarm-bff/v1/schedule/{id}` an upsert?
+
+**Why.** Alex deleted every Whoop schedule, could not remake one from Whoop's own app, and asked why
+this leg cannot behave like Eight Sleep. The answer is that it cannot create. A search of every public
+Whoop reverse engineering project on 17 August found **no create and no delete anywhere**, including in
+`thebriangao/totem`, built from mitmproxy captures whose author deliberately exercised Smart Alarm
+CRUD. See `RESEARCH.md` §2.3.
+
+**The hypothesis, and why it is better founded than the three paths it replaced.** If the app never
+POSTs, and its UI plainly creates, the update is probably an upsert. `PUT /schedule/{id}` with a
+client minted uuid is the standard shape for that, and it fits what is already known about this
+endpoint, which replaces rather than merges. The address is **already confirmed working** against his
+account and the body is the six field object confirmed with it. The only new thing in the request is
+an id that does not exist yet.
+
+**Test.** Have a routine with no matching schedule and press Set all alarms. The ladder tries the
+upsert first and reports every rung with its status.
+
+| What the Whoop row says | Means | Then |
+|---|---|---|
+| "Made a new Whoop schedule for Weekend" | upsert confirmed | delete the three POST rungs, record it in `RESEARCH.md` §2.3, and this leg matches Eight Sleep |
+| `PUT .../{new-id}: 404` then a POST rung answering | not an upsert, and the POST guess was right | keep the rung that answered, drop the rest |
+| every rung 404 | the create is somewhere nobody has looked | capture it from his own device with a proxy, which is the only remaining route |
+| `PUT .../{new-id}: 400` or `422` | the address accepts a new id and the **body** is wrong | the most useful failure available: it says a create exists here and names the field |
+
+**Prediction, written before it runs.** The upsert works, or returns 400/422 rather than 404.
+Confidence moderate. Against it: a BFF layer often validates that the path id exists before touching
+the domain service, which would give 404. For it: the absence of any POST in a capture that
+deliberately went looking has to be explained somehow, and upsert is the least exotic explanation.
+
+**Why this is acceptable to probe when guessing the write body was not.** A create cannot destroy
+anything. The worst outcome is a schedule he did not ask for, visible in the Whoop app and deletable
+there in one tap. The write's worst outcome was a real alarm silently moved. The account is also
+capped at `WhoopAdapter.scheduleCeiling`.
+
+**Whose.** Alex, one press of Set all alarms with a routine that has no schedule.
+
+
+
 ## Completed
 
 | | Question | Answer | Date |

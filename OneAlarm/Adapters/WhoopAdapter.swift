@@ -26,7 +26,7 @@ actor WhoopAdapter: DeviceAdapter {
     /// Note the host prefix too: `smart-alarm-service` is a different prefix from the allowlisted
     /// `smart-alarm-bff`, which puts the master enable/disable and the `smartalarm/wbl` telemetry
     /// endpoint out of reach. That separation is deliberate and worth not undoing.
-    private let http = HTTPClient(allowedPatterns: [
+    static let allowedPatterns: [String] = [
         #"^POST https://api\.prod\.whoop\.com/auth-service/v3/whoop/$"#,
         #"^GET https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/all\?apiVersion=7$"#,
         // The edit screen for one schedule. A read, and the only place the write contract is stated
@@ -34,7 +34,35 @@ actor WhoopAdapter: DeviceAdapter {
         // and sleep_goal, which is the vocabulary the PUT is validated against.
         #"^GET https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/components/populated/[^/?]+\?apiVersion=7$"#,
         #"^PUT https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/[^/?]+\?apiVersion=7$"#,
-    ])
+        // **The create, and every entry here is a candidate rather than a capture.**
+        //
+        // Alex deleted every Whoop schedule on 2026-08-17 and neither OneAlarm nor Whoop's own
+        // CREATE SCHEDULE button could make one, which left a routine permanently stranded on this
+        // leg: it cannot adopt a schedule whose days do not match exactly, and it cannot make one.
+        // He then asked for it to work the way Eight Sleep does and authorised finding out how.
+        //
+        // No public source documents creating a Whoop schedule. The **body** is not a guess: it is
+        // the six field object confirmed against his live account on 16 August, with the days and
+        // time of the routine that needs a schedule, and `alarm_mode` copied from a schedule he
+        // already has rather than chosen here. Only the address and the verb are unknown, so the
+        // ladder varies exactly that and reports what each rung was told.
+        //
+        // Ordered most to least likely, and every one is a POST. A create cannot destroy anything,
+        // which is why this is an acceptable thing to probe at all and why no DELETE appears here.
+        // The account is capped in `scheduleCeiling` so a misread success cannot fill his account.
+        #"^POST https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule\?apiVersion=7$"#,
+        #"^POST https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/all\?apiVersion=7$"#,
+        #"^POST https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/create\?apiVersion=7$"#,
+    ]
+
+    private var http = HTTPClient(allowedPatterns: WhoopAdapter.allowedPatterns)
+
+    /// The most schedules OneAlarm will ever leave on his account.
+    ///
+    /// A create against an address nobody has captured can succeed in ways nobody predicted, and the
+    /// failure that matters is not a refusal, it is a silent duplicate on every sync. Seven, because
+    /// a week has seven days and a routine per day is the most his week can express.
+    static let scheduleCeiling = 7
 
     private(set) var authState: AuthState = .notConfigured
 
@@ -73,8 +101,28 @@ actor WhoopAdapter: DeviceAdapter {
         case needsCode(Challenge)
     }
 
-    init(keychain: KeychainStore = KeychainStore()) {
+    /// The session is injectable so the whole leg can be exercised against a fake Whoop.
+    ///
+    /// Added 17 August, when the create ladder was written and there was no way to test it: this
+    /// adapter had no seam at all, so every question about what it sends could only be answered by
+    /// Alex running it against his real account. The Eight Sleep leg has had this since its write
+    /// path was rebuilt and it is the reason that leg stopped needing a phone for every question.
+    ///
+    /// The session goes **into** `HTTPClient` rather than around it, so the allowlist, the redirect
+    /// blocker and the JSON encoding all stay in the path under test. A stub that replaced the client
+    /// would pass while the allowlist silently blocked every request.
+    init(keychain: KeychainStore = KeychainStore(), session: URLSession? = nil) {
         self.keychain = keychain
+        if let session {
+            http = HTTPClient(allowedPatterns: Self.allowedPatterns, session: session)
+        }
+    }
+
+    /// Skip the Cognito grant, for tests only. Nothing in the app calls this.
+    func seedSessionForTesting(token: String) {
+        accessToken = token
+        tokenExpiry = Date().addingTimeInterval(3600)
+        authState = .connected
     }
 
     // MARK: Auth
@@ -942,6 +990,106 @@ actor WhoopAdapter: DeviceAdapter {
         return accepted
     }
 
+    /// What a create attempt did, so one round trip answers the question rather than half of it.
+    enum CreateOutcome: Equatable, Sendable {
+        case created(String)
+        /// Every rung and what it was told, joined. Reported to Alex verbatim.
+        case refused(String)
+    }
+
+    /// Make a Whoop schedule for a routine that has none, by copying one he already has.
+    ///
+    /// **The address is the only guess here, and it is guessed out loud.** No public source documents
+    /// creating a Whoop schedule, so three candidate paths are tried in order and every one reports
+    /// its status. The **body** is not a guess: it is the six field object confirmed against his live
+    /// account on 16 August, carrying the routine's days and time, with `alarm_mode` copied from a
+    /// schedule he already has rather than chosen here. Same discipline as the Eight Sleep create,
+    /// which copies an alarm rather than composing one.
+    ///
+    /// Why probing this is acceptable when guessing the write body was not: a create cannot destroy
+    /// anything. The worst outcome is a schedule he did not ask for, which he can see and delete in
+    /// the Whoop app, against the write's worst outcome of a real alarm silently moved.
+    ///
+    /// Returns rather than throws. A failed create must never take the schedules that DID write down
+    /// with it, which is the same rule the Eight Sleep create follows.
+    private func createSchedule(
+        like template: [String: Any],
+        days: Set<Locale.Weekday>,
+        time: WallClockTime,
+        target: ResolvedTarget,
+        token: String
+    ) async -> CreateOutcome {
+        let forRoutine = ResolvedTarget(
+            device: .whoop,
+            localTime: time,
+            weekdays: days,
+            dayShift: target.dayShift,
+            nextOccurrence: target.nextOccurrence,
+            utcOffsetSeconds: target.utcOffsetSeconds
+        )
+        let body = Self.domainBody(template, to: forRoutine)
+
+        // **The rungs, reordered on 17 August after research rather than before it.**
+        //
+        // The first version of this ladder was three POST paths I had reasoned my way to. A search of
+        // every public Whoop reverse engineering project found that **none of them exists anywhere**,
+        // and turned up something better: `thebriangao/totem` is an MCP server built from mitmproxy
+        // captures of the real Whoop iOS app, whose author deliberately exercised "Smart Alarm CRUD".
+        // Its recorded operation list contains a schedule **update** and no create and no delete.
+        //
+        // That is evidence of absence rather than a hole in the coverage, and it points somewhere
+        // specific: if the app never POSTs and never DELETEs, but the UI plainly creates and deletes,
+        // then **the update is probably an upsert**. `PUT /schedule/{id}` with an id the client mints
+        // is the standard shape for that, and it fits everything else known about this endpoint,
+        // which replaces rather than merges.
+        //
+        // So rung one is the upsert, and it is the best founded rung in this app: the address is
+        // already **confirmed working** against Alex's account, the body is the six field object
+        // confirmed with it, and the only new thing is an id that does not exist yet. The POST paths
+        // stay below it as inference, clearly labelled, tried only after the evidence-backed one.
+        var attempts: [String] = []
+        let minted = UUID().uuidString.lowercased()
+        let rungs: [(String, String)] = [
+            ("PUT", "/smart-alarm-bff/v1/schedule/\(minted)"),
+            ("POST", "/smart-alarm-bff/v1/schedule"),
+            ("POST", "/smart-alarm-bff/v1/schedule/all"),
+            ("POST", "/smart-alarm-bff/v1/schedule/create"),
+        ]
+        for (method, path) in rungs {
+            guard let url = URL(string: "\(Self.host)\(path)?apiVersion=7") else { continue }
+            guard let response = try? await http.send(
+                method, url,
+                headers: Self.dataHeaders(token: token, timeZone: TimeZone.current.identifier),
+                body: try? HTTPClient.json(body)
+            ) else {
+                attempts.append("\(method) \(path): blocked before sending")
+                continue
+            }
+
+            if response.isSuccess {
+                // On the upsert rung the id is the one we minted. On a POST it may come back in the
+                // body or only on the next read, and the caller re-reads either way, exactly as the
+                // Eight Sleep create does.
+                let id = (try? HTTPClient.dictionary(response.data))
+                    .flatMap { Self.scheduleID($0) } ?? (method == "PUT" ? minted : "")
+                return .created(id)
+            }
+
+            var line = "\(method) \(path.replacingOccurrences(of: minted, with: "{new-id}")): \(response.status)"
+            let said = Self.serverMessage(response.data)
+            if said != "nothing" { line += " (\(said))" }
+            attempts.append(line)
+
+            // 404 and 405 mean wrong address or wrong verb, so the next rung is worth trying. A 400
+            // or 422 means this address exists and read the body, which is the answer to the
+            // question being asked: stop, and report it, rather than firing two more writes at an
+            // endpoint that has already told us where we are.
+            if response.status == 400 || response.status == 422 { break }
+            if response.status == 401 || response.status == 403 || response.status == 429 { break }
+        }
+        return .refused(attempts.joined(separator: " | "))
+    }
+
     /// One Whoop schedule per routine, matched by day set, exactly as the Eight Sleep leg works.
     ///
     /// **The premise this replaces was wrong, and his own account disproved it.** `STATUS.md` problem
@@ -997,13 +1145,11 @@ actor WhoopAdapter: DeviceAdapter {
             RemoteAlarmLink.link(routine: pair.routineID, to: pair.alarmID, on: .whoop)
         }
 
-        guard !report.pairs.isEmpty else {
-            throw AdapterError.noMatchingDays(
-                routines: report.routinesWithNoAlarm,
-                alarms: candidates.map(\.label)
-            )
-        }
-
+        // **Deliberately no early throw when nothing matched.** The Eight Sleep leg had exactly this
+        // bug on 16 August: it refused before reaching the create, so the branch that would have
+        // fixed the situation could never run, and the message said "no alarm covers these days"
+        // about an app that was one request away from making one. Every routine unmatched is now the
+        // normal opening state of an account whose schedules OneAlarm has not seen before.
         let token = try await currentToken()
         var moved: [String] = []
         var failures: [String] = []
@@ -1031,15 +1177,68 @@ actor WhoopAdapter: DeviceAdapter {
             }
         }
 
-        guard failures.count < report.pairs.count else {
+        // `failures.isEmpty ||`, not `failures.count < report.pairs.count`, because with zero pairs
+        // both sides are zero and the guard fires on a run that did nothing wrong. The Eight Sleep
+        // leg shipped that exact off by one and reported a successful create as a total failure.
+        guard failures.isEmpty || failures.count < report.pairs.count else {
             throw AdapterError.unexpectedResponse("Every schedule failed: \(failures.joined(separator: " | ")).")
+        }
+        // A routine with no schedule gets one made, which is the whole point of today's work: Alex
+        // asked why this leg cannot behave like Eight Sleep, and the answer was that it could not
+        // create. Reported in full either way, because the address is a candidate rather than a
+        // capture and a refusal here is the most informative thing this app can currently produce.
+        var created: [String] = []
+        var createProblems: [String] = []
+        if !report.routinesWithNoAlarm.isEmpty, let template = schedules.first {
+            for entry in plan.entries where report.routinesWithNoAlarm.contains(entry.routineName) {
+                guard entry.shouldBeEnabled, !entry.weekdays.isEmpty else { continue }
+                guard schedules.count + created.count < Self.scheduleCeiling else {
+                    createProblems.append("Did not make a schedule for \(entry.routineName): already at \(Self.scheduleCeiling).")
+                    continue
+                }
+                switch await createSchedule(
+                    like: template, days: entry.weekdays, time: entry.timeToWrite,
+                    target: target, token: token
+                ) {
+                case .created:
+                    created.append(entry.routineName)
+                    // Re-read and link, so the next sync recognises it instead of making a second.
+                    // Exactly the loop the Eight Sleep create had to fix on 16 August.
+                    let after = (try? await fetchSchedules()) ?? []
+                    let known = Set(schedules.compactMap(Self.scheduleID))
+                    let fresh = after.compactMap(Self.scheduleID).filter { !known.contains($0) }
+                    if fresh.count == 1, let newID = fresh.first {
+                        RemoteAlarmLink.link(routine: entry.routineID, to: newID, on: .whoop)
+                    } else {
+                        createProblems.append("Made a schedule for \(entry.routineName) but could not tell which it is (\(fresh.count) appeared). Check the Whoop app before the next sync.")
+                    }
+                case .refused(let detail):
+                    createProblems.append("Could not make a Whoop schedule for \(entry.routineName). The server said: \(detail).")
+                }
+            }
+        }
+
+        // Nothing matched, nothing was made, and the create said why. Declared after the create
+        // block on purpose: it reads `created`, and Swift has no forward reference. A real failure
+        // has to read as one rather than as a quiet "nothing to move".
+        if report.pairs.isEmpty, created.isEmpty {
+            throw AdapterError.unexpectedResponse(
+                createProblems.isEmpty
+                    ? "No Whoop schedule matches \(report.routinesWithNoAlarm.joined(separator: " or ")), and none could be made."
+                    : createProblems.joined(separator: " ")
+            )
         }
 
         authState = .connected
         var note = moved.isEmpty ? "Nothing to move." : "Moved \(moved.joined(separator: ", "))."
-        if !report.routinesWithNoAlarm.isEmpty {
-            note += " No Whoop schedule runs on \(report.routinesWithNoAlarm.joined(separator: " or ")). Make one in the Whoop app, any time, and OneAlarm keeps it from then on."
+        if !created.isEmpty {
+            note = "Made a new Whoop schedule for \(created.joined(separator: " and ")). " + note
         }
+        let stillMissing = report.routinesWithNoAlarm.filter { !created.contains($0) }
+        if !stillMissing.isEmpty, createProblems.isEmpty {
+            note += " No Whoop schedule runs on \(stillMissing.joined(separator: " or ")). Make one in the Whoop app, any time, and OneAlarm keeps it from then on."
+        }
+        if !createProblems.isEmpty { note += " " + createProblems.joined(separator: " ") }
         if !failures.isEmpty { note += " " + failures.joined(separator: " ") }
 
         return WriteReceipt(

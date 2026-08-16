@@ -458,6 +458,55 @@ PUT https://api.prod.whoop.com/smart-alarm-bff/v1/schedule/{schedule_id}?apiVers
 > removing one. Their **values** have never been printed, only their names, and the value is where
 > an action target would live if one exists. `E21`.
 
+> **The public record on creating and deleting a Whoop schedule, searched 17 August 2026.** Alex
+> authorised the research after asking why this leg cannot behave like the Eight Sleep one.
+>
+> **There is no create and no delete in any public source.** The strongest artifact is
+> [`thebriangao/totem`](https://github.com/thebriangao/totem), an MCP server built from mitmproxy
+> captures of the live Whoop iOS app. Its `src/data/endpoints.ts` records every operation observed:
+>
+> ```
+> GET 200 /smart-alarm-bff/v1/schedule/all
+> GET 200 /smart-alarm-bff/v1/schedule/components/populated/{uuid}
+> GET 200 /smart-alarm-service/v1/smartalarm/preferences
+> PUT 200 /smart-alarm-bff/v1/schedule/{uuid}
+> PUT 200 /smart-alarm-service/v1/smartalarm/preferences
+> PUT 200 /smart-alarm-service/v1/strap-status
+> PUT 204 /smart-alarm-service/v1/alarm-schedule/disable
+> PUT 204 /smart-alarm-service/v1/alarm-schedule/enable
+> POST 204 /smart-alarm-service/v1/smartalarm/wbl
+> ```
+>
+> **No POST and no DELETE for a schedule**, and that is evidence of absence rather than thin coverage:
+> the author states the capture phase deliberately exercised "Smart Alarm CRUD".
+>
+> **So the update is probably an upsert.** If the app never POSTs, and its UI plainly creates, then
+> `PUT /smart-alarm-bff/v1/schedule/{id}` with a client minted id is the standard shape for what is
+> left. It also fits what is already known about that endpoint, which replaces rather than merges.
+> That is `E22`, and it is the first rung of OneAlarm's create ladder.
+>
+> **Two endpoints worth knowing about and still deliberately out of reach.**
+> `PUT /smart-alarm-service/v1/alarm-schedule/enable` and `/disable` are the master switch Alex had to
+> turn on by hand. They sit under `smart-alarm-service`, which `CLAUDE.md` bans wholesale, and that
+> ban stands until he says otherwise: the prefix also carries `strap-status` and the `wbl` telemetry
+> endpoint, and a blanket ban on a prefix is worth more than a carve out nobody remembers.
+>
+> **The official Whoop developer API has no alarm surface at all.** Confirmed against an archived copy
+> of the reference: the string "alarm" appears zero times, and every operation is a read except
+> `revokeUserOAuthAccess`. The `GET /alarms` and `POST /alarms` shapes circulating on the Whoop
+> community forum are **user feature requests, not endpoints**.
+>
+> **`schedule_button_component` probably names a screen, not an endpoint.** No public source shows its
+> contents. Elsewhere in Whoop's BFF tree a button component carries
+> `{id, title, icon, style, destination}`, where `destination` is in-app navigation. Worth dumping
+> once, worth less than it looked.
+>
+> ⚠️ **One caution recorded because it nearly reached this file.** During the search, a summarising
+> fetch of totem's `WHOOP.md` **fabricated** a clean `POST /smart-alarm-service/v1/smart-alarm` create
+> endpoint and a matching DELETE. Neither exists in that file. It was caught by downloading the raw
+> source. If that pair ever appears in this project from any route, **it is invented**, and the same
+> goes for any endpoint here without a capture behind it.
+
 **Read format and write format are different objects, and this is the durable fact.**
 
 | | `GET /schedule/all` | `PUT /schedule/{id}` |

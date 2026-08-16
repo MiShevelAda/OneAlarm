@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "17 Aug, 22:10 · hand a Whoop schedule to a routine"
+    static let marker = "17 Aug, 23:30 · OneAlarm tries to make Whoop schedules"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Your Weekend routine covers Sa and Su and your Whoop schedule covered Sa alone, so nothing matched and Whoop cannot create one. Tapping a schedule in Connections, Whoop now hands it to the routine that covers those days, and OneAlarm sets its days from then on."
+    static let whatIsNew = "A routine with no Whoop schedule now gets one made, the same as your bed. Nobody has ever published how Whoop creates a schedule, so OneAlarm tries the most likely request first and tells you exactly what the server replied, whichever way it goes."
 }
