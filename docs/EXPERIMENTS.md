@@ -153,6 +153,34 @@ not far-fetched, because the alarm may route to a device that is asleep on a cha
 > And `skippedUntil` holds a real timestamp while `skipNext` is 0, so the two are not a simple pair
 > and the native skip is not yet understood well enough to use.
 
+> **E3 AND E6 ANSWERED, 2026-08-16. The question was wrong, not just unanswered.**
+>
+> **Eight Sleep alarms are user scoped.** One alarm list per account, and it fires on whichever Pod
+> the account is currently assigned to. So an alarm does not belong to a bed, has never belonged to
+> a bed, and "which bed does this alarm control" has no answer because it is not a property that
+> exists. The `routine-` tag links an alarm to a **bedtime pairing**, a day of week grouping of a
+> bedtime schedule with an alarm, not to a Pod. A captured routines response carries no `deviceId`,
+> no `side` and no name.
+>
+> **The answerable question is "which bed am I on", and the Pod's name does exist.** Two reads:
+>
+> | | Gives |
+> |---|---|
+> | `GET https://client-api.8slp.net/v1/users/me` | `currentDevice.{id, side, timeZone}` and `devices[]`. Side is `left`, `right`, `solo` or `away` |
+> | `GET https://app-api.8slp.net/v1/household/users/{id}/summary` | `deviceName` per Pod. **The only place in the whole API a user visible Pod name exists.** `/v1/devices/{id}` has a model, a serial and a firmware version, and no name |
+>
+> Both are now in the allowlist and the picker states the answer once, at account level, rather than
+> badging each row with a bed it cannot know.
+>
+> **Do not write to `tags`.** It is generic cross object glue, present on alarms, on bedtime
+> schedules and on temperature state. Overwriting it very likely detaches the alarm from its
+> routine and silently breaks the bedtime pairing.
+>
+> **The 30 minute smart window was never real.** No window length field exists anywhere in this API.
+> The figure came from a sentence in Eight Sleep's own UI. A real window can be derived, but only
+> when the alarm is scheduled: `startTimestamp` to `nextTimestamp`. Until then the app should print
+> no number. **This means every range the bed's row has ever drawn was invented.**
+
 ## E6 🟡 Can one Eight Sleep account expose both sides of one bed?
 
 **Why.** It decides whether the couple case is a real product case or out of scope. The spec

@@ -661,7 +661,10 @@ struct AlarmPickerScreen: View {
     let onBack: () -> Void
     let onDisconnect: () -> Void
 
+    @Environment(ScheduleStore.self) private var store
+
     @State private var selected: String? = nil
+    @State private var bed: EightSleepAdapter.BedIdentity?
 
     var body: some View {
         Screen(title: device.displayName, onBack: onBack) {
@@ -741,6 +744,14 @@ struct AlarmPickerScreen: View {
                     Notice(.warn,
                            title: "This account returned a shape OneAlarm did not recognise.",
                            "Fields returned: " + unparsed.rawKeys.joined(separator: ", "))
+                } else if let bed, let label = bed.label {
+                    // The answer, once, at account level. Not a badge per row: alarms on this API
+                    // are user scoped, so an alarm does not belong to a bed and a per row bed name
+                    // would be a claim the API cannot support.
+                    Notice(.good, title: "You are on \(label).",
+                           bed.deviceCount > 1
+                           ? "This account has \(bed.deviceCount) Pods and one shared list of alarms. Whichever alarm you pick fires on the bed you are currently assigned to, which is this one. Move yourself in the Eight Sleep app to change that."
+                           : "Your alarms fire on this bed.")
                 } else if choices.contains(where: { $0.group == nil }), let sample = choices.first {
                     // Shown when the parse SUCCEEDED but no name was found, which is the only way to
                     // tell "this service does not name its alarms" apart from "we looked in the
@@ -786,6 +797,13 @@ struct AlarmPickerScreen: View {
             selected = choices.count == 1
                 ? choices.first?.id
                 : RemoteAlarmSelection.selected(for: device)
+        }
+        .task {
+            // A label. It never blocks the picker and it never fails loudly: `currentBed` returns
+            // nil rather than throwing, because a bed whose name cannot be fetched must not take an
+            // alarm down with it.
+            guard device == .eightSleep else { return }
+            bed = await store.eightSleep.currentBed()
         }
     }
 }

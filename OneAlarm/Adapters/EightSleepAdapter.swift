@@ -36,6 +36,12 @@ actor EightSleepAdapter: DeviceAdapter {
         #"^POST https://auth-api\.8slp\.net/v1/tokens$"#,
         #"^GET https://app-api\.8slp\.net/v2/users/[^/]+/alarms$"#,
         #"^PUT https://app-api\.8slp\.net/v1/users/[^/]+/alarms/[^/]+$"#,
+        // Two reads, added to answer "which bed am I on". Neither can change anything.
+        //
+        // Note the third host. `client-api` is not `app-api`, and adding a host to an allowlist is
+        // exactly the kind of edit that should be visible rather than incidental.
+        #"^GET https://client-api\.8slp\.net/v1/users/me$"#,
+        #"^GET https://app-api\.8slp\.net/v1/household/users/[^/]+/summary$"#,
     ])
 
     private(set) var authState: AuthState = .notConfigured
@@ -139,6 +145,94 @@ actor EightSleepAdapter: DeviceAdapter {
                 group: Self.groupName(alarm)
             )
         }
+    }
+
+    /// Which bed this account is currently on, and what it is called.
+    ///
+    /// The answer to a question that was being asked the wrong way round. Alarms on this API are
+    /// **user scoped**: one list per account, firing on whichever Pod the account is currently
+    /// assigned to. So an alarm does not belong to a bed and never did, and the `routine-` tag it
+    /// carries points at a bedtime pairing rather than at a Pod.
+    ///
+    /// Which makes "which bed does this alarm control" unanswerable and beside the point, and
+    /// "which bed am I on" both answerable and the thing he actually needs to know. Two reads:
+    /// `users/me` gives the current device id and side, the household summary gives that device a
+    /// name.
+    ///
+    /// Returns `nil` rather than throwing. This is a label, and a label that cannot be fetched must
+    /// not take an alarm down with it.
+    struct BedIdentity: Equatable, Sendable {
+        var name: String?
+        var side: String?
+        var deviceCount: Int
+        var timeZone: String?
+
+        /// "Master Bedroom Pod, left side". Never invented: a missing half is simply not printed.
+        var label: String? {
+            let sideText = side.flatMap { raw -> String? in
+                switch raw.lowercased() {
+                case "left", "right": return "\(raw.lowercased()) side"
+                case "solo": return "whole bed"
+                case "away": return "away"
+                default: return nil
+                }
+            }
+            switch (name, sideText) {
+            case let (name?, side?): return "\(name), \(side)"
+            case let (name?, nil): return name
+            case let (nil, side?): return side.prefix(1).uppercased() + side.dropFirst()
+            default: return nil
+            }
+        }
+    }
+
+    func currentBed() async -> BedIdentity? {
+        guard let token = try? await currentToken() else { return nil }
+        guard let meURL = URL(string: "https://client-api.8slp.net/v1/users/me"),
+              let response = try? await http.send("GET", meURL, headers: Self.baseHeaders(token: token)),
+              response.isSuccess,
+              let envelope = try? HTTPClient.dictionary(response.data),
+              let user = envelope["user"] as? [String: Any]
+        else { return nil }
+
+        let current = user["currentDevice"] as? [String: Any]
+        let deviceID = current?["id"] as? String
+        var identity = BedIdentity(
+            name: nil,
+            side: current?["side"] as? String,
+            deviceCount: (user["devices"] as? [Any])?.count ?? 1,
+            timeZone: current?["timeZone"] as? String
+        )
+
+        // The name lives in the household summary and nowhere else. `/devices/{id}` carries a model
+        // string, a serial and a firmware version, and no name at all.
+        if let id = userID ?? user["userId"] as? String,
+           let url = URL(string: "\(Self.appHost)/v1/household/users/\(id)/summary"),
+           let summary = try? await http.send("GET", url, headers: Self.baseHeaders(token: token)),
+           summary.isSuccess,
+           let object = try? HTTPClient.dictionary(summary.data) {
+            identity.name = Self.deviceName(deviceID, in: object)
+        }
+        return identity
+    }
+
+    /// Walk households, sets, devices, looking for the one we are on.
+    ///
+    /// Falls back to the set's name, which is what the Home Assistant integration does, because a
+    /// household with one set usually names the set rather than the Pod.
+    static func deviceName(_ deviceID: String?, in summary: [String: Any]) -> String? {
+        guard let households = summary["households"] as? [[String: Any]] else { return nil }
+        for household in households {
+            for set in (household["sets"] as? [[String: Any]]) ?? [] {
+                let setName = set["setName"] as? String
+                for device in (set["devices"] as? [[String: Any]]) ?? [] {
+                    guard deviceID == nil || (device["deviceId"] as? String) == deviceID else { continue }
+                    if let name = device["deviceName"] as? String, !name.isEmpty { return name }
+                    if let setName, !setName.isEmpty { return setName }
+                }
+            }
+        }
+        return nil
     }
 
     func signOut() {
