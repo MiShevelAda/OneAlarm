@@ -1171,7 +1171,27 @@ confounded state is entirely possible and the answer may be neither clean.
 
 **Either way the silencing stays removed.** A door this project cannot prove opens is not a door.
 
-## E30 🟠 ANSWERED NEGATIVE, and now contested by `E31`. OneAlarm could not switch a schedule back on.
+## E30 🔵 WRONG, and corrected. The account gate was down the whole time.
+
+**Alex, 20 August, after turning the master switch on in Whoop's own app:** he made a schedule
+covering Monday to Thursday, then pressed Set all alarms with a Monday to Friday routine, and
+**Whoop's app added Friday**. The write landed, days and all.
+
+So `enabled: true` was never being ignored. `schedule_enabled`, the account level gate, was off, and
+under it no row could ring or be changed whatever its own setting said. `E30` read that as the write
+being one directional and it was not.
+
+**What led to the wrong answer.** One observation, "the time changed and the switch did not", with
+one explanation attached to it and no second candidate sought. There were at least three: the account
+gate, a renamed write field, and a live one-off holding the schedule. His own app named the first one
+in a red row we had already shipped, and it took a modal photograph and a research sweep to notice.
+
+**What survives it.** Removing the silencing was still right, for a reason that did not depend on
+this being true: the write body must have no way to express `enabled: false` while the account gate
+can be down for reasons outside OneAlarm's sight. And `E31` remains open and interesting, because
+Whoop's modal shows a one-off does switch something off.
+
+## E30-old 🟠 CONTESTED. OneAlarm could not switch a schedule back on.
 
 **Alex's account, 20 August.** He ran Set all alarms with no override in force, on a schedule
 OneAlarm had switched off itself. The row came back:

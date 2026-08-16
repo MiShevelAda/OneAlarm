@@ -81,6 +81,26 @@ Three things are still true and none of them is the Eight Sleep write:
    distinct classes of error have now shipped that a parse cannot catch. Two of them, argument order
    and a type declared twice, are checked by `tools/check_arg_order.js` as of today.
 
+## Whoop, confirmed end to end on 20 August
+
+`[Alex]` He turned the master switch on in Whoop's app, created a schedule covering **Monday to
+Thursday**, then pressed Set all alarms against a **Monday to Friday** routine. **Whoop's app added
+Friday.** Days and time both propagated.
+
+That is the Whoop leg working at the layer he sees, and it corrects `E30`: writes were never being
+ignored, the account level `schedule_enabled` gate was down and nothing could move under it.
+
+**The limit he then named himself, and it is permanent:** *"it only worked because this is the same
+time I set for the schedule ... it was not the plus fifteen or plus thirty minutes time that I set
+for the next day."* Correct. A one time change never reaches the strap. One Whoop schedule carries one
+time for **all** its days, so writing a bent time would move every morning it covers, and at BLE level
+the strap holds exactly **one** alarm slot, which is why Whoop's own app makes a schedule and a
+one-off mutually exclusive.
+
+So: **routines reach all three devices. A one time change reaches the phone and the bed, never the
+strap.** On a morning moved later the strap buzzes early, and the row now says so and tells him he
+can switch that schedule off in Whoop's app if he wants it quiet.
+
 ## The setup that is known to work
 
 `[Alex, 18 August: "step 1-5 worked"]` From this state the whole fan out is green, because every
