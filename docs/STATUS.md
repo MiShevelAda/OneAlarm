@@ -10,7 +10,7 @@ accounts on the night of 15 to 16 August.
 | Leg | State | How it was verified |
 |---|---|---|
 | iPhone | **working** | rang through Silent, through Focus, phone locked and face down |
-| Eight Sleep | **working** | written and read back, absolute instant compared |
+| Eight Sleep | **unconfirmed at the layer he sees** | written and read back at the API, absolute instant compared. Never once confirmed in the Eight Sleep app, and on 16 Aug he reported it not showing there. See `E13` |
 | Whoop | **working** | written, and the new time confirmed in the Whoop app |
 
 The previous version of this file said "never compiled". That stopped being true on 15 August. It

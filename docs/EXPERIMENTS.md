@@ -297,6 +297,39 @@ that Whoop holds one schedule, or stop writing Whoop days at all and only ever m
 **Whose.** The build, plus two screenshots from Alex.
 
 
+---
+
+## E13 🔴 Does the Eight Sleep app read the alarm object we write, or something else?
+
+**Why.** On 16 August the write landed on the API and Alex reported his Eight Sleep app still showing
+the old time. Those are two different claims and only one of them is ours. The bed screen, reading
+live from `GET /v2/users/{id}/alarms`, showed `08:55` for the weekday alarm, which is exactly what
+OneAlarm sent. So the object we can reach agrees with us.
+
+**The lead.** Every alarm on this account carries `tags: ["routine-<uuid>"]`. Their current app puts
+alarms **inside routines**, and nobody here has ever looked at a routine object. If their app renders
+the time from the routine rather than from the alarm, the alarm's `time` is a mirror their UI never
+reads, and every write so far has been landing in a field nothing displays.
+
+**Note what this exposes.** Eight Sleep has only ever been verified at the API layer, against
+`nextTimestamp`. It was never once confirmed in their app, unlike Whoop, which was. `docs/STATUS.md`
+called this leg **working** on the strength of a check that could not have caught this.
+
+**Test, in order, cheapest first.**
+1. Force quit the Eight Sleep app and reopen. Their app caches. If the new time appears, there is no
+   bug and the answer is a stale view.
+2. If not: open OneAlarm, Connections, Eight Sleep, and read "What Eight Sleep returns right now".
+   Compare its `time` and `nextTimestamp` against what their app shows.
+3. If the server holds our time and their app does not show it, find the routine object. Nothing may
+   be written to it until it has been read and its shape captured.
+
+**Prediction.** The server holds `08:55:00` and their app shows the old time, and the routine object
+carries its own copy. Written before the test.
+
+**Whose.** Step 1 and 2 are Alex, one minute. Step 3 is the build, and it is read only until there is
+a capture.
+
+
 ## Completed
 
 | | Question | Answer | Date |

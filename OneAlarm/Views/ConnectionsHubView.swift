@@ -716,6 +716,8 @@ struct BedConfirmScreen: View {
 
                 Notice("Nothing else on the account is touched. Vibration, thermal, the on switch and any alarm no routine describes are read and sent back exactly as they are.")
 
+                serverTruth
+
                 // There was no way to sign out of anything. `signOut()` has existed on both
                 // adapters since the first build and no screen ever called it, so the only way off
                 // an account was deleting the app.
@@ -742,6 +744,47 @@ struct BedConfirmScreen: View {
             // down with it.
             bed = await store.eightSleep.currentBed()
         }
+    }
+
+    /// What Eight Sleep's server returns for each alarm, verbatim, right now.
+    ///
+    /// Alex, 2026-08-16: *"it seems not to write the Eight Sleep alarms... it still seems not to
+    /// write this inside the Eight Sleep app."* Two different claims are hiding in that sentence:
+    /// the write did not land, and their app is not showing what landed. The whole project rule is
+    /// that when those two are confused, the next action is a dump rather than a hypothesis, and
+    /// this is the dump. If `time` here reads back as the time OneAlarm sent, the write landed and
+    /// the question moves to their app. If it does not, the question is ours.
+    ///
+    /// Not hidden behind a failure. A diagnostic that only appears when parsing breaks cannot answer
+    /// a question about a parse that succeeded, which has cost this project two answers already.
+    @ViewBuilder
+    private var serverTruth: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(choices) { choice in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(choice.summary)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.grey)
+                        Text(choice.rawKeys.filter { $0.contains(" = ") }.joined(separator: "\n"))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Theme.greyDim)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            Text("What Eight Sleep returns right now")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.grey)
+        }
+        .tint(Theme.grey)
+        .padding(14)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
+            .strokeBorder(Theme.line, lineWidth: 1))
     }
 
     @ViewBuilder

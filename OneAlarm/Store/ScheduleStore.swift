@@ -588,15 +588,30 @@ final class ScheduleStore {
 
             let verification = try await adapter.verify(receipt, against: target)
             switch verification {
-            case .confirmed:
+            case .confirmed(let instant):
+                // What the **server** says, in its own words, next to what we asked for.
+                //
+                // Added 16 Aug after Alex reported the bed alarm not changing in the Eight Sleep
+                // app. The screen at that moment said "Set Weekdays to 08:55" and nothing else,
+                // because a partial write replaced the whole status line with its own note and threw
+                // the verification away. So the one fact that separates "our write did not land"
+                // from "their app is not showing what landed" was computed, discarded, and then
+                // argued about. It is printed now, always.
+                let formatter = DateFormatter()
+                formatter.dateFormat = "EEE HH:mm"
+                let echo = "Eight Sleep reads back \(formatter.string(from: instant))."
+                let confirmation = target.device == .eightSleep
+                    ? echo
+                    : "Confirmed for \(target.localTime.hhmm)."
+
                 // A partial write is not a done write. On a leg holding one alarm per routine, two
                 // routines can land and a third can have no alarm with its days, and the morning
                 // that third routine covers is then not carried by this device at all. A green tick
                 // over that is the one lie this app must never tell.
                 if receipt.isPartial, let note = receipt.note {
-                    status[target.device] = .warning(note)
+                    status[target.device] = .warning("\(note) \(confirmation)")
                 } else {
-                    status[target.device] = .done("Set for \(target.localTime.hhmm)")
+                    status[target.device] = .done("Set for \(target.localTime.hhmm). \(confirmation)")
                 }
             case .mismatch(let expected, let actual):
                 // The case this whole verification step exists for. A 200 was returned and the

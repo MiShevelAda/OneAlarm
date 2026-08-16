@@ -558,11 +558,16 @@ actor EightSleepAdapter: DeviceAdapter {
     /// answer "does this account name its pods", because the parse succeeds either way.
     static func describe(_ alarm: [String: Any]) -> [String] {
         var lines = alarm.keys.sorted()
-        // `tags` and `smart` have never been printed. Both are on every alarm this account returns
-        // and neither has a known shape, and `tags` is the only field left that could carry a bed
-        // name. Reasoning about them from their names is exactly what cost five hours on Whoop.
-        for key in ["name", "label", "side", "deviceId", "device", "pod",
-                    "tags", "smart", "audio", "skipNext", "skippedUntil"] {
+        // `time` and `nextTimestamp` lead, because they are the two that settle the question Alex
+        // asked on 16 Aug: the write lands on this API, and his Eight Sleep app shows the old time.
+        // Those are different claims and only one of them is ours. Printing what the server returns,
+        // verbatim, is the difference between knowing that and arguing about it.
+        //
+        // `tags` and `smart` follow. Neither has a known shape, and `tags` holds a `routine-<uuid>`
+        // pointing at something in their app nobody here has looked at, which makes it the best
+        // remaining lead if the server object turns out to be right and their app still disagrees.
+        for key in ["time", "nextTimestamp", "enabled", "name", "label", "side", "deviceId",
+                    "device", "pod", "tags", "smart", "audio", "skipNext", "skippedUntil"] {
             if let value = alarm[key], !(value is NSNull) {
                 lines.append("\(key) = \(value)")
             }
