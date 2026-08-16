@@ -330,6 +330,55 @@ carries its own copy. Written before the test.
 a capture.
 
 
+---
+
+## E14 🔴 Does a cloned alarm carrying another alarm's `routine-` tag show up in their app?
+
+**Why.** OneAlarm now creates a missing alarm by cloning one Alex already has. The clone keeps the
+template's `tags: ["routine-<uuid>"]`, which is a decision made by reasoning about a field name, and
+this project has been wrong doing exactly that three times.
+
+**The reasoning, stated so it can be shot down.** Their app appears to render alarms through bedtime
+routines. An alarm created with **no** tag may be an alarm their app never lists, which is precisely
+the failure being fixed. Carrying the template's tag puts the new alarm wherever the template lives.
+
+**The counter-case, which is why this is red.** If the tag identifies a routine that already owns a
+weekday alarm, a weekend clone carrying that same tag may be rejected, may replace it, or may appear
+under the wrong routine.
+
+**Test.** Let OneAlarm create the weekend alarm. Open the Eight Sleep app. Look for a Saturday and
+Sunday alarm at the expected time, and check the weekday one is still there and unchanged.
+
+**Prediction.** The clone appears and the template is untouched. If it does not appear, the next
+thing to try is posting with `tags` removed, and the one after that is reading a routine object
+before writing anything near one.
+
+**Whose.** Alex, one tap of Set all alarms and one look at their app. Anything it creates is deleted
+by hand there, because OneAlarm has no delete and is not getting one.
+
+---
+
+## E15 🟠 Are some alarms on this account invisible in the Eight Sleep app?
+
+**Why.** On 16 Aug at 11:51 OneAlarm read a Monday to Friday alarm at 08:55 off the API. At 11:52 the
+Eight Sleep app showed **no alarms at all**, only a greyed suggestion at 07:00. Then Alex created a
+Monday to Friday alarm by hand and OneAlarm's next write moved its time, visibly, in their app.
+
+That fits one explanation better than any other: the API returns alarms their app does not list, and
+OneAlarm had been correctly updating one of those. It also explains three alarms against two, and it
+explains why yesterday looked like it worked: yesterday the app moved whichever alarm was **picked**,
+and a picked alarm that happens to be visible works while a picked alarm that happens to be orphaned
+does not, with nothing on screen distinguishing them.
+
+**Test.** In the bed screen, read "What Eight Sleep returns right now". Compare each alarm's `tags`
+against the alarms visible in their app. If the invisible ones carry a `routine-` uuid that the
+visible ones do not share, the tag is the link and an orphaned tag is the cause.
+
+**Prediction.** At least one returned alarm is not in their app, and the difference is in `tags`.
+
+**Whose.** Alex, one screenshot of each.
+
+
 ## Completed
 
 | | Question | Answer | Date |

@@ -40,6 +40,17 @@ actor EightSleepAdapter: DeviceAdapter {
         #"^POST https://auth-api\.8slp\.net/v1/tokens$"#,
         #"^GET https://app-api\.8slp\.net/v2/users/[^/]+/alarms$"#,
         #"^PUT https://app-api\.8slp\.net/v1/users/[^/]+/alarms/[^/]+$"#,
+        // Create, added 2026-08-16 at Alex's explicit instruction: *"the OneAlarm app should also
+        // write the new alarm sequence into the Eight Sleep app, and I shouldn't do it manually.
+        // Your goal is to fix this, find a way, so it can create this type of routine and select
+        // Monday to Friday on its own."*
+        //
+        // This was on the banned list, and the reason it was banned still stands: the reference
+        // library's discovery routine uses exactly this call to put ten real alarms on a live
+        // account. What makes it safe here is not care, it is `createAlarm`, which never composes a
+        // payload. It clones an alarm the account already has, so no field is guessed, and it is
+        // hard capped. Read the guards on that function before touching this line.
+        #"^POST https://app-api\.8slp\.net/v1/users/[^/]+/alarms$"#,
         // Two reads, added to answer "which bed am I on". Neither can change anything.
         //
         // Note the third host. `client-api` is not `app-api`, and adding a host to an allowlist is
@@ -438,6 +449,73 @@ actor EightSleepAdapter: DeviceAdapter {
         return payload
     }
 
+    /// The most alarms OneAlarm will ever let an account hold.
+    ///
+    /// A runaway create loop is the specific way the reference library damages a live account: its
+    /// discovery routine posts ten alarms and leaves them there. OneAlarm cannot delete, on purpose,
+    /// so anything it creates by mistake is cleaned up by hand in the Eight Sleep app. That is the
+    /// cost that sets this number, not tidiness.
+    private static let alarmCeiling = 8
+
+    /// Build a new alarm by cloning one the account already has.
+    ///
+    /// **Nothing here is composed.** The reference library's create payload and its documented read
+    /// shape disagree about field names, `vibration.powerLevel` against `vibration.level` and
+    /// `thermal.level` against `thermal.temperature`, thirty lines apart in the same file. Writing a
+    /// create body from that would be guessing, and a wrong guess ships as a bed that heats to the
+    /// wrong temperature at 6am.
+    ///
+    /// So the body is an alarm the server itself produced, with the identifiers stripped and exactly
+    /// two fields changed: the time, and the days. Every other field, including the ones with no
+    /// known meaning, comes back exactly as Eight Sleep wrote it. The same principle that makes the
+    /// update safe makes the create safe, and for the same reason.
+    ///
+    /// `tags` is deliberately **kept**. It carries a `routine-<uuid>` pointing at a bedtime pairing
+    /// in their app, and their app appears to render alarms through those. An alarm created without
+    /// one may well be an alarm their app never shows, which is the exact failure being fixed here.
+    /// Carrying the template's tag puts the new alarm in the same place as the alarm it was copied
+    /// from. That is reasoning about a field, which this project has been burned by, so it is
+    /// written down as `E14` with a prediction rather than asserted.
+    static func clone(
+        _ template: [String: Any],
+        days: Set<Locale.Weekday>,
+        time: WallClockTime
+    ) -> [String: Any] {
+        var payload = template
+        for field in computedFields { payload.removeValue(forKey: field) }
+        // The server issues these. Sending one back is either ignored or an overwrite of a different
+        // alarm, and the second is the kind of mistake that has no symptom until a morning is missed.
+        for identifier in ["id", "alarmId", "alarm_id"] { payload.removeValue(forKey: identifier) }
+
+        payload["time"] = time.hhmmss
+        payload["enabled"] = true
+
+        // The one place in this adapter that still authors days. It is authoring them for an alarm
+        // that does not exist yet, which is a different act from reshaping one that does.
+        var weekDays: [String: Bool] = [:]
+        for day in Locale.Weekday.displayOrder {
+            weekDays[day.eightSleepKey] = days.contains(day)
+        }
+        var repeatBlock = (payload["repeat"] as? [String: Any]) ?? [:]
+        repeatBlock["enabled"] = true
+        repeatBlock["weekDays"] = weekDays
+        payload["repeat"] = repeatBlock
+
+        return payload
+    }
+
+    /// Which existing alarm to copy settings from.
+    ///
+    /// Prefers one that can actually fire. An inert alarm, no days and switched off, is the one
+    /// Eight Sleep's own app hides, and copying its settings would clone whatever state made it
+    /// inert. Falls back to any alarm, because a template from his account always beats a payload
+    /// composed here.
+    static func template(from alarms: [[String: Any]]) -> [String: Any]? {
+        alarms.first { !weekdays(of: $0).isEmpty && ($0["enabled"] as? Bool) != false }
+            ?? alarms.first { !weekdays(of: $0).isEmpty }
+            ?? alarms.first
+    }
+
     nonisolated func preview(_ target: ResolvedTarget) -> WritePreview {
         preview(target, plan: RoutinePlan(device: .eightSleep, entries: [], skipsNextMorning: false))
     }
@@ -456,7 +534,7 @@ actor EightSleepAdapter: DeviceAdapter {
 
         return WritePreview(
             device: .eightSleep,
-            summary: "One PUT per routine, each carrying a single changed field, `time`. \(lines). Days, vibration, thermal and the on switch are echoed back exactly as the server gave them.",
+            summary: "One PUT per routine, each carrying a single changed field, `time`. \(lines). Days, vibration, thermal and the on switch are echoed back exactly as the server gave them. A routine with no alarm on the bed gets one created, as a copy of an alarm you already have with its days and time changed, capped at \(Self.alarmCeiling) alarms on the account.",
             method: "PUT",
             url: "\(Self.appHost)/v1/users/{userId}/alarms/{alarmId}",
             body: HTTPClient.redactedPreview(sketch, showing: Self.previewKeys),
@@ -597,9 +675,11 @@ actor EightSleepAdapter: DeviceAdapter {
     func write(_ target: ResolvedTarget, plan: RoutinePlan) async throws -> WriteReceipt {
         let alarms = try await fetchAlarms()
         guard !alarms.isEmpty else {
-            // Creating one is possible, but the create payload is exactly where the field name
-            // contradiction lives. Better to tell the user to make one alarm in the Eight Sleep app
-            // once than to guess at a payload and silently set the wrong thing.
+            // OneAlarm creates alarms now, but only by cloning one this account already has. With
+            // zero alarms there is no template, and the only way to make one would be to compose a
+            // payload from a reference library that contradicts itself about field names thirty
+            // lines apart. That contradiction ends up in the bed's temperature, so the honest
+            // answer stays "make one, any time, once".
             throw AdapterError.noAlarmToUpdate
         }
 
@@ -620,15 +700,58 @@ actor EightSleepAdapter: DeviceAdapter {
             )
         }
 
-        let report = RoutinePlan.match(entries: entries, against: described)
+        var report = RoutinePlan.match(entries: entries, against: described)
+        let (token, user) = try await currentToken()
+
+        // A routine with no alarm gets one, rather than a warning telling him to go and make it.
+        //
+        // Alex, 2026-08-16: *"the OneAlarm app should also write the new alarm sequence into the
+        // Eight Sleep app, and I shouldn't do it manually."* He is right that being told to go and
+        // build the thing by hand in another app is the app failing at its one job.
+        //
+        // Every alarm created here is a clone of one he already has, so no field is composed. See
+        // `clone` and `alarmCeiling` for what stops this becoming the reference library's ten alarm
+        // discovery routine.
+        var created: [String] = []
+        var createdIDs = Set<String>()
+        if !report.routinesWithNoAlarm.isEmpty,
+           let template = Self.template(from: alarms),
+           alarms.count < Self.alarmCeiling {
+            // Iterating the entries rather than the names, so each routine gets at most one alarm
+            // even if two of them happen to derive the same display name.
+            for entry in entries where report.routinesWithNoAlarm.contains(entry.routineName) {
+                guard !entry.weekdays.isEmpty,
+                      alarms.count + created.count < Self.alarmCeiling
+                else { continue }
+
+                if let newID = try await postAlarm(
+                    Self.clone(template, days: entry.weekdays, time: entry.timeToWrite),
+                    token: token,
+                    user: user
+                ) {
+                    created.append(entry.routineName)
+                    createdIDs.insert(newID)
+                    report.pairs.append(
+                        AlarmMatchReport.Pair(
+                            routineID: entry.routineID,
+                            routineName: entry.routineName,
+                            alarmID: newID,
+                            time: entry.timeToWrite,
+                            isDisabledRemotely: false
+                        )
+                    )
+                }
+            }
+            // The create already carried the right time, so these need no follow up PUT.
+            report.routinesWithNoAlarm.removeAll { created.contains($0) }
+        }
+
         guard !report.pairs.isEmpty else {
             throw AdapterError.noMatchingDays(
                 routines: report.routinesWithNoAlarm,
                 alarms: described.filter { !$0.weekdays.isEmpty }.map(\.label)
             )
         }
-
-        let (token, user) = try await currentToken()
 
         // Which alarm `verify` should read back: the one covering the morning the target is for.
         // That is the only pair whose `nextTimestamp` can be compared against an instant we meant.
@@ -647,6 +770,14 @@ actor EightSleepAdapter: DeviceAdapter {
         var failures: [String] = []
         var written = Set<String>()
         for pair in report.pairs {
+            // A freshly created alarm already carries the right time, and it is not in `alarms`,
+            // which was fetched before the create. Running it through the update loop would look it
+            // up, fail to find it, and report the routine as failed straight after creating it.
+            if createdIDs.contains(pair.alarmID) {
+                written.insert(pair.alarmID)
+                continue
+            }
+
             guard let existing = alarms.first(where: { Self.alarmID($0) == pair.alarmID }),
                   let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms/\(pair.alarmID)")
             else {
@@ -680,6 +811,12 @@ actor EightSleepAdapter: DeviceAdapter {
         authState = .connected
 
         var note = report.note
+        if !created.isEmpty {
+            // Named, and named first. Creating an alarm on a live account is the most consequential
+            // thing this app does, it cannot be undone from here, and a user who did not expect it
+            // needs to know which one to go and look at.
+            note = "Created a new alarm on your bed for \(created.joined(separator: " and ")), copied from your existing one. " + note
+        }
         if !failures.isEmpty {
             note += " Failed: \(failures.joined(separator: ", "))."
         }
@@ -705,6 +842,43 @@ actor EightSleepAdapter: DeviceAdapter {
             note: note,
             isPartial: !report.isComplete || !failures.isEmpty
         )
+    }
+
+    /// Create one alarm. Returns its new id, or `nil` if the server refused.
+    ///
+    /// Deliberately returns rather than throws on a refusal. A create that fails must not take down
+    /// the updates to the routines that did match: the weekday alarm still needs its new time even
+    /// if the weekend one could not be made. The refusal is reported by name in the receipt instead.
+    ///
+    /// The 4xx cases that must stop everything, a dead subscription, a rejected token, a throttle,
+    /// still throw, because none of them is specific to this one alarm.
+    private func postAlarm(
+        _ payload: [String: Any],
+        token: String,
+        user: String
+    ) async throws -> String? {
+        guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms") else { return nil }
+
+        let response = try await http.send(
+            "POST", url, headers: Self.baseHeaders(token: token), body: try HTTPClient.json(payload)
+        )
+
+        if response.status == 403 { throw AdapterError.subscriptionRequired }
+        if response.status == 429 {
+            backOff()
+            throw AdapterError.rateLimited
+        }
+        if response.status == 401 {
+            accessToken = nil
+            throw AdapterError.authenticationFailed("Token was rejected.")
+        }
+        guard response.isSuccess else { return nil }
+
+        // The id can arrive bare or wrapped. Both spellings are read rather than assumed, because
+        // returning nil here would leave a real alarm on his account that the app then reports as
+        // not created, which is the worst of both.
+        guard let json = try? HTTPClient.dictionary(response.data) else { return nil }
+        return Self.alarmID(json) ?? (json["alarm"] as? [String: Any]).flatMap(Self.alarmID)
     }
 
     /// The seven named booleans, as a set.

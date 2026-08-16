@@ -285,3 +285,96 @@ final class RoutinePlanBuildingTests: XCTestCase {
         XCTAssertNil(plan.entries.first(where: \.isBent), "a skip is not a time to write")
     }
 }
+
+/// Creating an alarm, which is the most consequential thing this app does to a live account.
+///
+/// Alex overruled the create ban on 2026-08-16. What replaced it is not care, it is that the payload
+/// is never composed: it is an alarm the server itself produced, with the identifiers stripped and
+/// two fields changed. These tests are what stops a later edit turning it back into a guess.
+final class AlarmCloneTests: XCTestCase {
+
+    private var serverAlarm: [String: Any] {
+        [
+            "id": "abc-123",
+            "enabled": false,
+            "time": "07:00:00",
+            "repeat": ["enabled": true, "weekDays": ["monday": true]] as [String: Any],
+            "thermal": ["enabled": true, "temperature": -10] as [String: Any],
+            "vibration": ["enabled": true, "level": 50, "pattern": "rise"] as [String: Any],
+            "tags": ["routine-94b49169"],
+            "nextTimestamp": "2026-08-16T05:00:00Z",
+            "futureFieldNobodyHasSeenYet": 42,
+        ]
+    }
+
+    private func clone(_ days: Set<Locale.Weekday> = [.saturday, .sunday]) -> [String: Any] {
+        EightSleepAdapter.clone(serverAlarm, days: days, time: WallClockTime(hour: 9, minute: 30))
+    }
+
+    /// The server issues ids. Sending one back on a create is either ignored or an overwrite of a
+    /// different alarm, and the second has no symptom until a morning is missed.
+    func testEveryIdentifierIsStripped() {
+        let payload = clone()
+
+        for key in ["id", "alarmId", "alarm_id"] {
+            XCTAssertNil(payload[key], "\(key) must never be sent on a create")
+        }
+        XCTAssertNil(payload["nextTimestamp"], "server computed fields go too")
+    }
+
+    func testTheTimeAndTheDaysAreTheOnlyThingsAuthored() {
+        let payload = clone()
+
+        XCTAssertEqual(payload["time"] as? String, "09:30:00")
+        let weekDays = (payload["repeat"] as? [String: Any])?["weekDays"] as? [String: Bool]
+        XCTAssertEqual(weekDays?.count, 7, "a create names all seven days, unlike an update")
+        XCTAssertEqual(weekDays?["saturday"], true)
+        XCTAssertEqual(weekDays?["sunday"], true)
+        XCTAssertEqual(weekDays?["monday"], false)
+    }
+
+    /// The point of cloning. His vibration and thermal settings are copied from an alarm he set up,
+    /// never invented, because the reference library contradicts itself about their field names.
+    func testHisSettingsAreCopiedRatherThanComposed() {
+        let payload = clone()
+
+        let thermal = payload["thermal"] as? [String: Any]
+        XCTAssertEqual(thermal?["temperature"] as? Int, -10)
+        let vibration = payload["vibration"] as? [String: Any]
+        XCTAssertEqual(vibration?["level"] as? Int, 50)
+        XCTAssertEqual(vibration?["pattern"] as? String, "rise")
+        XCTAssertEqual(payload["futureFieldNobodyHasSeenYet"] as? Int, 42)
+    }
+
+    /// A new alarm is on, whatever the template's switch said. Copying `enabled: false` would create
+    /// an alarm that silently never fires, which is worse than not creating one.
+    func testTheNewAlarmIsSwitchedOn() {
+        XCTAssertEqual(clone()["enabled"] as? Bool, true)
+        XCTAssertEqual((clone()["repeat"] as? [String: Any])?["enabled"] as? Bool, true)
+    }
+
+    /// `tags` survives, and that is a decision rather than an accident. Filed as E14 with a
+    /// prediction, because it is reasoning about a field name and that has been wrong three times.
+    func testTheRoutineTagIsCarried() {
+        XCTAssertEqual(clone()["tags"] as? [String], ["routine-94b49169"])
+    }
+
+    /// An inert alarm, no days and switched off, is the one Eight Sleep's own app hides. Copying it
+    /// would clone whatever made it inert.
+    func testTemplatePrefersAnAlarmThatCanActuallyFire() {
+        let inert: [String: Any] = ["id": "dead", "enabled": false, "repeat": ["enabled": false]]
+        let live: [String: Any] = [
+            "id": "live", "enabled": true,
+            "repeat": ["enabled": true, "weekDays": ["monday": true]] as [String: Any],
+        ]
+
+        let picked = EightSleepAdapter.template(from: [inert, live])
+        XCTAssertEqual(picked?["id"] as? String, "live")
+    }
+
+    func testTemplateFallsBackRatherThanReturningNothing() {
+        let inert: [String: Any] = ["id": "dead", "enabled": false, "repeat": ["enabled": false]]
+        XCTAssertEqual(EightSleepAdapter.template(from: [inert])?["id"] as? String, "dead")
+        XCTAssertNil(EightSleepAdapter.template(from: []))
+    }
+}

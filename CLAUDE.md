@@ -55,7 +55,12 @@ finished.
 
 - Send anything to `smart-alarm-service`, including `strap-status` and `wbl`. The whole prefix is
   outside the Whoop allowlist on purpose.
-- Create or delete an alarm on either remote service.
+- **Delete** an alarm on either remote service, or **create** one on Whoop.
+- Create an Eight Sleep alarm by composing a payload. Alex overruled the create ban on 2026-08-16:
+  *"the OneAlarm app should also write the new alarm sequence into the Eight Sleep app, and I
+  shouldn't do it manually."* What makes it safe is not care, it is that `clone` copies an alarm the
+  account already has and changes two fields. No field is ever guessed, the account is capped at 8
+  alarms, and nothing here can delete what it makes.
 - Author Eight Sleep `vibration` or `thermal`. Echo them; they are his.
 - Retry `USER_PASSWORD_AUTH` or the Eight Sleep password grant. One attempt, surface the error, stop.
 - Delete a Keychain item on `errSecInteractionNotAllowed`. That is a locked device, not a missing
