@@ -179,69 +179,7 @@ struct CascadeView: View {
             Text("My routines").themeLabel()
 
             ForEach(store.schedule.routines) { routine in
-                let isNext = store.next?.routineName == routine.name
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .firstTextBaseline, spacing: 9) {
-                        Text(routine.name)
-                            .font(.system(size: 15, weight: .semibold))
-                        if isNext {
-                            Text("NEXT")
-                                .font(.system(size: 9, weight: .bold)).tracking(1)
-                                .padding(.horizontal, 6).padding(.vertical, 3)
-                                .background(Theme.State.confirmed.opacity(0.16),
-                                            in: RoundedRectangle(cornerRadius: 5))
-                                .foregroundStyle(Theme.State.confirmed)
-                        }
-                        Spacer(minLength: 6)
-                        Text(routine.weekdays.isEmpty ? "no days" : routine.time.hhmm)
-                            .font(Theme.numeral(26))
-                            .foregroundStyle(routine.weekdays.isEmpty ? Theme.greyDim : .white)
-                    }
-
-                    HStack(spacing: 6) {
-                        ForEach(Locale.Weekday.displayOrder, id: \.calendarIndex) { day in
-                            let on = routine.weekdays.contains(day)
-                            Button { store.toggleDay(day, in: routine.id) } label: {
-                                Text(day.shortLabel)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .frame(maxWidth: .infinity, minHeight: 34)
-                                    .background(on ? Color.white.opacity(0.14) : Color.white.opacity(0.04),
-                                                in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                        .strokeBorder(on ? Theme.lineStrong : Theme.line, lineWidth: 1))
-                                    .foregroundStyle(on ? .white : Theme.greyDim)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    HStack(spacing: 6) {
-                        Button {
-                            store.setRoutineTime(WallClockTime(
-                                minutesSinceMidnight: routine.time.minutesSinceMidnight - 15
-                            ), routineID: routine.id)
-                        } label: { stepLabel("−15") }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            store.setRoutineTime(WallClockTime(
-                                minutesSinceMidnight: routine.time.minutesSinceMidnight + 15
-                            ), routineID: routine.id)
-                        } label: { stepLabel("+15") }
-                        .buttonStyle(.plain)
-
-                        Spacer()
-                        Text(routine.weekdays.isEmpty
-                             ? "No days, so this routine never fires."
-                             : "Every \(routine.daysSentence)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.greyDim)
-                    }
-                }
-                .padding(14)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
-                    .strokeBorder(isNext ? Theme.State.confirmed.opacity(0.4) : Theme.line, lineWidth: 1))
+                RoutineCard(routine: routine, isNext: store.next?.routineName == routine.name)
             }
 
             if let uncovered = store.uncoveredDays, !uncovered.isEmpty {
@@ -425,23 +363,7 @@ private struct CascadeRow: View {
 
                 // Each device's own time, editable here rather than nowhere. The offsets have
                 // existed since the first build and no screen ever reached them.
-                HStack(spacing: 6) {
-                    Button {
-                        store.setDeviceTime(WallClockTime(
-                            minutesSinceMidnight: target.localTime.minutesSinceMidnight - 5
-                        ), for: target.device)
-                    } label: { stepLabel("−5") }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        store.setDeviceTime(WallClockTime(
-                            minutesSinceMidnight: target.localTime.minutesSinceMidnight + 5
-                        ), for: target.device)
-                    } label: { stepLabel("+5") }
-                    .buttonStyle(.plain)
-
-                }
-                .padding(.top, 2)
+                steppers
 
                 HStack(spacing: 8) {
                     statusPill
@@ -476,14 +398,23 @@ private struct CascadeRow: View {
         .onLongPressGesture(perform: onPreview)
     }
 
-    private func stepLabel(_ text: String) -> some View {
-        Text(text)
-            .font(Theme.numeral(13))
-            .frame(width: 38, height: 28)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(Theme.line, lineWidth: 1))
-            .foregroundStyle(.white)
+    /// Its own property because the row's body grew past what the type checker will chew through
+    /// in one expression, which is the usual sign a body is doing more than one job.
+    private var steppers: some View {
+        HStack(spacing: 6) {
+            Button { shift(-5) } label: { StepChip("−5") }
+                .buttonStyle(.plain)
+            Button { shift(5) } label: { StepChip("+5") }
+                .buttonStyle(.plain)
+        }
+        .padding(.top, 2)
+    }
+
+    private func shift(_ minutes: Int) {
+        let moved = WallClockTime(
+            minutesSinceMidnight: target.localTime.minutesSinceMidnight + minutes
+        )
+        store.setDeviceTime(moved, for: target.device)
     }
 
     @ViewBuilder
@@ -566,5 +497,119 @@ extension DeviceSyncStatus {
         case .done, .warning, .failed: return true
         case .idle, .writing, .verifying: return false
         }
+    }
+}
+
+/// A small stepper face, shared by the routine cards and the device rows.
+///
+/// Was a private method on `CascadeRow`, which the routine cards could not see. Two views needing
+/// the same face is what a view is for.
+private struct StepChip: View {
+    let text: String
+
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(Theme.numeral(13))
+            .frame(width: 40, height: 30)
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(Theme.line, lineWidth: 1))
+            .foregroundStyle(.white)
+    }
+}
+
+/// One routine: its name, its days, its time.
+///
+/// Its own view rather than a block inside `CascadeView` for two reasons. The type checker gave up
+/// on the combined expression, which is the usual sign that a body is doing more than one job. And
+/// each card edits **its own** routine, which is the fix for day chips that used to edit whichever
+/// routine covered the next morning and so moved days between routines unasked.
+@MainActor
+private struct RoutineCard: View {
+    @Environment(ScheduleStore.self) private var store
+
+    let routine: Routine
+    let isNext: Bool
+
+    private var hasDays: Bool { !routine.weekdays.isEmpty }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            header
+            chips
+            footer
+        }
+        .padding(14)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
+                .strokeBorder(isNext ? Theme.State.confirmed.opacity(0.45) : Theme.line, lineWidth: 1)
+        )
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 9) {
+            Text(routine.name).font(.system(size: 15, weight: .semibold))
+            if isNext {
+                Text("NEXT")
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(1)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Theme.State.confirmed.opacity(0.16), in: RoundedRectangle(cornerRadius: 5))
+                    .foregroundStyle(Theme.State.confirmed)
+            }
+            Spacer(minLength: 6)
+            Text(hasDays ? routine.time.hhmm : "no days")
+                .font(Theme.numeral(26))
+                .foregroundStyle(hasDays ? Color.white : Theme.greyDim)
+        }
+    }
+
+    private var chips: some View {
+        HStack(spacing: 6) {
+            ForEach(Locale.Weekday.displayOrder, id: \.calendarIndex) { day in
+                dayChip(day)
+            }
+        }
+    }
+
+    private func dayChip(_ day: Locale.Weekday) -> some View {
+        let on = routine.weekdays.contains(day)
+        return Button {
+            store.toggleDay(day, in: routine.id)
+        } label: {
+            Text(day.shortLabel)
+                .font(.system(size: 12, weight: .semibold))
+                .frame(maxWidth: .infinity, minHeight: 34)
+                .background(on ? Color.white.opacity(0.14) : Color.white.opacity(0.04),
+                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(on ? Theme.lineStrong : Theme.line, lineWidth: 1)
+                )
+                .foregroundStyle(on ? Color.white : Theme.greyDim)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 6) {
+            Button { shift(-15) } label: { StepChip("−15") }
+                .buttonStyle(.plain)
+            Button { shift(15) } label: { StepChip("+15") }
+                .buttonStyle(.plain)
+            Spacer(minLength: 6)
+            Text(hasDays ? "Every \(routine.daysSentence)" : "No days, so this routine never fires.")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.greyDim)
+        }
+    }
+
+    private func shift(_ minutes: Int) {
+        let moved = WallClockTime(minutesSinceMidnight: routine.time.minutesSinceMidnight + minutes)
+        store.setRoutineTime(moved, routineID: routine.id)
     }
 }
