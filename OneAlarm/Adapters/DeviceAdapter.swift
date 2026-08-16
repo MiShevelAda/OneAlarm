@@ -21,13 +21,15 @@ enum AdapterError: LocalizedError, Equatable {
     /// Several alarms exist and none has been chosen. Not a failure, a question.
     ///
     /// Still thrown by the Whoop leg, which holds one schedule per account and genuinely can be
-    /// ambiguous. The Eight Sleep leg no longer raises it: it matches routines to alarms by their
-    /// days instead of asking, so there is nothing left to choose.
+    /// ambiguous. The Eight Sleep leg no longer raises it: each routine owns an alarm, recorded in
+    /// `RemoteAlarmLink`, so there is nothing left to choose.
     case alarmChoiceNeeded(count: Int)
-    /// Alarms exist, and not one of them has the days of any routine.
+    /// Alarms exist, none has the days of any routine, and creating one did not work either.
     ///
-    /// A question, not a fault, and specifically not a reason to write anything. Rewriting an
-    /// alarm's days to make it fit is the operation this app deliberately does not have.
+    /// Narrower than it used to be. Before the create shipped this was the ordinary outcome of a
+    /// week the account could not express; now it means the fallback failed too, so it is a fault
+    /// rather than a question. What it never licenses is reshaping somebody's alarm to fit: OneAlarm
+    /// writes days only to an alarm a routine **owns**, and by definition none of these is owned.
     case noMatchingDays(routines: [String], alarms: [String])
     case unexpectedResponse(String)
     case transport(String)
@@ -43,17 +45,21 @@ enum AdapterError: LocalizedError, Equatable {
         case .rateLimited:
             return "Too many requests. Waiting before trying again."
         case .noAlarmToUpdate:
-            // Actionable on purpose. OneAlarm moves an alarm you already have rather than creating
-            // one, so "none found" is a thing you can fix in thirty seconds if the message says how.
-            return "No alarm found to move. Create one alarm in the device's own app first, then connect again."
+            // Actionable on purpose: "none found" is a thing he can fix in thirty seconds if the
+            // message says how. Still accurate after the create shipped, and worth the sentence
+            // explaining why. OneAlarm creates alarms now,
+            // but only by copying one this account already has: with zero alarms there is nothing
+            // to copy, and composing a payload from scratch is where the reference library
+            // contradicts itself about the field names that carry the bed's temperature.
+            return "No alarm on this account yet. Make one in the device's own app, any time you like, and OneAlarm can copy its settings from then on."
         case .alarmChoiceNeeded(let count):
             return "This account has \(count) alarms. Choose which one OneAlarm should move."
         case .noMatchingDays(let routines, let alarms):
             let wanted = routines.joined(separator: " and ")
             guard !alarms.isEmpty else {
-                return "No alarm on your bed runs on \(wanted). Add one in the Eight Sleep app and OneAlarm will keep its time in step."
+                return "No alarm on your bed runs on \(wanted), and OneAlarm could not make one. Try Set all alarms again, and if it keeps failing the row says what Eight Sleep replied."
             }
-            return "No alarm on your bed runs on \(wanted). It has \(alarms.joined(separator: ", ")). OneAlarm changes times, never days, so it will not reshape one of those to fit."
+            return "No alarm on your bed runs on \(wanted), and OneAlarm could not make one. It has \(alarms.joined(separator: ", ")), and it will not reshape one of those to fit, because that would move a morning you did not ask it to move."
         case .unexpectedResponse(let detail):
             return "Unexpected response. \(detail)"
         case .transport(let detail):

@@ -730,9 +730,16 @@ struct BedConfirmScreen: View {
                 matchRows(report)
 
                 if !report.routinesWithNoAlarm.isEmpty {
-                    Notice(.warn,
-                           title: "No alarm here runs on \(report.routinesWithNoAlarm.joined(separator: " or ")).",
-                           "Add one in the Eight Sleep app with those days, at any time you like, and OneAlarm will keep it in step from then on. It will not reshape an existing alarm's days to fit, because that would move a morning you did not ask it to move.")
+                    // Says what OneAlarm will do, not what he should do.
+                    //
+                    // This used to read "Add one in the Eight Sleep app with those days", which was
+                    // true until this evening and is the precise thing he asked to stop doing:
+                    // *"the OneAlarm app should also write the new alarm sequence into the Eight
+                    // Sleep app, and I shouldn't do it manually."* The app creates it now, and a
+                    // screen still sending him to do it by hand is the app failing at its one job
+                    // and then telling him it is his problem.
+                    Notice(title: "No alarm here runs on \(report.routinesWithNoAlarm.joined(separator: " or ")) yet.",
+                           "OneAlarm makes one on the next Set all alarms, inside the routine that already runs on those days, copying the vibration and thermal settings from an alarm you already have. It never reshapes an existing alarm's days to fit, because that would move a morning you did not ask it to move.")
                 }
 
                 Notice(title: "OneAlarm owns the when. Eight Sleep owns the how.",
