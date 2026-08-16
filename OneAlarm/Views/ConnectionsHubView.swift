@@ -991,7 +991,17 @@ struct BedConfirmScreen: View {
                         Text(choice.summary)
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Theme.grey)
-                        Text(choice.rawKeys.filter { $0.contains(" = ") }.joined(separator: "\n"))
+                        // `OVERRIDE CHECK` is kept alongside the fields, not just the `key = value`
+                        // lines. It makes a screenshot self-labelling: the block that says an
+                        // override is in force is visibly the block whose fields are printed under
+                        // it, which is precisely what three failed handoffs could not establish.
+                        //
+                        // The bare key names `describe` also returns stay filtered out here. They
+                        // feed the picker screen's "fields returned" line, which is a different
+                        // question on a different screen.
+                        Text(choice.rawKeys
+                            .filter { $0.contains(" = ") || $0.hasPrefix("OVERRIDE CHECK") }
+                            .joined(separator: "\n"))
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(Theme.greyDim)
                             .textSelection(.enabled)
