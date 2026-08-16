@@ -874,6 +874,17 @@ struct BedConfirmScreen: View {
     /// Reads the line `EightSleepAdapter.describe` already computes, rather than recomputing it, so
     /// the summary and the detail can never disagree about the same alarm. Two readers of one fact is
     /// how a screen and a write ended up describing different accounts earlier today.
+    /// Every alarm, with any that is currently overridden first. `E28`.
+    ///
+    /// Stable within each group, so the rest of the list does not shuffle between reads. Sorting the
+    /// interesting one to the top is the whole fix: the question "which block do you want" stops
+    /// needing an answer.
+    private var orderedChoices: [RemoteAlarmChoice] {
+        let overridden = choices.filter { $0.rawKeys.contains { $0.contains("SOMETHING is overriding") } }
+        let rest = choices.filter { choice in !overridden.contains { $0.id == choice.id } }
+        return overridden + rest
+    }
+
     /// The Autopilot resource, once it has been asked for. `nil` until then. `E27`.
     @State private var autopilot: String?
 
@@ -963,7 +974,19 @@ struct BedConfirmScreen: View {
                         .textSelection(.enabled)
                 }
 
-                ForEach(choices) { choice in
+                // **The overridden alarm first, and labelled. `E28`.**
+                //
+                // Three times Alex was asked for "the raw block" and sent a reasonable one, and three
+                // times it was the wrong alarm, because the panel lists four blocks and the
+                // instruction never said which. The last round it cost more than a round trip: the
+                // block he sent was a switched off nap timer, and its thirteen keys were then written
+                // into five documents as proof that the alarm object carries no override field.
+                //
+                // It proved nothing of the kind. We have still never seen the fields of an alarm
+                // while an override was in force on it.
+                //
+                // Fixing the instruction a fourth time was not the answer. Ordering is.
+                ForEach(orderedChoices) { choice in
                     VStack(alignment: .leading, spacing: 3) {
                         Text(choice.summary)
                             .font(.system(size: 12, weight: .semibold))

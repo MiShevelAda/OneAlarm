@@ -1034,7 +1034,32 @@ an alarm of his deleted by a sweep that was certain.
 
 
 
-## E26 🔴 Is Eight Sleep's `UPCOMING ALARM ONLY` a hidden tagged alarm rather than a field?
+## E26 ❌ Refuted 18 August. The tags are nap mode, not the one time change.
+
+> **The `eightctl` endpoint list settles this without a single request.** Its client enumerates
+> around fifty five endpoints, and among them:
+>
+> ```
+> /temperature/nap-mode/activate    /temperature/nap-mode/deactivate
+> /temperature/nap-mode/extend      /temperature/nap-mode/status
+> ```
+>
+> **Nap mode is a whole feature with its own API.** Alex's two hidden alarms are tagged
+> `temporary-mode` and `oneOff-napMode`. The tag says *napMode*, in as many words. So those alarms
+> are nap timers, which is why Eight Sleep's app does not list them under Alarms, and it is where the
+> tags came from before OneAlarm ever cloned one.
+>
+> **So the hypothesis below is wrong.** The tags are evidence of a nap feature, not of a one time
+> change mechanism. Kept in full rather than deleted, because the reasoning was sound and only the
+> conclusion was wrong, and because the same evidence pointed two ways.
+>
+> **The second finding from that list is stronger and it is a negative.** Across fifty five endpoints
+> covering audio, the base, travel, priming, hot flash mode and nap mode, the only alarm addresses
+> that exist are `/users/{id}/alarms` and `/users/{id}/alarms/{id}`. **There is no override, skip or
+> upcoming-alarm endpoint anywhere.** That is real evidence against the whole "separate endpoint"
+> branch, and it pushes the answer back towards a field on the alarm object after all. See `E28`.
+
+## E26-old 🔴 Is Eight Sleep's `UPCOMING ALARM ONLY` a hidden tagged alarm rather than a field?
 
 **The best explanation yet, and it comes from Alex's own account rather than from reasoning.**
 
@@ -1120,6 +1145,57 @@ not sitting in an obviously named field somewhere easy.
 
 **Whose.** Needs a call from the phone, which means a button in OneAlarm. Nothing in a session can
 reach the host.
+
+
+
+## E28 🔴 We have never actually dumped an alarm while it was overridden
+
+**A correction, and it undermines the main claim this project has been repeating for two days.**
+
+The claim: *"four raw dumps of the alarm object show no override field."* It has been written into
+`E23`, `E25`, `E26`, `RESEARCH.md` and the handover document, and used to rule out the alarm object
+and push the search towards a separate endpoint.
+
+**Look again at what Alex actually sent on 18 August at 18:15.** The panel's yellow line named the
+overridden alarm:
+
+```
+OVERRIDDEN: 07:45, weekdays · vibration 100, enabled=1, skipNext=0
+```
+
+And the raw block underneath it, the one he pasted, was:
+
+```
+09:56, Sa Su · ... tags = ("temporary-mode", "oneOff-napMode")
+```
+
+**That is a different alarm.** It is one of the hidden nap timers, switched off, with no override on
+it. The same is true of the earlier dumps: they were whichever block was to hand, not the one the
+detector had flagged.
+
+So the honest position is: **we have never once seen the raw fields of an alarm while an override was
+in force on it.** The field could have been sitting there the whole time. Four dumps of alarms that
+were not overridden say nothing at all about what an overridden one looks like, and this is the exact
+error this project has already written down twice, *never infer absence from an object you did not
+look at*, made a third time and then built on.
+
+**It is also the reason three handoffs failed.** Alex was asked for "the raw block" and sent a
+reasonable one each time. The instruction never named **which**, because the person writing it had
+not noticed that the panel lists four blocks and only one of them matters.
+
+**The fix is in the app rather than in the instruction.** The overridden alarm's block now sorts to
+the top of the panel and is labelled, so "send me the first block" is unambiguous.
+
+| What the overridden alarm's own block shows | Reading | What follows |
+|---|---|---|
+| a field absent from the other alarms | found it, after two days of looking past it | read it, echo it, author only its time. The one-day-alarm mechanism is deleted |
+| the same thirteen keys as every other alarm | the object genuinely does not carry it | `E27`'s Autopilot read becomes the last candidate, and if that fails the current design is the answer |
+| a field with an unfamiliar name and a plausible value | probably it | do not write to it until a second dump with a different override time moves it |
+
+**Whose.** Alex, one screenshot, while an override is live. He already has one live.
+
+**Whose fault the delay was.** Mine, and specifically for asserting a conclusion from evidence that
+did not support it, four times, in five separate documents.
 
 
 

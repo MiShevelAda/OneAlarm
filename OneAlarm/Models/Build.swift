@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 21:00 · Read Autopilot probes two addresses"
+    static let marker = "18 Aug, 21:40 · the overridden alarm is the first block"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "There is a Read Autopilot button on the Eight Sleep screen. Eight Sleep call a one time change an Autopilot preference in their own words, and this reads the resource that holds it. It only reads, it changes nothing. Press it once with your one time change set and once without, and send me both."
+    static let whatIsNew = "The alarm that is currently overridden now sorts to the TOP of the Eight Sleep panel. Send me the first block and it is the right one. I asked you three times for the raw block without saying which of the four, and all three times we looked at the wrong alarm."
 }
