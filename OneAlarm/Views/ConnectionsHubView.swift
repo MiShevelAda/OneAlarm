@@ -355,6 +355,8 @@ struct WhoopLinkView: View {
     @State private var choices: [RemoteAlarmChoice] = []
     /// Held here so confirming the code cannot depend on the adapter still remembering it.
     @State private var challenge: WhoopAdapter.Challenge?
+    /// The `/schedule/all` envelope, printed on the linked screen. See `whoopTruth`.
+    @State private var envelope: [String] = []
 
     var body: some View {
         Group {
@@ -512,10 +514,54 @@ struct WhoopLinkView: View {
                 Notice(.warn, title: "Set a reminder for about a month from now.",
                        "Whoop's login will expire and OneAlarm cannot warn you in advance.")
                     .padding(.top, 8)
+
+                whoopTruth
             }
         } footer: {
             SolidButton(title: "Done") { dismiss() }
         }
+        .task {
+            envelope = await store.whoop.envelopeDump()
+        }
+    }
+
+    /// The whole Whoop alarm screen as the server describes it, printed rather than parsed.
+    ///
+    /// **Added 17 August, for a question OneAlarm cannot answer by reasoning.** Alex deleted every
+    /// schedule on his Whoop account. OneAlarm moves schedules and does not create them, so with zero
+    /// of them there is nothing it can do, and Whoop's own `CREATE SCHEDULE` button did nothing
+    /// either. He asked whether there is a way around it.
+    ///
+    /// `docs/RESEARCH.md` §2.3 says this endpoint is a **rendered screen** rather than a resource,
+    /// and that its top level carries `schedule_button_component`, which is Whoop's own description of
+    /// the very button he is pressing. With the account empty it is rendering the create screen, so
+    /// what that button does is more likely to be described in there than anywhere we could reason
+    /// our way to.
+    ///
+    /// This is the one method that has ever worked on this service. Six rounds of reasoning produced
+    /// six wrong answers and cost five hours; both breakthroughs came from printing the response.
+    /// Nothing here is inferred and nothing is written.
+    @ViewBuilder
+    private var whoopTruth: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(envelope.isEmpty ? "Nothing read yet." : envelope.joined(separator: "\n"))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.greyDim)
+                    .textSelection(.enabled)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 8)
+        } label: {
+            Text("Your Whoop alarm screen, raw")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.grey)
+        }
+        .tint(Theme.grey)
+        .padding(14)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
+            .strokeBorder(Theme.line, lineWidth: 1))
     }
 
     private func signIn() async {

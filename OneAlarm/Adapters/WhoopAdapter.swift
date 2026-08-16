@@ -599,6 +599,58 @@ actor WhoopAdapter: DeviceAdapter {
         return false
     }
 
+    /// The whole `/schedule/all` envelope, flattened to printable lines.
+    ///
+    /// **Why this exists, and why now.** On 17 August Alex deleted every schedule on his Whoop
+    /// account. OneAlarm moves schedules and does not create them, so with zero of them it can do
+    /// nothing at all, and Whoop's own `CREATE SCHEDULE` button did nothing either. He asked whether
+    /// there is a way around it.
+    ///
+    /// There might be, and the answer is probably already in a response this adapter has been
+    /// fetching all along and never printing. `docs/RESEARCH.md` §2.3 records that this endpoint is a
+    /// **rendered screen**, not a resource, and lists what its top level carries:
+    /// `delete_error_modal`, `deleting_in_progress_modal`, `schedule_disabled_text`,
+    /// `should_show_overlay`, and **`schedule_button_component`**.
+    ///
+    /// That last one is Whoop's own description of the button he is looking at. With the account in
+    /// its current empty state, this endpoint is rendering the create screen, so whatever the app
+    /// does when that button is pressed is the most likely thing to be described in there.
+    ///
+    /// This is the project's one method that has ever worked on this service: **dump the response, do
+    /// not reason about it.** Both Whoop breakthroughs came from printing what the server sent, after
+    /// six rounds of reasoning produced six wrong answers and cost five hours. Nothing is inferred
+    /// here and nothing is written.
+    ///
+    /// Read only, on a path already allowlisted. Nested objects are expanded one level, because the
+    /// interesting keys are inside `schedule_button_component` rather than beside it.
+    func envelopeDump() async -> [String] {
+        guard let envelope = try? await fetchScheduleEnvelope() else {
+            return ["Could not read the alarm screen. Check the Whoop connection above."]
+        }
+        var lines: [String] = []
+        for key in envelope.keys.sorted() {
+            let value = envelope[key]
+            if let nested = value as? [String: Any] {
+                lines.append("\(key) = {")
+                for inner in nested.keys.sorted() {
+                    lines.append("    \(inner) = \(Self.describeValue(nested[inner]))")
+                }
+                lines.append("}")
+            } else if let list = value as? [[String: Any]] {
+                lines.append("\(key) = [\(list.count) item\(list.count == 1 ? "" : "s")]")
+                for (index, item) in list.enumerated() {
+                    lines.append("  [\(index)]")
+                    for inner in item.keys.sorted() {
+                        lines.append("    \(inner) = \(Self.describeValue(item[inner]))")
+                    }
+                }
+            } else {
+                lines.append("\(key) = \(Self.describeValue(value))")
+            }
+        }
+        return lines.isEmpty ? ["The alarm screen came back empty."] : lines
+    }
+
     /// A value with its type, because `"7:45 am"` and `7:45 am` are different bugs.
     static func describeValue(_ value: Any?) -> String {
         guard let value else { return "nothing" }
