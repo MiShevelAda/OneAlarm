@@ -1,0 +1,824 @@
+<title>OneAlarm Soll-Ist-Analyse</title>
+<style>
+  :root {
+    --paper:      #f6f7f9;
+    --card:       #ffffff;
+    --ink:        #141821;
+    --slate:      #5b6577;
+    --faint:      #8b94a5;
+    --rule:       #dfe3ea;
+    --rule-soft:  #eceff4;
+    --accent:     #2f4d8a;
+    --accent-dim: #e7ecf6;
+    --ok:         #1e7a5a;
+    --ok-bg:      #e4f1eb;
+    --warn:       #8f6410;
+    --warn-bg:    #f7eeda;
+    --bad:        #a63b30;
+    --bad-bg:     #f8e6e3;
+    --code-bg:    #f0f2f6;
+
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+    --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #0f1319;
+      --card:       #161b23;
+      --ink:        #e7eaf0;
+      --slate:      #a3adbe;
+      --faint:      #737e91;
+      --rule:       #262d38;
+      --rule-soft:  #1d232c;
+      --accent:     #8aabe4;
+      --accent-dim: #1b2434;
+      --ok:         #5ac496;
+      --ok-bg:      #142a22;
+      --warn:       #d9a840;
+      --warn-bg:    #2c2412;
+      --bad:        #e0776a;
+      --bad-bg:     #2e1a17;
+      --code-bg:    #1a1f28;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #0f1319;
+    --card:       #161b23;
+    --ink:        #e7eaf0;
+    --slate:      #a3adbe;
+    --faint:      #737e91;
+    --rule:       #262d38;
+    --rule-soft:  #1d232c;
+    --accent:     #8aabe4;
+    --accent-dim: #1b2434;
+    --ok:         #5ac496;
+    --ok-bg:      #142a22;
+    --warn:       #d9a840;
+    --warn-bg:    #2c2412;
+    --bad:        #e0776a;
+    --bad-bg:     #2e1a17;
+    --code-bg:    #1a1f28;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.62;
+    margin: 0;
+    padding: 0 24px 120px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 860px; margin: 0 auto; }
+  .measure { max-width: 68ch; }
+
+  /* ---------- masthead ---------- */
+
+  header.masthead {
+    padding: 72px 0 36px;
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 46px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 18px;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(34px, 6vw, 52px);
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--slate);
+    margin: 0;
+    max-width: 60ch;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    margin-top: 30px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--faint);
+  }
+  .meta b { color: var(--slate); font-weight: 500; }
+
+  /* ---------- sections ---------- */
+
+  section { margin: 0 0 62px; }
+
+  .sec-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 0 0 10px;
+  }
+  h2 {
+    font-family: var(--serif);
+    font-size: 29px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 20px;
+    text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 650;
+    letter-spacing: 0.005em;
+    margin: 34px 0 10px;
+  }
+  h4 {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 26px 0 8px;
+    font-weight: 600;
+  }
+
+  p { margin: 0 0 15px; max-width: 68ch; }
+  ul, ol { margin: 0 0 15px; padding-left: 22px; max-width: 68ch; }
+  li { margin-bottom: 7px; }
+  li::marker { color: var(--faint); }
+
+  a { color: var(--accent); }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  strong { font-weight: 650; }
+  code {
+    font-family: var(--mono);
+    font-size: 0.855em;
+    background: var(--code-bg);
+    padding: 1.5px 5px;
+    border-radius: 3px;
+  }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    padding: 15px 17px;
+    overflow-x: auto;
+    margin: 0 0 20px;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  /* ---------- callouts ---------- */
+
+  .note {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-dim);
+    padding: 15px 18px;
+    margin: 0 0 22px;
+    border-radius: 0 4px 4px 0;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note.bad { border-left-color: var(--bad); background: var(--bad-bg); }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+
+  /* ---------- tables ---------- */
+
+  .scroller { overflow-x: auto; margin: 0 0 22px; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 640px;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+  th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-weight: 600;
+    padding: 0 12px 9px;
+    border-bottom: 1px solid var(--ink);
+    vertical-align: bottom;
+  }
+  td {
+    padding: 13px 12px;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  th:first-child, td:first-child { padding-left: 0; }
+  th:last-child, td:last-child { padding-right: 0; }
+  tbody tr:last-child td { border-bottom: 1px solid var(--rule); }
+
+  /* severity stripe on the Soll-Ist rows */
+  tr.r-ok    td:first-child { box-shadow: inset 3px 0 0 var(--ok); padding-left: 12px; }
+  tr.r-warn  td:first-child { box-shadow: inset 3px 0 0 var(--warn); padding-left: 12px; }
+  tr.r-bad   td:first-child { box-shadow: inset 3px 0 0 var(--bad); padding-left: 12px; }
+
+  .fn { font-family: var(--mono); font-size: 11px; color: var(--accent); white-space: nowrap; }
+
+  .chip {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 3px 7px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .c-ok   { background: var(--ok-bg);   color: var(--ok); }
+  .c-warn { background: var(--warn-bg); color: var(--warn); }
+  .c-bad  { background: var(--bad-bg);  color: var(--bad); }
+
+  /* ---------- footnote blocks ---------- */
+
+  .foot {
+    border-top: 1px solid var(--rule);
+    padding: 20px 0 4px;
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    gap: 0 16px;
+  }
+  .foot-n {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 600;
+    padding-top: 2px;
+  }
+  .foot h3 { margin: 0 0 8px; font-size: 15.5px; }
+  .foot p { margin-bottom: 11px; }
+  .foot .lab {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--faint);
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  /* ---------- misc ---------- */
+
+  .kv {
+    display: grid;
+    grid-template-columns: minmax(120px, max-content) 1fr;
+    gap: 8px 22px;
+    margin: 0 0 22px;
+    font-size: 14.5px;
+  }
+  .kv dt { font-family: var(--mono); font-size: 12px; color: var(--faint); padding-top: 3px; }
+  .kv dd { margin: 0; }
+
+  hr.rule { border: 0; border-top: 1px solid var(--rule); margin: 44px 0; }
+
+  .ask {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 20px 22px;
+    margin: 0 0 18px;
+  }
+  .ask h3 { margin-top: 0; }
+  .ask p:last-child { margin-bottom: 0; }
+
+  @media (max-width: 640px) {
+    body { padding: 0 18px 90px; font-size: 15.5px; }
+    header.masthead { padding-top: 48px; }
+    .foot { grid-template-columns: 30px 1fr; gap: 0 10px; }
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">Technical handover &middot; Soll-Ist-Analyse</p>
+  <h1>OneAlarm</h1>
+  <p class="standfirst">A personal iOS app that propagates one wake time to an iPhone, an Eight Sleep Pod and a Whoop strap. This document is the full state of it: what it is meant to do, what it actually does, how the Eight Sleep write was solved, and every approach that was tried and failed.</p>
+  <div class="meta">
+    <span><b>Written</b> 18 August 2026</span>
+    <span><b>For</b> external engineers joining the work</span>
+    <span><b>Platform</b> iOS 26, Swift 6, SwiftUI</span>
+    <span><b>Backend</b> none</span>
+  </div>
+</header>
+
+<section>
+  <p class="sec-label">Start here</p>
+  <h2>The three things we want help with</h2>
+  <p>Everything below is context for these. If you read nothing else, read this section and the Soll-Ist table.</p>
+
+  <div class="ask">
+    <h3>1. How does Eight Sleep represent a one time change?</h3>
+    <p>Their app has a feature called <code>UPCOMING ALARM ONLY</code>: change tomorrow's alarm without touching the weekly schedule. Four raw dumps of the alarm object show <strong>no field that carries it</strong>. We can detect that an override is in force, by comparing the alarm's weekly <code>time</code> against the server's own <code>nextTimestamp</code>, but we cannot find where it lives or write one. Current working theory in the Eight Sleep section below.</p>
+  </div>
+
+  <div class="ask">
+    <h3>2. Does Whoop have a create or delete endpoint for smart alarm schedules?</h3>
+    <p>Updating a schedule is confirmed working. <strong>No public source documents a create or a delete</strong>, including the most thorough public capture of the app, whose author deliberately exercised the CRUD and recorded only an update. We ship a ladder of candidate requests. It has never been confirmed.</p>
+  </div>
+
+  <div class="ask">
+    <h3>3. Is exact day-set matching the wrong identity model, and what replaces it?</h3>
+    <p>The owner of the app put it precisely: <em>"if you set it up to match the actual settings in the apps then it usually works, because then it gets the right data. The problem is when something changes."</em> Every failure has that shape. Detail in footnote 8.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<section>
+  <p class="sec-label">Product</p>
+  <h2>What the app is</h2>
+
+  <p>One wake time, set in one place, applied to every device that can wake a person. The three devices fire in sequence rather than together, because they do different jobs:</p>
+
+  <div class="scroller">
+  <table>
+    <thead>
+      <tr><th>Device</th><th>Offset</th><th>What it does</th><th>Mechanism</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Eight Sleep Pod</td><td>master minus 10 min</td><td>Thermal and vibration wake, starts before the noise</td><td>Private HTTP API, reverse engineered</td></tr>
+      <tr><td>Whoop strap</td><td>master minus 5 min</td><td>Haptic smart alarm inside a wake window</td><td>Private HTTP API, reverse engineered</td></tr>
+      <tr><td>iPhone</td><td>master</td><td>The alarm that must ring. No account, no network, no server</td><td>AlarmKit, Apple framework</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>The app is built around <strong>routines</strong>, not a single alarm. A routine is a set of weekdays plus a time: "Weekdays 06:15", "Weekend 09:30". Each routine drives one alarm on each device. On top of that sit two one-day operations: a <strong>bend</strong> (tomorrow only, at a different time) and a <strong>skip</strong> (no alarm tomorrow, routine untouched).</p>
+
+  <p>The product rule that governs everything: <strong>OneAlarm is the single source of truth for alarm scheduling. Only comfort settings are edited in the device's own app.</strong> Temperature, vibration strength and pattern belong to Eight Sleep's app and are read from the server and handed straight back on every write. OneAlarm authors exactly three fields on an Eight Sleep alarm it owns: <code>time</code>, <code>repeat.weekDays</code> and <code>enabled</code>.</p>
+</section>
+
+<section>
+  <p class="sec-label">Engineering</p>
+  <h2>How it is built</h2>
+
+  <dl class="kv">
+    <dt>Language</dt><dd>Swift 6, strict concurrency. Adapters are actors.</dd>
+    <dt>UI</dt><dd>SwiftUI, iOS 26 minimum (AlarmKit requires it).</dd>
+    <dt>Persistence</dt><dd><code>UserDefaults</code> for schedule and ownership maps. iOS Keychain for all credentials.</dd>
+    <dt>Network</dt><dd><code>URLSession</code> only. No third party SDKs, no analytics, no backend of any kind.</dd>
+    <dt>Testing</dt><dd>XCTest against a <code>URLProtocol</code> stub server. Roughly 120 tests. No device tests.</dd>
+  </dl>
+
+  <h3>Shape of the code</h3>
+  <p>The decision-making is pure and the I/O is thin, deliberately, because the interesting bugs are all in the decisions:</p>
+
+  <ul>
+    <li><code>RulesEngine</code> is a pure function. It takes a schedule, a calendar and an instant, and returns one <code>ResolvedTarget</code> per device plus a <code>RoutinePlan</code>: the whole week, projected onto that device's clock with its offset applied. It has no clock of its own, which is what makes midnight and daylight-saving edges testable.</li>
+    <li><code>RoutinePlan.match</code> pairs each routine with the alarm it owns on a service.</li>
+    <li><code>AlarmKitReconciler</code> is pure and decides which phone alarms to schedule and which to cancel. <code>AlarmManager.shared</code> is an Apple singleton with no seam, so the adapter is a shell that does what it is told.</li>
+    <li>Three adapters conform to one <code>DeviceAdapter</code> protocol: <code>preview</code>, <code>write</code>, <code>verify</code>.</li>
+  </ul>
+
+  <h3>Two safety mechanisms worth knowing about</h3>
+
+  <p><strong>Ownership is recorded, not inferred.</strong> <code>RemoteAlarmLink</code> maps a routine ID to a remote alarm ID, and separately records which alarm IDs OneAlarm itself created. Only an ID on that second list may ever be deleted. An alarm the user made by hand, or one OneAlarm adopted because its days happened to match, is never deleted whatever state it is in. The most that happens to it is being switched off, which is reversible in one tap in the device's own app.</p>
+
+  <p><strong>Every write is read back.</strong> A 200 is never treated as a moved alarm. Eight Sleep returns <code>nextTimestamp</code>, an absolute instant, so the write is verified against the moment we actually meant. Whoop returns no such field, so its best possible state is permanently "saved" rather than "confirmed", and the app says so rather than implying more.</p>
+
+  <div class="note">
+    <p><strong>An operating constraint worth stating, because it shapes everything below.</strong> Development happens in an environment with no Swift compiler and no network route to any of the three services. Both re-verified on 18 August rather than assumed. Every type error and every question about what a server accepts is therefore answered on the owner's phone, which makes each round trip expensive and makes the quality of the app's own reporting the main lever on progress.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<section>
+  <p class="sec-label">The hard part</p>
+  <h2>Eight Sleep, and how the write was solved</h2>
+
+  <p>This leg took roughly two weeks and produced every interesting failure in the project. It works now for routines. The account details below are redacted.</p>
+
+  <h4>Auth</h4>
+  <p>Password grant against <code>auth-api.8slp.net</code>, one attempt only, never retried. Token and user ID cached in memory, credentials in the Keychain. Three hosts, and mixing them up is a real error class:</p>
+  <div class="scroller">
+  <table>
+    <thead><tr><th>Host</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td><code>auth-api.8slp.net</code></td><td>Token issue only</td></tr>
+      <tr><td><code>client-api.8slp.net</code></td><td>Account, device list, bed name and side</td></tr>
+      <tr><td><code>app-api.8slp.net</code></td><td>Alarms, routines, temperature</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4>The alarm endpoints, which are version-inconsistent</h4>
+  <pre><code>GET    https://app-api.8slp.net/v2/users/{userId}/alarms
+PUT    https://app-api.8slp.net/v1/users/{userId}/alarms/{alarmId}
+POST   https://app-api.8slp.net/v1/users/{userId}/alarms
+DELETE https://app-api.8slp.net/v1/users/{userId}/alarms/{alarmId}</code></pre>
+  <p>Reads are v2 and writes are v1. That is not a transcription error, it is confirmed against the live account. The DELETE is a convention rather than a capture: no public source documents it, so a refusal is reported with its status rather than swallowed, and the alarm is switched off instead.</p>
+
+  <h4>The write is a read-modify-write of the whole object</h4>
+  <p>It replaces rather than merges. Take the object from the list, strip five server-computed fields, replace the fields you own, send everything else back <strong>including fields with no known meaning</strong>. The five to strip:</p>
+  <pre><code>nextTimestamp  startTimestamp  endTimestamp  dismissedUntil  snoozedUntil</code></pre>
+  <p>Weekdays are seven lowercase named booleans, not a bitmask and not an array. All seven must be present on every write, because sending only the true ones leaves the rest at whatever they were, which is a merge, and this API does not merge.</p>
+
+  <h4>The discovery that unblocked two weeks of failure</h4>
+  <div class="note">
+    <p>For a fortnight, every alarm OneAlarm created returned <strong>200 and never appeared in the Eight Sleep app</strong>. The cause was one line. New alarms are built by cloning an existing alarm rather than composing a payload, so that no field is ever guessed. The clone copied the template's <code>tags</code>, and the template carried:</p>
+    <pre style="margin-top:12px;margin-bottom:12px"><code>tags = ("temporary-mode", "oneOff-napMode")</code></pre>
+    <p>Eight Sleep's app does not list alarms carrying those tags under Alarms. The alarms existed, were enabled, and were ringing. They were simply invisible. Removing <code>tags</code> from the clone fixed it, confirmed on the bed on 17 August. A regression test fails if it is ever copied again.</p>
+  </div>
+  <p>The lesson that generalises: <strong>a 200 is not a visible alarm</strong>, and for a fortnight the search was in the payload shape because the create kept reporting success.</p>
+
+  <h4>Routines, which is how their app models alarms</h4>
+  <p>Eight Sleep's app renders alarms <em>inside</em> routines, and the routine object carries the days:</p>
+  <pre><code>GET https://app-api.8slp.net/v2/users/{userId}/routines
+PUT https://app-api.8slp.net/v2/users/{userId}/routines/{routineId}
+    { days, bedtime, alarms, alarmsToCreate, enabled }</code></pre>
+  <p>So a OneAlarm routine drives both: the alarm's time through the alarm endpoint, and the routine's days and switch through the routine endpoint. A routine with no alarm gets one added <em>inside</em> a routine whose days already match, through <code>alarmsToCreate</code>. Bedtime is read and handed back untouched: when someone goes to bed is not an alarm setting.</p>
+  <p>One caveat that cost time. <strong>This account returns zero routines.</strong> That code is committed, correct for an account that has them, and is not the mechanism for anything today. The invisible alarms were never a routine problem, they were the tags.</p>
+
+  <h4>An alarm created inside a routine has no days of its own</h4>
+  <p>It takes them from the routine, so its <code>repeat.weekDays</code> comes back with every flag false. This has now caused two separate bugs: a create loop, because an empty day set matches no routine so the next sync creates another one; and a false "you will not be woken" warning, because a week-coverage check read an empty day set as covering no mornings. Both fixed. Worth knowing before writing anything that reasons about coverage.</p>
+
+  <h4>Guard rails on this leg</h4>
+  <ul>
+    <li>Hard cap of <strong>8 alarms</strong> per account, so a runaway create loop cannot fill the bed.</li>
+    <li>Never author <code>vibration</code>, <code>thermal</code>, level or pattern. Echo them.</li>
+    <li>Never open a routine OneAlarm has no relationship with.</li>
+    <li>Never write to an alarm OneAlarm does not own. Writing days to an unowned alarm is what once turned a real Monday-to-Friday schedule into every day.</li>
+    <li>Never delete an alarm OneAlarm did not create.</li>
+  </ul>
+</section>
+
+<section>
+  <p class="sec-label">The open problem</p>
+  <h2>The one time change, and the current theory</h2>
+
+  <p><strong>The bug, confirmed on the bed on 17 August.</strong> An Eight Sleep alarm has one wall-clock time for its entire day set. There is no per-day time. So the first implementation of "tomorrow only at 09:40" wrote that time into the recurring alarm, and moved <em>every</em> weekday with it. The owner's report: <em>"instead of changing it for one time, it changes the entire Monday to Friday routine on Eight Sleep."</em> The only thing putting it back was a later sync, so if the app never ran again the whole week kept the wrong time.</p>
+
+  <p><strong>What it does now, rebuilt on 18 August and not yet run on hardware.</strong> The override stops riding the routine's alarm and becomes an alarm of its own, using only mechanisms already confirmed working on this account:</p>
+  <ol>
+    <li>The routine's own alarm is written with the routine's real time, always. Nothing about it changes.</li>
+    <li>A new alarm is created by cloning, covering one weekday, at the override time.</li>
+    <li>It is filed under a synthetic key shaped like a routine ID and carrying the date, <code>oneoff:&lt;routine&gt;:&lt;yyyymmdd&gt;</code>. While the morning is ahead, that key counts as a living routine and the alarm is protected. Once it passes, the key stops being generated, the existing orphan sweep finds the alarm, and deletes it because OneAlarm is recorded as having created it. Expiry needed no new machinery.</li>
+    <li>The routine's own alarm is skipped for that one morning through the native <code>skipNext</code> field, and only when the server's <code>nextTimestamp</code> confirms that morning is genuinely the next one.</li>
+  </ol>
+
+  <div class="note warn">
+    <p><strong>A deliberate asymmetry worth arguing with.</strong> Step 4 does not fall back to switching the weekly alarm off if the skip fails, although every other skip path in the codebase does exactly that and repairs itself on the next sync. Here it does not, because with no next sync the cost is a whole week with no alarm, against one morning ringing at the routine time instead of the override time. Between an alarm that rings early and an alarm that does not ring, this leg picks early and reports which happened.</p>
+  </div>
+
+  <h3>The current theory about what their app actually does</h3>
+  <p>Four raw dumps of the alarm object now show the same thirteen keys and no override field anywhere:</p>
+  <pre><code>time  enabled  dismissedUntil  id  repeat  skipNext  skippedUntil
+smart  snoozedUntil  snoozing  tags  thermal  vibration
+( + nextTimestamp when the alarm is switched on )</code></pre>
+
+  <p>But two alarms on this account are tagged <code>temporary-mode</code> and <code>oneOff-napMode</code>. One of those words is literally <em>oneOff</em>. And those tags cannot have originated with OneAlarm, because the clone copies a template's tags and the template is always an alarm the account already had. <strong>So an alarm on this bed carried those tags before OneAlarm ever ran, which means Eight Sleep writes them.</strong></p>
+
+  <p>The hypothesis: their app implements <code>UPCOMING ALARM ONLY</code> as a <strong>separate tagged alarm</strong>, hidden from the alarm list and rendered instead as struck-through text on the card of the alarm it displaces. Which is, arrived at independently, the mechanism described above. If that is right, there is no field to find and the current design is the correct shape rather than a workaround.</p>
+
+  <p>It is testable without hunting for a field at all: set an override in their app, and see whether a new hidden alarm appears at that time.</p>
+
+  <div class="note bad">
+    <p><strong>A likely design error, found while writing this document, and the first thing an expert should check.</strong> The API reference says a one-off Eight Sleep alarm is created by <strong>omitting the <code>repeat</code> block entirely</strong>. The implementation above instead creates a single-day <em>repeating</em> alarm, which is why it needs an explicit deletion the morning after. If a genuine one-shot works, it would need no cleanup, no synthetic key and no orphan sweep, and roughly a third of the one-off machinery could be deleted. The reason it was not used is mundane: the create path clones an existing alarm, and every clone carries a <code>repeat</code> block. This has not been tested.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<section>
+  <p class="sec-label">Second service</p>
+  <h2>Whoop, in brief</h2>
+
+  <p>Auth is AWS Cognito reached through Whoop's own proxy, which injects the client ID, so the iOS app's client secret is not needed. MFA is supported. Access tokens last 24 hours.</p>
+
+  <pre><code>GET https://api.prod.whoop.com/smart-alarm-bff/v1/schedule/all?apiVersion=7
+PUT https://api.prod.whoop.com/smart-alarm-bff/v1/schedule/{id}?apiVersion=7
+    { sleep_goal, day_of_week_list, time_zone_offset,
+      enabled, latest_wake_time, alarm_mode }</code></pre>
+
+  <p>Six keys, nothing echoed from the read, confirmed working against the live account. Two things about this leg are worth carrying:</p>
+
+  <ul>
+    <li><strong>The read and the write use different field names</strong>, because <code>GET /schedule/all</code> is not the schedule. It is a rendered screen. Its top level carries keys like <code>delete_error_modal</code> and <code>schedule_button_component</code>. Five hours were spent concluding the write fields were fiction because they did not appear in that response.</li>
+    <li><strong>An account holds several schedules.</strong> This was assumed to be one for weeks, which forced a design where a single schedule's days were rewritten as the week turned over, and that is what once turned a real Monday-to-Friday schedule into every day.</li>
+  </ul>
+
+  <p>Whoop's own one-off is mutually exclusive with the recurring schedule, per its own dialog, so OneAlarm refuses one time changes on this leg rather than silently destroying the week. It is reported as a refusal with a reason.</p>
+</section>
+
+<hr class="rule">
+
+<section>
+  <p class="sec-label">The centre of this document</p>
+  <h2>Soll-Ist-Analyse</h2>
+
+  <p>Every main function, what it is supposed to do, and what it actually does as of 18 August 2026. Assessments and proposed fixes are in the numbered notes below the table.</p>
+
+  <p><strong>Read the status column carefully.</strong> <span class="chip c-ok">Works</span> means confirmed on the real hardware, by the owner, on a stated date. <span class="chip c-warn">Unverified</span> means the code exists and passes tests against a stub server and <em>has never run against a real device</em>. <span class="chip c-bad">Broken</span> means known not to work.</p>
+
+  <div class="scroller">
+  <table>
+    <thead>
+      <tr>
+        <th style="width:20%">Function</th>
+        <th style="width:26%">Soll</th>
+        <th style="width:34%">Ist, 18 August</th>
+        <th style="width:12%">Status</th>
+        <th style="width:8%">Note</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="r-ok">
+        <td><b>iPhone alarm rings</b></td>
+        <td>Rings at the master time through Silent and Focus, phone locked</td>
+        <td>Confirmed on device, 16 August, locked and face down</td>
+        <td><span class="chip c-ok">Works</span></td>
+        <td class="fn"></td>
+      </tr>
+      <tr class="r-ok">
+        <td><b>Eight Sleep: routine time</b></td>
+        <td>Change a routine time, the bed follows</td>
+        <td>Confirmed on the bed, 17 August 14:21. Owner: <em>"Ok eightsleep is save"</em></td>
+        <td><span class="chip c-ok">Works</span></td>
+        <td class="fn"></td>
+      </tr>
+      <tr class="r-ok">
+        <td><b>Eight Sleep: create a missing alarm</b></td>
+        <td>A routine with no alarm on the bed gets one</td>
+        <td>Confirmed. <code>EVERY WEEKEND 09:55</code> created by the app and visible in theirs</td>
+        <td><span class="chip c-ok">Works</span></td>
+        <td class="fn">1</td>
+      </tr>
+      <tr class="r-ok">
+        <td><b>Eight Sleep: detect a foreign override</b></td>
+        <td>Tell the user when the bed is firing at a time its schedule does not describe</td>
+        <td>Confirmed 18 August from a live screenshot. The panel named the overridden alarm by itself</td>
+        <td><span class="chip c-ok">Works</span></td>
+        <td class="fn">2</td>
+      </tr>
+      <tr class="r-ok">
+        <td><b>Whoop: schedule time</b></td>
+        <td>Change a routine, the strap follows</td>
+        <td>Confirmed, new time visible in the Whoop app</td>
+        <td><span class="chip c-ok">Works</span></td>
+        <td class="fn"></td>
+      </tr>
+      <tr class="r-ok">
+        <td><b>Whoop: one schedule per routine</b></td>
+        <td>Two routines drive two separate schedules</td>
+        <td>Confirmed 17 August after the single-schedule assumption was refuted</td>
+        <td><span class="chip c-ok">Works</span></td>
+        <td class="fn"></td>
+      </tr>
+      <tr class="r-bad">
+        <td><b>Eight Sleep: one time change</b></td>
+        <td>Tomorrow only moves. The rest of the week is untouched</td>
+        <td><b>Was broken:</b> moved the entire Monday-to-Friday series. Rebuilt 18 August as a separate single-day alarm. Never run on hardware</td>
+        <td><span class="chip c-warn">Unverified</span></td>
+        <td class="fn">3</td>
+      </tr>
+      <tr class="r-warn">
+        <td><b>Eight Sleep: override self-cleanup</b></td>
+        <td>The extra alarm is deleted on the first sync after its morning</td>
+        <td>Built. Reuses the existing orphan sweep. Never run</td>
+        <td><span class="chip c-warn">Unverified</span></td>
+        <td class="fn">4</td>
+      </tr>
+      <tr class="r-warn">
+        <td><b>Eight Sleep: skip one morning</b></td>
+        <td>Native <code>skipNext</code>, weekly alarm stays switched on</td>
+        <td>Built and checked against <code>nextTimestamp</code> moving. Never run on hardware</td>
+        <td><span class="chip c-warn">Unverified</span></td>
+        <td class="fn">5</td>
+      </tr>
+      <tr class="r-warn">
+        <td><b>iPhone: one time change</b></td>
+        <td>Tomorrow moves, every other morning stays armed</td>
+        <td><b>Was wrong:</b> stood every routine alarm down until the override passed, so bending next Saturday left Monday to Friday with no phone alarm. Rebuilt 18 August. Never run</td>
+        <td><span class="chip c-warn">Unverified</span></td>
+        <td class="fn">6</td>
+      </tr>
+      <tr class="r-warn">
+        <td><b>Whoop: create a schedule</b></td>
+        <td>A routine with no schedule gets one</td>
+        <td>A ladder of three candidate requests, best-evidenced first. No public capture of a create exists anywhere</td>
+        <td><span class="chip c-warn">Unverified</span></td>
+        <td class="fn">7</td>
+      </tr>
+      <tr class="r-bad">
+        <td><b>Resilience to change</b></td>
+        <td>Editing a routine's days keeps the alarm it already owns</td>
+        <td><b>Breaks.</b> Merging two routines orphans both alarms and leaves them ringing. Narrowing a routine's days strands its alarm</td>
+        <td><span class="chip c-bad">Broken</span></td>
+        <td class="fn">8</td>
+      </tr>
+      <tr class="r-bad">
+        <td><b>No invisible alarms</b></td>
+        <td>Nothing rings that the owner cannot see and switch off</td>
+        <td><b>Two remain</b> on the account from before the tags fix, at <code>05:55</code> weekdays and <code>09:56</code> Sa/Su, invisible in the Eight Sleep app. One is now off</td>
+        <td><span class="chip c-bad">Broken</span></td>
+        <td class="fn">9</td>
+      </tr>
+      <tr class="r-warn">
+        <td><b>Whoop: one time change</b></td>
+        <td>Tomorrow only, as on the other two legs</td>
+        <td><b>Refused by design</b>, with the reason reported. Whoop's own one-off is mutually exclusive with the recurring schedule</td>
+        <td><span class="chip c-warn">By design</span></td>
+        <td class="fn">10</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <p class="sec-label">Notes</p>
+  <h2>Assessment and proposed fix, per row</h2>
+
+  <div class="foot">
+    <div class="foot-n">1</div>
+    <div>
+      <h3>Create works, but only because it copies rather than composes</h3>
+      <p><span class="lab">Assessment</span>New alarms are clones of an alarm the account already has, with two fields changed. Nothing is composed from a spec, which is what makes it safe: the reference documentation for this API contradicts itself about field names thirty lines apart, <code>vibration.powerLevel</code> against <code>vibration.level</code>, and that contradiction would end up in the bed's temperature.</p>
+      <p><span class="lab">Consequence</span>An account with zero alarms cannot be bootstrapped. The app asks the owner to create one by hand, once, and says so plainly.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="foot-n">2</div>
+    <div>
+      <h3>Detection works without knowing where the override lives</h3>
+      <p><span class="lab">Assessment</span>This was solved by computing rather than searching. <code>time</code> is the weekly wall clock and <code>nextTimestamp</code> is the absolute instant the alarm next fires. An override necessarily makes those two disagree, <em>whatever field carries it and wherever it lives</em>. Three separate attempts to have the owner find the field by reading raw dumps failed, because reading cannot distinguish "no override was set" from "it is not on this object".</p>
+      <p><span class="lab">Worth generalising</span>When a response keeps coming back the same, the missing thing is not another dump. It is a derived value that is impossible unless the state you are hunting for exists.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="foot-n">3</div>
+    <div>
+      <h3>The one time change: most likely cause of the next failure</h3>
+      <p><span class="lab">Assessment</span>The rebuild is sound in shape and completely untested against the real API. Three specific things could break it. First, the create could be refused for a single-day payload, in which case the routine is left untouched and the row says so. Second, an alarm created standalone might not appear in their app, which is exactly the failure mode of the tags bug, although a standalone create was confirmed visible on 17 August. Third, the native skip could silently do nothing, in which case both alarms ring and the earlier one wins.</p>
+      <p><span class="lab">Proposed fix</span>Before anything else, test whether omitting the <code>repeat</code> block produces a genuine one-shot alarm, as the API reference claims. If it does, delete the single-day-repeating approach along with its synthetic key and its cleanup, and use the native one-shot. That is a materially simpler design and it removes note 4 entirely.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="foot-n">4</div>
+    <div>
+      <h3>Self-cleanup is the highest-consequence unverified path</h3>
+      <p><span class="lab">Assessment</span>If the created override alarm is not deleted after its morning, it becomes a weekly alarm at the wrong time, which is the exact failure the whole rebuild exists to prevent. It depends on the DELETE endpoint, which is a convention rather than a capture: the PUT path with a different verb. If DELETE is refused, the app falls back to switching the alarm off, which is safe but leaves visible litter.</p>
+      <p><span class="lab">Proposed fix</span>Confirm the DELETE with one live call. If it is refused, the one-shot approach in note 3 becomes not just simpler but necessary, because a one-shot needs no delete at all.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="foot-n">5</div>
+    <div>
+      <h3>skipNext is a field name we have never exercised</h3>
+      <p><span class="lab">Assessment</span><code>skipNext</code> and <code>skippedUntil</code> appear in every dump, always <code>0</code> and epoch. Their behaviour is known from their names and nothing else, which normally would not be enough to act on. What makes it acceptable is that the guess is falsifiable: if the field does what its name says, <code>nextTimestamp</code> moves past the skipped morning. If it does not move, nothing was skipped and the old behaviour runs instead. One wasted request, no damage.</p>
+      <p><span class="lab">Note for the expert</span>The live screenshot on 18 August showed an override in force with <code>skipNext = 0</code>, which rules <code>skipNext</code> out as the mechanism behind <code>UPCOMING ALARM ONLY</code>.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="foot-n">6</div>
+    <div>
+      <h3>The phone leg was wrong for a documented reason, which is its own lesson</h3>
+      <p><span class="lab">Assessment</span>AlarmKit offers <code>.never</code> and <code>.weekly</code> and nothing in between, so "this Saturday and not every Saturday" cannot be expressed as one alarm. The original answer was to arm a single alarm for the override morning and stand every routine down. Because the flag meant "this routine has an override somewhere ahead" rather than "tomorrow", bending next Saturday from a Monday left the whole working week with no phone alarm at all. On the one leg that exists precisely because it needs no account and no network.</p>
+      <p><span class="lab">What made it survive</span>It carried a long comment explaining the trade-off and a test pinning the behaviour. A documented defect reads, to the next person, as a decision already weighed. It is expressible as <em>two</em> weekly alarms, which is what it does now.</p>
+      <p><span class="lab">Recommendation</span>When you write a defect down instead of fixing it, write down what would unblock it in the same breath, and re-check that list whenever anything new lands.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="foot-n">7</div>
+    <div>
+      <h3>The Whoop create is the least evidenced thing in the app</h3>
+      <p><span class="lab">Assessment</span>It exists because the owner deleted every schedule on his account and then could not recreate one from Whoop's own app. No public source documents a create or a delete. The most thorough public capture of the app deliberately exercised smart alarm CRUD and recorded only an update, which is weak evidence that the others are not plain REST.</p>
+      <p><span class="lab">Design</span>A ladder of three candidates, most evidenced first: <code>PUT /schedule/{a-fresh-uuid}</code>, on the theory that the update endpoint is an upsert, since client-minted IDs are the standard shape for that. Every rung reports its status. A create cannot destroy anything and the account is capped at 7 schedules.</p>
+      <p><span class="lab">Explicit ban</span>No fourth rung and never a DELETE without a capture behind it. A summarising web fetch once invented a clean create and a matching delete, neither of which existed in the file it claimed to be reading. It was caught by downloading the raw source.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="foot-n">8</div>
+    <div>
+      <h3>Identity by content similarity: the real architectural problem</h3>
+      <p><span class="lab">Assessment</span>This is the most important row in the table and the owner diagnosed it himself. A routine finds its alarm three ways, in order: a recorded link, then <strong>exact day-set equality</strong> for an alarm nobody owns yet, then nothing. Exact equality is a good rule for a first meeting and a poor one for a lifetime. It works perfectly from a matched starting state, which is why the app looks reliable when set up carefully and fragile the moment anything changes.</p>
+      <p><span class="lab">Observed failures</span>Merging two routines into one orphans both real alarms, leaves them ringing, and prepares a third to be created. Narrowing a routine's days strands the alarm that had served it for weeks. Deleting a routine used to leave its alarm behind entirely.</p>
+      <p><span class="lab">Proposed fix</span>Content similarity is a fine way to <em>propose</em> a pairing and a bad way to <em>maintain</em> one. Mature sync systems use it once, at adoption, with an explicit user confirmation, and never again as identity. This app has the ID mapping already; what it lacks is a confirmation step at adoption and a diff shown before the write. A "week coverage diff" that says what will change before it changes is the concrete next piece of work, and it is more valuable than any further one-off work.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="foot-n">9</div>
+    <div>
+      <h3>Two invisible alarms are still on the account</h3>
+      <p><span class="lab">Assessment</span>Created by OneAlarm before the tags fix, so they carry the nap tags and cannot be seen or switched off in the Eight Sleep app. They predate the provenance record, so the app cannot prove it made them and therefore will not delete them, correctly. The app offers to switch them off and is waiting on the owner's approval, because it writes to his bed.</p>
+      <p><span class="lab">Proposed fix</span>Approve the switch-off. They are the residue of a fixed bug, not a live one, but an alarm that rings and cannot be seen is the worst thing in this system and should not be left in place.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="foot-n">10</div>
+    <div>
+      <h3>Whoop one-offs are refused, and refusing is the right answer today</h3>
+      <p><span class="lab">Assessment</span>Whoop's own dialog states that its one-off and its recurring schedule are mutually exclusive. Implementing a one-off by editing the recurring schedule would destroy the week, which is precisely the Eight Sleep bug in a service with less room to recover. A separate single-day schedule would need a create, which is unverified, and a delete, which is banned without a capture.</p>
+      <p><span class="lab">Proposed fix</span>Leave it refused until the create and delete are captured. A refusal that is reported is a feature. A silent destruction of a week is not.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<section>
+  <p class="sec-label">The graveyard</p>
+  <h2>What was tried that did not work</h2>
+
+  <p>Kept in full, because the failures are more instructive than the fixes and because a new engineer will otherwise re-run them.</p>
+
+  <h3>On the services</h3>
+  <ul>
+    <li><strong>Writing the override into the recurring alarm's <code>time</code>.</strong> Moved every morning that routine covered. The founding bug of the current work.</li>
+    <li><strong>Trusting a single source for a payload shape.</strong> Three times. Whoop's field names, Whoop's read shape, and Eight Sleep's routine payload, where <code>dayOffset</code> was read as the number <code>0</code> from one capture and is a string enum <code>"Zero"</code> in both implementations that spell it. Two sources, or it is not a capture.</li>
+    <li><strong>Inferring absence from the wrong object.</strong> Whoop's field names were declared fiction because a GET did not contain them. That GET returns a rendered screen. Eight Sleep was declared not to name its beds because a parser did not read a name, when nobody had looked at the object. Both existed. Cost: five hours and a wrong entry in the notes.</li>
+    <li><strong>Trusting a summarising fetch instead of raw source.</strong> A clean <code>POST</code> create and matching <code>DELETE</code> for Whoop were invented by a summarisation, neither present in the file it claimed to be reading.</li>
+    <li><strong>Assuming Whoop holds one schedule per account.</strong> It holds several. The single-schedule assumption forced a design that rewrote one schedule's days as the week turned over, which turned a real Monday-to-Friday schedule into every day.</li>
+    <li><strong>Assuming routines were hiding the invisible alarms.</strong> This account has no routines at all. It was the tags.</li>
+  </ul>
+
+  <h3>On method</h3>
+  <ul>
+    <li><strong>Changing several things at once, then drawing a conclusion.</strong> Four changes in one commit, and when the next round also failed, "it is not the body" was concluded from two attempts that were the same shape twice.</li>
+    <li><strong>A test that mutates a live account.</strong> Turning on all seven days to test the ring rewrote a real Whoop schedule from Monday-to-Friday into every day, silently, because the write replaces.</li>
+    <li><strong>A retry that silently changed a setting the user chose.</strong> A Whoop write fell back to a different <code>alarm_mode</code> to get past a suspected enum error, which would have overwritten a mode set by hand ten minutes earlier.</li>
+    <li><strong>A safety screen that overstated itself.</strong> The write preview claimed to be built by the same code as the real request. It was a reconstruction, and it omitted the field most likely to be causing the refusal. A gate that lies is worse than no gate, because it is where you go to rule something out.</li>
+    <li><strong>A green test asserting the broken behaviour.</strong> The one-off had a test named for what the code did rather than for what the feature is. It passed, and what it asserted was the bug. It is the reason nobody looked there.</li>
+    <li><strong>Diagnosing from the wrong layer.</strong> CI running zero jobs was diagnosed as a billing problem, and the owner was walked through checking spending limits and making a repository public. The cause was invalid workflow YAML.</li>
+  </ul>
+
+  <h3>The pattern that dominates recent work</h3>
+  <div class="note">
+    <p>On 18 August the one-off was rebuilt correctly and then <strong>eight separate defects were found between the working code and the user's screen</strong>, and not one was in the reasoning about alarms:</p>
+    <ul style="margin-top:10px;margin-bottom:0">
+      <li>The status line discarded its detail message whenever a sync went completely fine, so a one time change that worked perfectly printed nothing about it.</li>
+      <li>The write preview read the wrong time field and showed a time the app does not send.</li>
+      <li>The build stamp lived three taps into a settings screen while the question it answers is asked on the home screen.</li>
+      <li>The stray-alarm check did not know about the new kind of ownership, so it told the user to delete the alarm the feature had just created.</li>
+      <li>Verification read back the alarm it had just skipped, so a perfect write reported a mismatch.</li>
+      <li>The confirmation screen covered the row and said "nothing left to do" over the answer.</li>
+      <li>A week-coverage check read an alarm with no day flags as covering no mornings, producing a false "you will not be woken" on a working setup.</li>
+      <li>Both new checks vanished silently when a read failed, and silence is indistinguishable from "nothing to report".</li>
+    </ul>
+    <p style="margin-top:12px"><strong>The transferable finding: the logic has consistently been right and the path from it to a person is where everything breaks.</strong> Work is not finished at the return statement, and not at the receipt either. It is finished at the pixel the user is looking at when they stop.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<section>
+  <p class="sec-label">If you are picking this up</p>
+  <h2>Suggested order of work</h2>
+
+  <ol>
+    <li><strong>Test the native one-shot</strong>, note 3. One request. If it works, roughly a third of the one-off machinery can be deleted and note 4 disappears with it.</li>
+    <li><strong>Confirm or refute the tagged-alarm theory</strong> for <code>UPCOMING ALARM ONLY</code>. Set an override in Eight Sleep's app and look at whether a new hidden alarm appears. One minute, no field hunting.</li>
+    <li><strong>Answer <code>skipNext</code></strong>, note 5. It is already instrumented; it needs one run.</li>
+    <li><strong>Then the identity model</strong>, note 8. This is the real architectural work and everything else is comparatively cosmetic.</li>
+    <li><strong>Whoop create</strong>, note 7, last. It only matters when an account has no schedule, which is rare and recoverable by hand.</li>
+  </ol>
+
+  <div class="note">
+    <p><strong>House rules that are not negotiable, and each one was paid for.</strong> Reverse-engineered surfaces are personal-use and single-account only. Never send destructive, firmware or wipe commands. Respect rate limits, single-digit requests per second. All credentials live in the iOS Keychain, never in <code>UserDefaults</code>, never logged, never committed. No telemetry and no backend. Every device write goes through a preview gate in debug builds. When stuck, print the response rather than reasoning about it: both Whoop breakthroughs came from that, and six rounds of reasoning beforehand produced six wrong answers.</p>
+  </div>
+</section>
+
+</div>
