@@ -825,6 +825,116 @@ final class EightSleepWritePathTests: XCTestCase {
                        "and it is not reported to him as an alarm nobody is using")
     }
 
+    // MARK: The app answers "did it work", instead of asking him to
+
+    /// The verdict when it worked: routine intact, override present.
+    func testTheVerdictNamesASuccess() {
+        let verdict = EightSleepAdapter.oneOffVerdict(
+            alarms: [
+                alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil),
+                alarm(id: "oneoff-1", time: "06:20:00", days: ["tuesday"], routine: nil),
+            ],
+            routineAlarmID: "his",
+            routineTime: WallClockTime(hour: 6, minute: 5),
+            overrideTime: WallClockTime(hour: 6, minute: 20),
+            weekday: .tuesday
+        )
+        XCTAssertTrue(verdict.contains("This worked"), verdict)
+    }
+
+    /// The verdict when the bug is back: the routine's own alarm carries the override's time.
+    ///
+    /// **The one that matters.** This is the failure Alex found on his bed on 17 August, and the
+    /// whole rebuild exists to prevent it. If this string ever appears on his screen, the fix has
+    /// regressed, and it says so in the words he used rather than leaving him to compare times.
+    func testTheVerdictNamesTheWholeSeriesMoving() {
+        let verdict = EightSleepAdapter.oneOffVerdict(
+            alarms: [alarm(id: "his", time: "06:20:00", days: weekdayNames, routine: nil)],
+            routineAlarmID: "his",
+            routineTime: WallClockTime(hour: 6, minute: 5),
+            overrideTime: WallClockTime(hour: 6, minute: 20),
+            weekday: .tuesday
+        )
+        XCTAssertTrue(verdict.contains("moved the whole series"), verdict)
+    }
+
+    /// The verdict when the routine is safe but the override never arrived.
+    ///
+    /// A different failure from the one above and a much less serious one, which is exactly why they
+    /// must not share a message: this one means he wakes at his normal time, the other means his
+    /// whole week moved.
+    func testTheVerdictNamesAMissingOverride() {
+        let verdict = EightSleepAdapter.oneOffVerdict(
+            alarms: [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)],
+            routineAlarmID: "his",
+            routineTime: WallClockTime(hour: 6, minute: 5),
+            overrideTime: WallClockTime(hour: 6, minute: 20),
+            weekday: .tuesday
+        )
+        XCTAssertTrue(verdict.contains("did not land"), verdict)
+    }
+
+    /// An alarm at the right time on the wrong days does not count as the override.
+    ///
+    /// The loose version of this check would match any alarm reading 06:20, including his weekend
+    /// one. Then a verdict of "this worked" would be produced by an alarm that has nothing to do
+    /// with the override, which is the failure mode of every check that matches on one field.
+    func testTheVerdictDoesNotAcceptTheRightTimeOnTheWrongDays() {
+        let verdict = EightSleepAdapter.oneOffVerdict(
+            alarms: [
+                alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil),
+                alarm(id: "wend", time: "06:20:00", days: ["saturday", "sunday"], routine: nil),
+            ],
+            routineAlarmID: "his",
+            routineTime: WallClockTime(hour: 6, minute: 5),
+            overrideTime: WallClockTime(hour: 6, minute: 20),
+            weekday: .tuesday
+        )
+        XCTAssertTrue(verdict.contains("did not land"), verdict)
+    }
+
+    /// Seconds are not part of the comparison. The account spells the same time both ways.
+    func testTheVerdictIgnoresSeconds() {
+        var short = alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)
+        short["time"] = "06:05"
+        let verdict = EightSleepAdapter.oneOffVerdict(
+            alarms: [short, alarm(id: "oneoff-1", time: "06:20", days: ["tuesday"], routine: nil)],
+            routineAlarmID: "his",
+            routineTime: WallClockTime(hour: 6, minute: 5),
+            overrideTime: WallClockTime(hour: 6, minute: 20),
+            weekday: .tuesday
+        )
+        XCTAssertTrue(verdict.contains("This worked"), verdict)
+    }
+
+    /// The verdict reaches the row he actually reads, and is not merely computable.
+    ///
+    /// A check nobody sees is not a check. This is the assertion that fails if the wiring is dropped
+    /// while the pure function keeps passing its own tests.
+    func testTheVerdictReachesTheReceipt() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["id": "oneoff-1"] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20)],
+                              skipsNextMorning: false)
+        )
+
+        XCTAssertTrue(receipt.note.contains("ONE TIME CHECK"), receipt.note)
+        // The stub keeps returning the pre-create list, so the override is genuinely absent from the
+        // read back and the honest verdict is that it did not land. Asserting the negative here on
+        // purpose: a check that cannot say no is not a check.
+        XCTAssertTrue(receipt.note.contains("did not land"), receipt.note)
+    }
+
     /// Signing out forgets which alarms OneAlarm made, not just which routine owns which.
     ///
     /// The created list is the only thing that licenses a delete. Left behind across a sign out it

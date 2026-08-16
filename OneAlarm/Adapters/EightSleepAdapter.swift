@@ -664,6 +664,58 @@ actor EightSleepAdapter: DeviceAdapter {
         return CalendarDay(instant, in: calendar) == day
     }
 
+    /// Did the one time change land, and did it leave the rest of the week alone?
+    ///
+    /// **The app answers this, not Alex.** Three times in a row he was asked for a raw block from the
+    /// Eight Sleep app and three times the wrong one came back, not because he misread it but because
+    /// following the instruction meant parsing sixteen fields across four blocks. The fix that worked
+    /// last time was to compute the answer and print one line, and this is the same move for the one
+    /// time change: everything needed is already in a list this app just read.
+    ///
+    /// Two independent facts, because they fail separately and mean different things:
+    ///
+    /// - the routine's own alarm still carries the **routine's** time. If it carries the override's,
+    ///   the whole week moved and the bug is back.
+    /// - an alarm exists for the one weekday at the override time. If it does not, the override never
+    ///   reached the bed whatever the create said.
+    ///
+    /// Pure, so a test can hold every combination without a server. Compared on `HH:mm`, because the
+    /// account returns `"06:20:00"` in some places and `"06:20"` in others and the seconds have never
+    /// carried meaning here.
+    static func oneOffVerdict(
+        alarms: [[String: Any]],
+        routineAlarmID: String,
+        routineTime: WallClockTime,
+        overrideTime: WallClockTime,
+        weekday: Locale.Weekday
+    ) -> String {
+        func clock(_ alarm: [String: Any]) -> String {
+            (alarm["time"] as? String).map { String($0.prefix(5)) } ?? ""
+        }
+        let routineAlarm = alarms.first { alarmID($0) == routineAlarmID }
+        let weeklyIntact = routineAlarm.map { clock($0) == routineTime.hhmm } ?? false
+        let weeklyMoved = routineAlarm.map { clock($0) == overrideTime.hhmm } ?? false
+        let overrideLanded = alarms.contains {
+            alarmID($0) != routineAlarmID
+                && clock($0) == overrideTime.hhmm
+                && weekdays(of: $0) == [weekday]
+        }
+
+        let day = weekday.shortLabel
+        switch (weeklyIntact, overrideLanded) {
+        case (true, true):
+            return "ONE TIME CHECK: your bed has a \(day) \(overrideTime.hhmm) alarm and your routine still says \(routineTime.hhmm). This worked."
+        case (true, false):
+            return "ONE TIME CHECK: your routine is safe at \(routineTime.hhmm), but no \(day) \(overrideTime.hhmm) alarm is on your bed. The one time change did not land."
+        case (false, _) where weeklyMoved:
+            // The exact failure this whole change exists to prevent, named in the words he used for
+            // it, so there is nothing to interpret.
+            return "ONE TIME CHECK: your routine's alarm now reads \(overrideTime.hhmm). The one time change moved the whole series, which is the bug. Send me this line."
+        default:
+            return "ONE TIME CHECK: cannot tell. Your routine's alarm is not reading back as \(routineTime.hhmm) or \(overrideTime.hhmm)."
+        }
+    }
+
     static func silence(_ alarm: [String: Any]) -> [String: Any] {
         var payload = alarm
         for field in computedFields { payload.removeValue(forKey: field) }
@@ -1625,6 +1677,30 @@ actor EightSleepAdapter: DeviceAdapter {
                 } else {
                     oneOffNotes.append("Could not skip \(entry.routineName) for that morning, so your bed rings at \(entry.localTime.hhmm) as well and the earlier one wins. Switch it off in the Eight Sleep app if you want only \(bentTime.hhmm).")
                 }
+            }
+
+            // One read back, and the app says whether it worked.
+            //
+            // Everything above reports what OneAlarm **did**, which is not the same question. A 200
+            // is not a moved alarm, and a create reporting success is not an alarm on his bed: that
+            // exact gap is `E14`, where every create returned accepted for a fortnight while nothing
+            // appeared in his app. So the account is read once more and compared.
+            //
+            // It also ends a handoff that has failed three times. He was asked for a screenshot of
+            // the Eight Sleep alarm list, which means reading it, deciding which alarm is which, and
+            // knowing what should have changed. The app has the list. It can do the deciding.
+            let settled = (try? await fetchAlarms()) ?? []
+            for entry in bends where !settled.isEmpty {
+                guard let bend = entry.bendDay, let bentTime = entry.bentTo,
+                      let pair = report.pairs.first(where: { $0.routineID == entry.routineID })
+                else { continue }
+                oneOffNotes.append(Self.oneOffVerdict(
+                    alarms: settled,
+                    routineAlarmID: pair.alarmID,
+                    routineTime: entry.localTime,
+                    overrideTime: bentTime,
+                    weekday: bend.weekday
+                ))
             }
         }
 

@@ -989,8 +989,27 @@ and an alarm that does not ring, this leg picks early and says which it did.
 | the new alarm does not appear in his app but the API returns it | the create needs a routine to live in, as in `E14` | the `alarmsToCreate` path used elsewhere in `write` is the fix |
 | the whole weekday series moved again | something still writes `bentTo` to the routine's alarm | grep for `timeToWrite` on this leg; the map to `withoutBend()` did not take |
 
-**Whose.** Alex. Set a one time change for tomorrow, press Set all alarms, then open the Eight Sleep
-app and screenshot the alarm list. Two minutes.
+**The app answers this itself now.** After the write it reads the account back once and prints one
+line on the row he already reads:
+
+```
+ONE TIME CHECK: your bed has a Tue 06:20 alarm and your routine still says 06:05. This worked.
+ONE TIME CHECK: your routine's alarm now reads 06:20. The one time change moved the whole series,
+                which is the bug. Send me this line.
+ONE TIME CHECK: your routine is safe at 06:05, but no Tue 06:20 alarm is on your bed.
+```
+
+Built for the same reason the `OVERRIDE CHECK` line was: **three raw block handoffs in a row came
+back wrong**, not through carelessness but because following the instruction meant parsing sixteen
+fields and knowing which one should have changed. Everything the check needs is in a list the app has
+just read. Asking a person to do the comparing was the mistake, twice.
+
+It is also a stronger check than a screenshot, because it separates two failures a glance conflates:
+the routine's alarm carrying the override's time, which is the bug, and the override's alarm simply
+being absent, which means he wakes at his normal time. Those need different fixes.
+
+**Whose.** Alex. Set a one time change for tomorrow, press Set all alarms, read the row. One minute,
+no screenshot, and no going into the Eight Sleep app at all.
 
 **And the morning after**, open OneAlarm once and check the extra alarm is gone. That half cannot be
 tested any other way, and an override alarm that outlives its morning is a weekly alarm at the wrong
