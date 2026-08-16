@@ -116,12 +116,29 @@ npm install                           # once, for the syntax checker
 npm run check                         # structure and secrets, then a real Swift parse
 ```
 
-No Swift **compiler** exists in the session environment. `download.swift.org`, `github.com` releases
-and `objects.githubusercontent.com` are all refused by the proxy, checked rather than assumed. But
-`registry.npmjs.org` bypasses the proxy, so `tools/parse_swift.js` runs tree-sitter's Swift grammar
-over every file and catches real syntax errors. Read its header before trusting or doubting it: three
-false positives are documented there, each confirmed rather than guessed, so nobody re-investigates
-them.
+No Swift **compiler** exists in the session environment. Still true, and **re-checked 18 August**
+because it is the assumption that sends every type error to Alex's build, and an assumption that
+expensive is worth re-testing rather than inheriting.
+
+What is actually true, which is not what this file said before:
+
+| Host | 16 Aug | 18 Aug |
+|---|---|---|
+| `download.swift.org` | refused | **still refused**, connection never opens |
+| `objects.githubusercontent.com` | "refused" | **reachable** |
+| `api.github.com` | not tested | **reachable, but scoped to this session's repos**. Anything else answers 403 telling you to use `add_repo` |
+| `swift.org` | not tested | reachable, and it only redirects to `download.swift.org` |
+
+So the conclusion holds and two thirds of the reasoning behind it did not. The toolchain is out of
+reach because the one host that serves it is blocked, not because GitHub is. **Do not add a repo you
+do not need in order to go looking for a toolchain**: attaching one mints credentials, and hunting a
+compiler is not a reason.
+
+`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`, `index.crates.io` and `proxy.golang.org`
+all bypass the proxy entirely, per `$HTTPS_PROXY/__agentproxy/status`. That is what makes
+`tools/parse_swift.js` possible: it runs tree-sitter's Swift grammar over every file and catches real
+syntax errors. Read its header before trusting or doubting it: three false positives are documented
+there, each confirmed rather than guessed, so nobody re-investigates them.
 
 **A parse is not a type check.** It cannot see a wrong type, a missing argument label, or the two
 things that actually shipped broken on 16 August: an unannotated heterogeneous dictionary literal,
