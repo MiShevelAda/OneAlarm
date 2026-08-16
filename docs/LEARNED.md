@@ -565,6 +565,21 @@ statement. Two more:
 a **class**, and the cheapest moment to find the rest is immediately, while the shape is in your head.
 Fixing the one you tripped over and moving on is how the other two ship.
 
+**A fourth, from auditing rather than from a symptom.** `[18 August]` The override's own alarm is
+owned through a key that is not a routine id, so the stranded-alarm check did not recognise it and
+reported it every sync as "an alarm matching no routine that OneAlarm did not touch. It still rings.
+Give a routine those days, or delete it in the Eight Sleep app." A warning telling him to delete the
+alarm the feature had just made for him, on the row where the feature reports success.
+
+Found by reading, not by a failure, and it would have been read as the one-off not working. **A new
+kind of ownership needs every existing owner check taught about it**, and the way to find those is to
+grep for the old one rather than to think about where it might matter.
+
+**Also found by the same read:** a test whose stubbed request sequence was one short. That does not
+fail loudly, it falls through to the default answers, the last request 404s, and the assertion that
+would have caught something quietly never runs. The test goes on passing while testing less than it
+says. **Count the requests against the code, never against the intention.**
+
 ## 2. Method: what did not work
 
 **Trusting a single source for a payload shape.** `[observed, three times]` The Whoop field names,

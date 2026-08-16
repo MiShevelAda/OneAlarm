@@ -1993,9 +1993,20 @@ actor EightSleepAdapter: DeviceAdapter {
         //
         // He does not go looking. He reads the row after pressing Set all alarms. So it goes there,
         // with the count, because "one" and "three" are different amounts of trouble.
+        // **Everything OneAlarm owns, including the one day override's own alarm.**
+        //
+        // `report.pairs` only covers routines. An override's alarm is owned through a key that is not
+        // a routine id, so without this it is "an alarm matching no routine that OneAlarm did not
+        // touch", and he is told, every sync while the override is armed, to give it a routine or
+        // delete it in the Eight Sleep app. A warning telling him to delete the thing the feature
+        // just made for him.
+        //
+        // Read fresh rather than from the `links` captured at the top, because the one-off pass above
+        // may have added one in this same run.
+        let ownedNow = Set(RemoteAlarmLink.all(for: .eightSleep).values)
         let strandedAndLive = alarms.filter { candidate in
             guard let id = Self.alarmID(candidate) else { return false }
-            guard !written.contains(id), Self.isVisibleToHim(candidate) else { return false }
+            guard !written.contains(id), !ownedNow.contains(id), Self.isVisibleToHim(candidate) else { return false }
             guard (candidate["enabled"] as? Bool) != false else { return false }
             guard !Self.weekdays(of: candidate).isEmpty else { return false }
             return !report.pairs.contains { $0.alarmID == id }

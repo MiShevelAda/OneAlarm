@@ -1344,11 +1344,17 @@ final class EightSleepWritePathTests: XCTestCase {
         var afterSkip = before
         afterSkip["nextTimestamp"] = "2027-01-20T12:00:00Z"
 
+        // **Four reads, counted against the code rather than guessed.** The write reads once at the
+        // start, once before the one-off pass, once to check the skip moved `nextTimestamp`, and once
+        // at the end for the verdict. A sequence one short does not fail loudly: it falls through to
+        // `responses`, which has no alarms entry, so the final read 404s and the verdict quietly does
+        // not happen. The test would still pass while testing less than it claims.
         StubServer.sequences = [
             StubServer.key("GET", "/v2/users/\(userID)/alarms"): [
                 (200, ["alarms": [withStamp]] as [String: Any]),   // the first read
                 (200, ["alarms": [withStamp]] as [String: Any]),   // re-read before the one-off pass
                 (200, ["alarms": [afterSkip]] as [String: Any]),   // the check that the skip took
+                (200, ["alarms": [afterSkip]] as [String: Any]),   // the final read back
             ],
         ]
         StubServer.responses = [
