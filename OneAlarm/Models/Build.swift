@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 02:20 · a switched off alarm stops claiming it rings"
+    static let marker = "18 Aug, 03:00 · a one-off no longer moves your Whoop week"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "An alarm on your bed that no routine covers is left alone, which was always true, and the screen now also says the part that matters: it still rings. With an Every day routine you were one Set away from three alarms on one morning."
+    static let whatIsNew = "A one-off no longer touches your strap. A Whoop schedule has one time for all its days, so writing the bent time there moved every weekday with it. Skipping it costs one morning instead of four, and the row says so. Your phone and your bed still carry the one-off."
 }

@@ -15,6 +15,30 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**A one-off overwrote the Whoop week too, and the fix there is a refusal rather than a write.**
+`[observed, 17 August]` Alex: *"Tomorrow only also overwrite the routine in whoop."*
+
+Same symptom as the bed, different cause and different answer. Eight Sleep **has** a native one-off,
+`UPCOMING ALARM ONLY`, and OneAlarm simply is not using it yet, so that one is a fixable bug. **A
+Whoop schedule is days plus one time and nothing else.** There is no one-off to reach for. Writing a
+bent time necessarily writes it to every day that routine covers.
+
+So the choice is between two harms, and naming both is what makes it a decision instead of a default:
+
+| | Mornings wrong | Direction |
+|---|---|---|
+| Write the bend | **four**, Tue to Fri | **late**, on a `+15` |
+| Skip the bend | **one**, tomorrow | **early** |
+
+One beats four, and early beats late when the job is waking somebody up. The phone and the bed still
+carry the one-off, so nothing is lost, and the strap has always been the least authoritative leg here.
+
+**The general rule this settles:** when a device cannot express what the user asked for, the honest
+move is to **do less and say so**, not to approximate it across days he did not ask about. An
+approximation that touches four mornings to satisfy one is not a partial success, it is three new
+failures wearing the same green tick.
+
+
 **"OneAlarm never touches it" was true and left out the part that decides whether he wakes up.**
 `[observed, 17 August 17:14]` He consolidated his week to a single **Every day** routine. His two real
 alarms, `09:30 weekdays` and `10:55 Sa Su`, instantly matched no routine, and the bed screen said

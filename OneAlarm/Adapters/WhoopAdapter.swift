@@ -1199,9 +1199,35 @@ actor WhoopAdapter: DeviceAdapter {
         var moved: [String] = []
         var failures: [String] = []
 
+        // **A one-off is not written to Whoop, and that is a deliberate refusal.**
+        //
+        // Alex, 17 August: *"Tomorrow only also overwrite the routine in whoop."* Same bug as the
+        // bed, worse cause. A Whoop schedule is days plus one time and **nothing else**: there is no
+        // native one-off to use, the way Eight Sleep has `UPCOMING ALARM ONLY`. So writing a bent
+        // time here means writing it to **every day that routine covers**. Bend one Monday and
+        // Tuesday through Friday move with it, until the next sync puts them back.
+        //
+        // Two options, both bad, and this is the less bad one stated rather than hidden:
+        //
+        // - **Write it:** tomorrow is right and **four** other mornings are wrong, and wrong in the
+        //   direction that matters, because a `+15` bend makes them fire fifteen minutes **late**.
+        // - **Skip it:** **one** morning is wrong, tomorrow, and it is wrong **early**, because the
+        //   strap keeps the routine time it already had.
+        //
+        // One morning beats four, and early beats late when the job is waking somebody up. The phone
+        // and the bed still carry the one-off, so he is not relying on the strap for it, and the
+        // strap is the leg this project has always treated as the least authoritative.
+        //
+        // This is a workaround for a limit in Whoop's model, not a fix. It is named on the row rather
+        // than left for him to discover on a Wednesday.
+        var oneOffSkipped: [String] = []
         for pair in report.pairs {
             guard let existing = schedules.first(where: { Self.scheduleID($0) == pair.alarmID }) else { continue }
             let entry = plan.entries.first { $0.routineID == pair.routineID }
+            if entry?.isBent == true {
+                oneOffSkipped.append(entry?.routineName ?? pair.routineName)
+                continue
+            }
             let perRoutine = ResolvedTarget(
                 device: .whoop,
                 localTime: pair.time,
@@ -1298,6 +1324,9 @@ actor WhoopAdapter: DeviceAdapter {
         if !stillMissing.isEmpty, createProblems.isEmpty {
             note += " No Whoop schedule runs on \(stillMissing.joined(separator: " or ")). Make one in the Whoop app, any time, and OneAlarm keeps it from then on."
         }
+        if !oneOffSkipped.isEmpty {
+            note += " Your one-off is not on the strap: a Whoop schedule has one time for all its days, so writing it would move every \(oneOffSkipped.joined(separator: " and ")) morning, not just the one. Your phone and your bed have it."
+        }
         if !createProblems.isEmpty { note += " " + createProblems.joined(separator: " ") }
         if !failures.isEmpty { note += " " + failures.joined(separator: " ") }
 
@@ -1320,6 +1349,26 @@ actor WhoopAdapter: DeviceAdapter {
         // A bend collapses `weekdays` to one day upstream, which is right for AlarmKit and a deletion
         // here, because a single Whoop schedule carries the whole week. See `widened`.
         let target = Self.widened(rawTarget, plan: plan)
+
+        // **The one-off refusal, on the path he actually hit.** See the long note in `write(_:plan:)`.
+        // A Whoop schedule is days plus one time, so a bent time lands on every day the routine
+        // covers. Writing it makes four mornings late; skipping it makes one morning early. The phone
+        // and the bed still carry the one-off.
+        //
+        // `widened` runs first on purpose. It resolves which routine covers the bent morning, and
+        // this needs that same answer rather than a second one computed differently.
+        let bentRoutine = plan.entries.first {
+            $0.isBent && !$0.weekdays.isDisjoint(with: target.weekdays)
+        }
+        if let bentRoutine {
+            authState = .connected
+            return WriteReceipt(
+                device: .whoop,
+                succeededAt: Date(),
+                remoteID: nil,
+                note: "Left your strap on the \(bentRoutine.routineName) time. A Whoop schedule has one time for all its days, so putting the one-off here would move every \(bentRoutine.routineName) morning, not just the one. Your phone and your bed have it."
+            )
+        }
         // The envelope rather than just the list, because its other keys are the only part of this
         // endpoint's shape we have never looked at, and a 422 with an empty body has to be
         // diagnosed from something.
@@ -1373,8 +1422,14 @@ actor WhoopAdapter: DeviceAdapter {
     /// Whoop returns no absolute timestamp, so the check reconstructs one from the wall clock it
     /// echoes back and compares that against the instant we intended.
     func verify(_ receipt: WriteReceipt, against target: ResolvedTarget) async throws -> Verification {
+        // Nothing was written, so there is nothing to check, and saying "Whoop did not return the
+        // updated schedule" about a write that never happened would be the fourth screen today
+        // describing a state the device is not in. A deliberate skip reports itself as one.
+        guard let id = receipt.remoteID else {
+            return .unavailable(reason: "Nothing was written, on purpose. See the note above.")
+        }
         let schedules = try await fetchSchedules()
-        guard let updated = schedules.first(where: { Self.scheduleID($0) == receipt.remoteID }) else {
+        guard let updated = schedules.first(where: { Self.scheduleID($0) == id }) else {
             return .unavailable(reason: "Whoop did not return the updated schedule.")
         }
         guard let echoed = Self.wakeTime(from: updated["latest_wake_time"]) else {
