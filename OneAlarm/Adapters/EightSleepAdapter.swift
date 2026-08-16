@@ -918,6 +918,10 @@ actor EightSleepAdapter: DeviceAdapter {
             // already covers these days, because adding the alarm there is the difference between
             // an alarm he can see and one only the API knows about.
             let existingRoutines = (try? await fetchRoutines()) ?? []
+            // Every alarm id that existed before this run created anything, so a newly created one
+            // can be told apart and linked. Without this the routine create path repeats itself on
+            // every sync. See the comment where it is used.
+            var knownAlarmIDs = Set(described.map(\.id))
             for entry in entries where report.routinesWithNoAlarm.contains(entry.routineName) {
                 guard !entry.weekdays.isEmpty, entry.isOn else { continue }
                 guard alarms.count + created.count < Self.alarmCeiling else {
@@ -954,10 +958,33 @@ actor EightSleepAdapter: DeviceAdapter {
                     } else {
                         attempts.append("routine \(hostID.prefix(8)): accepted")
                         created.append(entry.routineName)
-                        // No id comes back from this path, so there is no link to record and nothing
-                        // to verify this run. The next sync finds it by its days, adopts it, and
-                        // records the link then. Saying that out loud beats a silent gap.
-                        createNotes.append("Added the \(entry.routineName) alarm inside a routine that already runs on those days, so the Eight Sleep app shows it. OneAlarm picks it up as its own on the next sync.")
+
+                        // Find the alarm that just appeared, and own it now.
+                        //
+                        // The first version left this to "the next sync will adopt it by its days",
+                        // which is wrong and would have been expensive. An alarm created through
+                        // `alarmsToCreate` takes its days from the **routine**, so its own
+                        // `repeat.weekDays` may be empty. An empty day set matches no routine, so
+                        // the next sync would see the same routine with no alarm and create another,
+                        // and the one after that another, until `alarmCeiling` stopped it at eight.
+                        // Eight unwanted alarms on his bed, from a feature that reported success
+                        // every time.
+                        //
+                        // So the account is re-read and the id that was not there before is linked.
+                        // If more than one appeared, nothing is linked: guessing which is which
+                        // would put a routine in charge of an alarm it does not own.
+                        let after = (try? await fetchAlarms()) ?? []
+                        let fresh = after.compactMap(Self.alarmID).filter { !knownAlarmIDs.contains($0) }
+                        if fresh.count == 1, let newID = fresh.first {
+                            RemoteAlarmLink.link(routine: entry.routineID, to: newID, on: .eightSleep)
+                            createdIDs.insert(newID)
+                            knownAlarmIDs.insert(newID)
+                            createNotes.append("Added the \(entry.routineName) alarm inside a routine that already runs on those days, so the Eight Sleep app shows it.")
+                        } else {
+                            // Reported rather than silently accepted, because the consequence is a
+                            // duplicate next time and he is the only one who can see it.
+                            createNotes.append("Added the \(entry.routineName) alarm inside its routine, but could not tell which new alarm is it (\(fresh.count) appeared). Check the Eight Sleep app before the next sync, in case it makes a second one.")
+                        }
                         continue
                     }
                 }

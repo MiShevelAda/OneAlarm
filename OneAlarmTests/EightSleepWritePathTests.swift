@@ -362,6 +362,46 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertTrue(receipt.isPartial, "a week with a hole in it is not a done write")
     }
 
+    /// The create must not repeat itself on the next sync.
+    ///
+    /// An alarm created through `alarmsToCreate` takes its days from the **routine**, so its own
+    /// `repeat.weekDays` can come back empty. An empty day set matches no routine, so a second sync
+    /// would see the same routine with no alarm and create another, and the sync after that another,
+    /// until the ceiling stopped it at eight. Eight unwanted alarms on his bed, from a feature
+    /// reporting success every time.
+    ///
+    /// The fix is to re-read the account and link whichever id was not there before. This test is
+    /// the one that fails if that is ever removed as an extra request nobody needs.
+    func testACreatedAlarmIsOwnedImmediatelyRatherThanNextTime() async throws {
+        let before = [alarm(id: "a1", time: "07:00:00", days: weekdayNames, routine: "r1")]
+        // The created alarm comes back with **no days of its own**, which is the whole hazard.
+        let after = before + [alarm(id: "brand-new", time: "08:50:00", days: [], routine: "r2")]
+
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, ["alarms": before]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, [
+                "routines": [routine(id: "r2", days: ["saturday", "sunday"])],
+            ]),
+            StubServer.key("PUT", "/v2/users/\(userID)/routines/r2"): accepted,
+        ]
+
+        let subject = await adapter()
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [entry("weekend", "Weekend", [.saturday, .sunday], hour: 8, minute: 50)],
+            skipsNextMorning: false
+        )
+
+        // The re-read after the create returns the account with the new alarm on it.
+        StubServer.responses[StubServer.key("GET", "/v2/users/\(userID)/alarms")] = (200, ["alarms": after])
+        _ = try await subject.write(target, plan: plan)
+
+        XCTAssertEqual(
+            RemoteAlarmLink.alarmID(for: "weekend", on: .eightSleep), "brand-new",
+            "the new alarm is owned now, not left to a day set match that cannot happen"
+        )
+    }
+
     /// The routines read falls back to `v1`, and says which one answered.
     ///
     /// `E19`: the routine write is `/v2/routines/{id}` in two captures, and an OpenAPI description
