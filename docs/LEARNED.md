@@ -498,6 +498,32 @@ fact, and twice it existed in an endpoint nobody had called. The third time the 
 better still: the field was missing because the **relationship does not exist**, and the question
 had to be rephrased rather than answered.
 
+**Direction decides whether silencing the strap is right, not the fact of a one time change.**
+`[19 August]` He nudged a morning half an hour **earlier** and OneAlarm switched his Whoop schedule
+off. His words: *"Changing the alarm plus fifteen minutes or setting it to just for the next morning
+actually switches off the whoop."*
+
+The silencing had been built an hour earlier from one real case: routine 07:55, moved to 09:41. There
+the strap left alone buzzes two hours before he asked to wake, and losing the buzz is the better
+trade. **The rule was then applied to every bend**, including the opposite one. Routine 08:55 moved to
+08:25 leaves the strap firing at 08:50, which is after he is already up: harmless, and switching it
+off cost him the wrist buzz for nothing.
+
+Now it silences only when the bend is **later** than the routine by more than fifteen minutes. The
+grace exists because the strap already sits five minutes ahead of the phone by design, so a small
+nudge is inside the noise of a wrist alarm, and losing the buzz entirely is the worse outcome.
+
+**The rule underneath, and it is the general one.** A trade-off measured on one real case is a
+trade-off measured at one point. Before applying it everywhere, run the **opposite** case through it
+and check the answer still holds. Here the opposite case inverted which side was harmful, and nothing
+in the code or the comment noticed.
+
+**A second thing this exposed.** Letting a small bend fall through to the ordinary write meant the
+ordinary write now had to be safe with a bent entry, and it was not: it built its payload from
+`Pair.time`, which is `bentTo ?? localTime`. That would have moved his whole week, the founding bug of
+this leg, reached by a third route. **When you widen which inputs reach a path, re-check that path's
+assumptions about them.**
+
 **A two branch answer to a three case question, and it told him his days were gone.** `[19 August]`
 His Whoop card read *"Switched off, and no days set"* directly above a dump listing
 `scheduled_days = (MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY)`. The schedule was switched off and

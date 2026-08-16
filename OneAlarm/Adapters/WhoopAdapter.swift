@@ -1303,10 +1303,37 @@ actor WhoopAdapter: DeviceAdapter {
         // This is a workaround for a limit in Whoop's model, not a fix. It is named on the row rather
         // than left for him to discover on a Wednesday.
         var oneOffSkipped: [String] = []
+        /// Bent routines whose strap was deliberately left running at the routine time.
+        var oneOffLeftAlone: [String] = []
         for pair in report.pairs {
             guard let existing = schedules.first(where: { Self.scheduleID($0) == pair.alarmID }) else { continue }
             let entry = plan.entries.first { $0.routineID == pair.routineID }
-            if entry?.isBent == true {
+            // **Only silence when leaving the strap alone would wake him EARLY.**
+            //
+            // Alex, 19 August, after nudging a morning half an hour earlier: *"Changing the alarm
+            // plus fifteen minutes or setting it to just for the next morning actually switches off
+            // the whoop."* He is right that this was wrong, and the reason is direction, not the
+            // fact of a bend.
+            //
+            // His routine was 08:55 and he moved that morning to 08:25. Left alone the strap fires
+            // at the routine time, 08:50, which is **after** he is already awake. Harmless. Switching
+            // it off cost him the wrist buzz for nothing.
+            //
+            // The 09:41 case was the opposite: the routine was 07:55, so leaving the strap alone
+            // would have buzzed two hours before he asked to wake. That is the case worth losing a
+            // buzz over.
+            //
+            // A grace of fifteen minutes on top, because the strap already sits five minutes ahead of
+            // the phone by design and a small nudge is inside the noise of a wrist alarm. Losing the
+            // buzz entirely is a worse outcome than one arriving a few minutes early.
+            let bendWakesHimEarly: Bool = {
+                guard let entry, let bent = entry.bentTo else { return false }
+                return bent.minutesSinceMidnight - entry.localTime.minutesSinceMidnight > 15
+            }()
+            if entry?.isBent == true, !bendWakesHimEarly {
+                oneOffLeftAlone.append(entry?.routineName ?? pair.routineName)
+            }
+            if entry?.isBent == true, bendWakesHimEarly {
                 // **Refusing to write the one-off is not neutral, it wakes him early.**
                 //
                 // From his strap on 19 August. He bent Monday to 09:41, and his Whoop schedule sat at
@@ -1362,9 +1389,18 @@ actor WhoopAdapter: DeviceAdapter {
                 }
                 continue
             }
+            // **A Whoop schedule always carries the routine's own time, never a bend.**
+            //
+            // One schedule holds one time for **all** its days, so writing a bent time here moves
+            // every morning that schedule covers. That is the founding bug of this leg, and it
+            // reached Alex's account once already through the silencing path on 19 August.
+            //
+            // `pair.time` is `bentTo ?? localTime`, which is correct for Eight Sleep, where each day
+            // set has its own alarm, and is never correct here. Stated once, at the only place this
+            // leg builds a write, rather than guarded at each caller.
             let perRoutine = ResolvedTarget(
                 device: .whoop,
-                localTime: pair.time,
+                localTime: entry?.localTime ?? pair.time,
                 weekdays: pair.weekdays,
                 dayShift: target.dayShift,
                 // Only the schedule covering the next morning has a meaningful absolute instant, and
@@ -1475,6 +1511,12 @@ actor WhoopAdapter: DeviceAdapter {
         // sentence thrown away. Verification was comparing the read-back against the bent target
         // while the write had deliberately sent the routine time.
         var wroteInstead: WallClockTime?
+        // A bend that does not move the strap and does not silence it either: it fires at the
+        // routine time, which that morning is after he is already up. Said out loud, because a strap
+        // buzzing at a time no screen mentions is exactly the surprise this project keeps fixing.
+        if !oneOffLeftAlone.isEmpty {
+            note += " Your strap still buzzes at its usual \(oneOffLeftAlone.joined(separator: " and ")) time that morning, which is after your new time, so it cannot wake you early. A Whoop schedule has one time for all its days, so the one-off cannot go on it."
+        }
         if !oneOffSkipped.isEmpty {
             note += " Your strap is switched off for that one morning, so it cannot buzz at the \(oneOffSkipped.joined(separator: " and ")) time. A Whoop schedule has one time for all its days, so putting the one-off here would move every morning it covers, not just the one. Your phone and your bed carry the new time, and the next time you press Set all alarms the strap comes back on by itself."
             // The routine time for the schedule covering the next morning, which is what went out.

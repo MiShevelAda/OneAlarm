@@ -233,6 +233,51 @@ final class WhoopMutationTests: XCTestCase {
                        "the next sync with no override turns the strap back on")
     }
 
+    /// **Direction decides whether the strap is silenced, not the fact of a bend.**
+    ///
+    /// Alex, 19 August, after nudging a morning half an hour earlier: *"Changing the alarm plus
+    /// fifteen minutes or setting it to just for the next morning actually switches off the whoop."*
+    ///
+    /// His routine was 08:55 and he moved that morning to 08:25. Left alone the strap fires at the
+    /// routine time, which is **after** he is already awake: harmless. Switching it off cost him the
+    /// buzz for nothing. The earlier 09:41 case was the opposite, and worth losing a buzz over.
+    func testOnlyABendThatWouldWakeHimEarlySilencesTheStrap() {
+        func wakesEarly(routine: WallClockTime, bent: WallClockTime) -> Bool {
+            bent.minutesSinceMidnight - routine.minutesSinceMidnight > 15
+        }
+        let routine = WallClockTime(hour: 8, minute: 55)
+
+        // His case: half an hour earlier. The strap fires after he is up.
+        XCTAssertFalse(wakesEarly(routine: routine, bent: WallClockTime(hour: 8, minute: 25)))
+        // A small nudge later, inside the grace. The strap already sits ahead of the phone by design.
+        XCTAssertFalse(wakesEarly(routine: routine, bent: WallClockTime(hour: 9, minute: 10)))
+        // A real lie-in. Left alone this buzzes long before he asked to wake.
+        XCTAssertTrue(wakesEarly(routine: routine, bent: WallClockTime(hour: 10, minute: 30)))
+        // The original case: routine 07:55, moved to 09:41.
+        XCTAssertTrue(wakesEarly(routine: WallClockTime(hour: 7, minute: 55),
+                                 bent: WallClockTime(hour: 9, minute: 41)))
+    }
+
+    /// **A Whoop schedule never carries a bent time, on any path.**
+    ///
+    /// One schedule holds one time for all its days, so a bent time moves every morning it covers.
+    /// That is the founding bug of this leg and it reached his account once through the silencing
+    /// path. Now that a small bend falls through to the ordinary write, the ordinary write has to be
+    /// safe too.
+    func testTheOrdinaryWriteAlsoRefusesToCarryABentTime() {
+        let entry = RoutinePlan.Entry(
+            routineID: "weekdays", routineName: "Weekdays",
+            weekdays: Locale.Weekday.weekdaysOnly,
+            localTime: WallClockTime(hour: 8, minute: 50),
+            bentTo: WallClockTime(hour: 8, minute: 20),
+            isOn: true, isSkippedNextMorning: false
+        )
+        XCTAssertEqual(entry.timeToWrite, WallClockTime(hour: 8, minute: 20),
+                       "the pair carries the bend, which is right for Eight Sleep")
+        XCTAssertEqual(entry.localTime, WallClockTime(hour: 8, minute: 50),
+                       "and this is the only time a Whoop schedule may ever be given")
+    }
+
     /// A deliberate outcome is its own verification case, not "could not confirm".
     ///
     /// **From Alex's row, 19 August.** His strap had been switched off for one morning exactly as
