@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "20 Aug, 02:45 · the row tells you when your wrist will not buzz"
+    static let marker = "20 Aug, 03:20 · the strap is never switched off again"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "OneAlarm checked only the time on your strap and never the on switch, so it called ALARM OFF a success. It now says plainly when the schedule is at the right time but switched off, and what to tap. If it stays off after a Set all alarms with no one time change, tell me: that means the app cannot switch it back on and the whole switch off feature has to go."
+    static let whatIsNew = "You proved OneAlarm cannot switch your Whoop alarm back on, so it will never switch it off again. That feature is gone. Please turn the Monday to Friday alarm on once in the Whoop app and it will stay on. Also, Good night no longer says Nothing left to do while a row is asking you for something."
 }

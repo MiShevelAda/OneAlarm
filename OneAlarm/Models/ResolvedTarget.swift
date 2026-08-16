@@ -158,6 +158,16 @@ enum Verification: Equatable, Sendable {
     ///
     /// A warning that fires on a correct outcome is how somebody learns to scroll past warnings.
     case byDesign(String)
+    /// The remote is in a state he has to fix, and the sentence says how.
+    ///
+    /// **Distinct from `byDesign`, which is green and counts as settled.** On 20 August his strap
+    /// was at the right time with its alarm switched off, reported as `byDesign`, and the Good night
+    /// screen read *"All confirmed. Nothing left to do. Put the phone down."* directly above a row
+    /// telling him to go and turn that alarm on.
+    ///
+    /// Anything ending in an instruction is unfinished by definition, and a summary that calls it
+    /// finished is the app talking over itself.
+    case mismatchReason(String)
 
     var isConfirmed: Bool {
         if case .confirmed = self { return true }

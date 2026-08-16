@@ -826,6 +826,12 @@ final class ScheduleStore {
                 }
                 status[target.device] = .warning("\(head) Could not confirm: \(reason)")
 
+            case .mismatchReason(let what):
+                // Yellow, and counted as unfinished, so the Good night summary cannot call the
+                // morning settled while a row is still asking him for something.
+                highlights[target.device] = receipt.highlights
+                status[target.device] = .warning(what)
+
             case .byDesign(let what):
                 // Green, because it worked. The sentence carries the whole explanation, so this
                 // never defers to a note the row does not render.

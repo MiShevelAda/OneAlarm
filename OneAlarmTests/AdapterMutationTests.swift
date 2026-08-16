@@ -215,136 +215,25 @@ final class WhoopMutationTests: XCTestCase {
         XCTAssertEqual(payload.keys.count, 6)
     }
 
-    /// **Silencing the strap for a bent morning, and coming back on by itself.**
+    /// **The strap can never be switched off, because it cannot be switched back on.**
     ///
-    /// From Alex's strap, 19 August. He bent Monday to 09:41; his Whoop schedule sat at MON to FRI
-    /// 07:50, enabled. The bed and phone took the one-off and the strap was left to buzz two hours
-    /// early. Refusing to write a one-off is not neutral on this leg, it wakes him at the wrong time.
-    func testABentMorningSwitchesTheScheduleOffAndAnOrdinaryWriteTurnsItOn() throws {
-        let hushed = WhoopAdapter.domainBody(serverSchedule, to: target, silenced: true)
-        XCTAssertEqual(hushed["enabled"] as? Bool, false)
-        // Everything else is still his, because this is one morning off and not a reset.
-        XCTAssertEqual(hushed["day_of_week_list"] as? [String], ["MONDAY", "WEDNESDAY"])
-        XCTAssertEqual(hushed["alarm_mode"] as? String, serverSchedule["alarm_mode"] as? String)
-
-        // The recovery, and the reason nobody has to remember it: every ordinary write sends true.
-        let ordinary = WhoopAdapter.domainBody(serverSchedule, to: target)
-        XCTAssertEqual(ordinary["enabled"] as? Bool, true,
-                       "the next sync with no override turns the strap back on")
-    }
-
-    /// **Direction decides whether the strap is silenced, not the fact of a bend.**
+    /// `E30`, answered on Alex's account 20 August. For a few hours a bent morning switched his Whoop
+    /// schedule off so it could not buzz early. That worked. Switching it back on does not:
+    /// `enabled: true` is accepted, the time lands, the alarm stays off. His row after a clean run:
+    /// *"Whoop has this schedule at 08:50, which is right, but its alarm is switched off."*
     ///
-    /// Alex, 19 August, after nudging a morning half an hour earlier: *"Changing the alarm plus
-    /// fifteen minutes or setting it to just for the next morning actually switches off the whoop."*
-    ///
-    /// His routine was 08:55 and he moved that morning to 08:25. Left alone the strap fires at the
-    /// routine time, which is **after** he is already awake: harmless. Switching it off cost him the
-    /// buzz for nothing. The earlier 09:41 case was the opposite, and worth losing a buzz over.
-    func testOnlyABendThatWouldWakeHimEarlySilencesTheStrap() {
-        func wakesEarly(routine: WallClockTime, bent: WallClockTime) -> Bool {
-            bent.minutesSinceMidnight - routine.minutesSinceMidnight > 15
-        }
-        let routine = WallClockTime(hour: 8, minute: 55)
-
-        // His case: half an hour earlier. The strap fires after he is up.
-        XCTAssertFalse(wakesEarly(routine: routine, bent: WallClockTime(hour: 8, minute: 25)))
-        // A small nudge later, inside the grace. The strap already sits ahead of the phone by design.
-        XCTAssertFalse(wakesEarly(routine: routine, bent: WallClockTime(hour: 9, minute: 10)))
-        // A real lie-in. Left alone this buzzes long before he asked to wake.
-        XCTAssertTrue(wakesEarly(routine: routine, bent: WallClockTime(hour: 10, minute: 30)))
-        // The original case: routine 07:55, moved to 09:41.
-        XCTAssertTrue(wakesEarly(routine: WallClockTime(hour: 7, minute: 55),
-                                 bent: WallClockTime(hour: 9, minute: 41)))
-    }
-
-    /// **A Whoop schedule never carries a bent time, on any path.**
-    ///
-    /// One schedule holds one time for all its days, so a bent time moves every morning it covers.
-    /// That is the founding bug of this leg and it reached his account once through the silencing
-    /// path. Now that a small bend falls through to the ordinary write, the ordinary write has to be
-    /// safe too.
-    func testTheOrdinaryWriteAlsoRefusesToCarryABentTime() {
-        let entry = RoutinePlan.Entry(
-            routineID: "weekdays", routineName: "Weekdays",
-            weekdays: Locale.Weekday.weekdaysOnly,
-            localTime: WallClockTime(hour: 8, minute: 50),
-            bentTo: WallClockTime(hour: 8, minute: 20),
-            isOn: true, isSkippedNextMorning: false
-        )
-        XCTAssertEqual(entry.timeToWrite, WallClockTime(hour: 8, minute: 20),
-                       "the pair carries the bend, which is right for Eight Sleep")
-        XCTAssertEqual(entry.localTime, WallClockTime(hour: 8, minute: 50),
-                       "and this is the only time a Whoop schedule may ever be given")
-    }
-
-    /// A deliberate outcome is its own verification case, not "could not confirm".
-    ///
-    /// **From Alex's row, 19 August.** His strap had been switched off for one morning exactly as
-    /// designed, and read back to prove it, and the row said *"Written. Could not confirm: ..."* in
-    /// warning yellow. A warning that fires on a correct outcome is how somebody learns to scroll
-    /// past warnings.
-    func testADeliberateOutcomeIsNotAnUnconfirmedOne() {
-        let byDesign = Verification.byDesign("Your strap is switched off for that one morning.")
-        let unknown = Verification.unavailable(reason: "Whoop did not return the updated schedule.")
-
-        XCTAssertNotEqual(byDesign, unknown, "these are different outcomes and must render differently")
-        XCTAssertFalse(byDesign.isConfirmed, "it is not a confirmed instant either, and must not claim to be")
-
-        // And the sentence stands alone. The row does not render the receipt note, so a reason that
-        // says "see the note above" points at nothing he can read.
-        if case .byDesign(let text) = byDesign {
-            XCTAssertFalse(text.contains("above"), "the reason has to carry its own explanation: \(text)")
-        } else {
-            XCTFail("expected byDesign")
-        }
-    }
-
-    /// **Silencing must not carry the bend with it.**
-    ///
-    /// From Alex's account an hour after the silencing shipped: his Whoop read `MON TUE WED THU FRI
-    /// 09:36 ALARM OFF`. The switch off worked and the time went with it, so his weekday schedule
-    /// moved from 07:50 to the one-off time. Exactly the thing the branch exists to prevent, done by
-    /// the code preventing it.
-    ///
-    /// The cause is that `AlarmMatchReport.Pair.time` is `bentTo ?? localTime`, which is right for
-    /// every ordinary write and wrong for the one place that deliberately does not want the bend.
-    func testSilencingKeepsTheRoutineTimeAndNotTheBentOne() {
-        let routineTime = WallClockTime(hour: 7, minute: 50)
-        let bent = WallClockTime(hour: 9, minute: 36)
-
-        let entry = RoutinePlan.Entry(
-            routineID: "weekdays", routineName: "Weekdays",
-            weekdays: Locale.Weekday.weekdaysOnly,
-            localTime: routineTime, bentTo: bent,
-            isOn: true, isSkippedNextMorning: false
-        )
-        // The pair a bent routine produces carries the bend, which is the trap.
-        XCTAssertEqual(entry.timeToWrite, bent, "the pair's time is the bent one, by design")
-        XCTAssertEqual(entry.localTime, routineTime, "and this is what the schedule must keep")
-
-        let hushed = WhoopAdapter.domainBody(
-            serverSchedule,
-            to: ResolvedTarget(device: .whoop, localTime: entry.localTime,
-                               weekdays: entry.weekdays, dayShift: 0,
-                               nextOccurrence: Date(), utcOffsetSeconds: 7200),
-            silenced: true
-        )
-        XCTAssertEqual(hushed["latest_wake_time"] as? String, "07:50:00",
-                       "the strap keeps his routine time while it is switched off")
-        XCTAssertEqual(hushed["enabled"] as? Bool, false)
-    }
-
-    /// The view model rung is dropped when silencing, because it would undo the silence.
-    ///
-    /// It is built by mutating the read shape, which carries its own on switch. A fallback that
-    /// quietly reverses the request is worse than one rung fewer.
-    func testTheSilencedLadderHasNoRungThatTurnsItBackOn() throws {
-        for (name, body) in try WhoopAdapter.variants(serverSchedule, to: target, silenced: true) {
+    /// So the write body must have no way to express `false`. A parameter that can switch something
+    /// off, on a leg that cannot switch it back on, is a one way door left open for the next person
+    /// who needs "just this once".
+    func testTheWriteBodyCanNeverSwitchAScheduleOff() throws {
+        for (name, body) in try WhoopAdapter.variants(serverSchedule, to: target) {
             let enabled = body["enabled"] as? Bool
                 ?? (body["schedule"] as? [String: Any])?["enabled"] as? Bool
-            XCTAssertNotEqual(enabled, true, "rung \(name) would switch the strap back on")
+            if let enabled {
+                XCTAssertTrue(enabled, "rung \(name) would switch his strap off, and nothing can switch it on")
+            }
         }
+        XCTAssertEqual(WhoopAdapter.domainBody(serverSchedule, to: target)["enabled"] as? Bool, true)
     }
 
     /// A deliberate one-off refusal is not reported as a mismatch.

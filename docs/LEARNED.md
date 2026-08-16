@@ -498,6 +498,21 @@ fact, and twice it existed in an endpoint nobody had called. The third time the 
 better still: the field was missing because the **relationship does not exist**, and the question
 had to be rephrased rather than answered.
 
+**A feature that can switch something off, on a leg that cannot switch it back on, is a one way
+door.** `[20 August]` The Whoop silencing lived about four hours. It solved a real problem, a strap
+buzzing two hours before a moved morning, and it was removed the moment `E30` showed OneAlarm cannot
+turn a schedule back on. The trade it was actually making was one early buzz against a strap that
+stays dead until he notices by hand.
+
+**What made it look safe was a misread of the evidence.** The captured working PUT changed a **time**
+on a schedule that was **already on**. That was taken as "the body works", when it only proved the
+part that was exercised. Writing `enabled: false` was inside the same six keys, so it felt covered.
+It was not.
+
+**The rule.** Before shipping anything that puts a device into a state, prove the way **out** of that
+state first, on the real account. Reversibility is not a property of the request, it is a property
+you have observed.
+
 **Direction decides whether silencing the strap is right, not the fact of a one time change.**
 `[19 August]` He nudged a morning half an hour **earlier** and OneAlarm switched his Whoop schedule
 off. His words: *"Changing the alarm plus fifteen minutes or setting it to just for the next morning

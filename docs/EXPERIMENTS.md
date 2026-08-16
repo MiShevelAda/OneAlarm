@@ -1139,7 +1139,31 @@ no raw block at all.
 
 
 
-## E30 🔴 Can OneAlarm switch a Whoop schedule back **on**? **Silencing depends on it.**
+## E30 🟢 ANSWERED, NEGATIVE. OneAlarm cannot switch a Whoop schedule back on.
+
+**Alex's account, 20 August.** He ran Set all alarms with no override in force, on a schedule
+OneAlarm had switched off itself. The row came back:
+
+> *"Whoop has this schedule at 08:50, which is right, but its alarm is switched off so your wrist
+> will not buzz."*
+
+The time landed. The switch did not. `enabled: true` is accepted and does not turn a schedule on.
+
+**Consequence, applied the same hour: the silencing feature is removed.** It traded one early buzz
+for a strap that stays dead until he notices by hand, on the leg that fails silently. The `silenced`
+parameter is gone from `domainBody`, `variants` and `putSchedule`, and a test fails if any rung of
+the ladder can ever express `enabled: false` again.
+
+**What this retrospectively corrects.** The captured, working `PUT /schedule/{id}` changed a **time**
+on a schedule that was **already on**. That was read as "the six key body works", when what it
+actually proved was narrower. The write says `enabled` and the read says `alarm_on`, and this leg
+has now lost time twice to the same vocabulary split.
+
+**Still open, and worth one capture if the chance arises:** what the Whoop app itself sends when a
+schedule's alarm is toggled on. It is plainly possible in their UI. It is not `enabled` on this
+endpoint.
+
+## E30-old 🔴 Can OneAlarm switch a Whoop schedule back **on**?
 
 **Raised by Alex's strap on 19 August, and it makes the silencing feature conditional.** His schedule
 read `MON TUE WED THU FRI 08:50 ALARM OFF` after a run that should have restored it. The time is
