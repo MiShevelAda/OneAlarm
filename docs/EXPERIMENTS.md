@@ -176,7 +176,13 @@ not far-fetched, because the alarm may route to a device that is asleep on a cha
 > schedules and on temperature state. Overwriting it very likely detaches the alarm from its
 > routine and silently breaks the bedtime pairing.
 >
-> **The 30 minute smart window was never real.** No window length field exists anywhere in this API.
+> **Correction, same day, from his own screenshots.** The Eight Sleep app shows `23:49 - 00:19` and
+> `08:30 - 09:00` on his two live alarms. Both are exactly **30 minutes**, on two different alarms,
+> on his account. So the number is right and the earlier line below is too strong: it is not
+> invented, it is **UI derived and corroborated twice**, which is better evidence than a single
+> sentence in marketing copy and still not a field in the API.
+>
+> **The 30 minute smart window is not in the API.** No window length field exists anywhere in this API.
 > The figure came from a sentence in Eight Sleep's own UI. A real window can be derived, but only
 > when the alarm is scheduled: `startTimestamp` to `nextTimestamp`. Until then the app should print
 > no number. **This means every range the bed's row has ever drawn was invented.**

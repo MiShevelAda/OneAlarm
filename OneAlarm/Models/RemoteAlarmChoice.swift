@@ -8,8 +8,11 @@ import Foundation
 /// server happens to list is a coin flip, and a coin flip that silently moves the wrong alarm is the
 /// worst kind of bug this app can have.
 ///
-/// Neither service labels its alarms with a device or a room, so these are identified the only way
-/// the data allows: by time and by days.
+/// Neither service puts a bed or a room **on the alarm object**, so a row is identified by time and
+/// days. That is a fact about the object, not about the service: Eight Sleep does name its Pods, in
+/// `/v1/household/users/{id}/summary`, and the account's current bed and side are stated once above
+/// the list. An earlier version of this comment said the services do not label alarms at all, which
+/// was inferred from an absent field and was wrong.
 struct RemoteAlarmChoice: Identifiable, Equatable, Sendable {
     let id: String
     let time: WallClockTime?
@@ -33,6 +36,15 @@ struct RemoteAlarmChoice: Identifiable, Equatable, Sendable {
     var rawKeys: [String] = []
 
     var parsedCleanly: Bool { time != nil }
+
+    /// Whether this alarm can ever go off.
+    ///
+    /// An alarm with no days and its switch off is inert. Eight Sleep's own app filters these out
+    /// of its list, so an account showing two alarms there returns three here, and the difference
+    /// reads as OneAlarm inventing one. It is shown, last, and labelled, rather than hidden:
+    /// silently dropping something the account really contains is how this project has been wrong
+    /// three times already.
+    var canFire: Bool { isEnabled && !weekdays.isEmpty }
 
     var timeLabel: String { time?.hhmm ?? "unknown time" }
 
@@ -66,7 +78,8 @@ extension Array where Element == RemoteAlarmChoice {
         var buckets: [String: [RemoteAlarmChoice]] = [:]
         var unnamed: [RemoteAlarmChoice] = []
 
-        for choice in self {
+        // Inert alarms last, whatever their time. They are the ones a user does not recognise.
+        for choice in sorted(by: { $0.canFire && !$1.canFire }) {
             guard let group = choice.group, !group.isEmpty else {
                 unnamed.append(choice)
                 continue

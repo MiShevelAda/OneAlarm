@@ -666,14 +666,25 @@ struct AlarmPickerScreen: View {
     @State private var selected: String? = nil
     @State private var bed: EightSleepAdapter.BedIdentity?
 
+    /// Says why this list can be longer than the one in the device's own app.
+    ///
+    /// Eight Sleep shows two and returns three. Without this line the extra row reads as OneAlarm
+    /// inventing an alarm, which is worse than the clutter it causes.
+    private var pickerSubtitle: String {
+        let inert = choices.filter { !$0.canFire }.count
+        let base = "This account has \(choices.count). OneAlarm changes one of them and leaves the rest alone."
+        guard inert > 0 else { return base }
+        let word = inert == 1 ? "one" : "\(inert)"
+        return base + " The \(device.displayName) app may show fewer: \(word) of these can never go off, and their app hides those."
+    }
+
     var body: some View {
         Screen(title: device.displayName, onBack: onBack) {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Which alarm should OneAlarm move?")
                         .font(.system(size: 25, weight: .bold)).tracking(-0.6)
-                    Text("This account has \(choices.count). OneAlarm changes one of them and leaves the rest alone.")
-                        .font(.system(size: 15)).foregroundStyle(Theme.grey)
+                    Text(pickerSubtitle).font(.system(size: 15)).foregroundStyle(Theme.grey)
                 }
                 .padding(.top, 4)
 
@@ -706,7 +717,13 @@ struct AlarmPickerScreen: View {
                                         Text(detail)
                                             .font(.system(size: 12)).foregroundStyle(Theme.greyDim)
                                     }
-                                    if !choice.isEnabled {
+                                    if !choice.canFire {
+                                        Text(choice.isEnabled
+                                             ? "No days set, so it never goes off"
+                                             : "Switched off, and no days set")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundStyle(Theme.State.unconfirmed)
+                                    } else if !choice.isEnabled {
                                         Text("Currently off")
                                             .font(.system(size: 12, weight: .semibold))
                                             .foregroundStyle(Theme.State.unconfirmed)
