@@ -1428,10 +1428,35 @@ actor WhoopAdapter: DeviceAdapter {
                 }
             }
 
+            // **Days a split schedule already has are his, not ours to widen.**
+            //
+            // Alex, 20 August, after splitting his week: *"Whoop bundles the days as set in routine by
+            // onealarm."* He is describing this app undoing the split. `pair.weekdays` is the
+            // ROUTINE's days, so a MONDAY schedule adopted by a Monday to Friday routine was being
+            // rewritten to all five, collapsing seven schedules back into two on the first sync. The
+            // one time change shipped an hour earlier would then never fire, because no schedule
+            // would ever cover exactly one day again.
+            //
+            // But widening is sometimes right, and it worked for him earlier the same night: his
+            // schedule ran Monday to Thursday, his routine ran Monday to Friday, and OneAlarm added
+            // the Friday. Subset alone cannot tell those two apart, because both are subsets.
+            //
+            // **What tells them apart is whether anything else covers the rest.** Friday was
+            // uncovered, so extending was the only way he would be woken. In a split week, Tuesday
+            // through Friday each have their own schedule, so extending Monday over them would take
+            // days another schedule is already responsible for, and Whoop forbids overlap anyway.
+            let othersCover = candidates
+                .filter { $0.id != pair.alarmID }
+                .reduce(into: Set<Locale.Weekday>()) { $0.formUnion($1.weekdays) }
+            let ownDays = Self.days(from: existing["scheduled_days"])
+            let isPartOfASplit = !ownDays.isEmpty
+                && ownDays.isSubset(of: pair.weekdays)
+                && pair.weekdays.subtracting(ownDays).isSubset(othersCover)
+
             let perRoutine = ResolvedTarget(
                 device: .whoop,
                 localTime: entry?.localTime ?? pair.time,
-                weekdays: pair.weekdays,
+                weekdays: isPartOfASplit ? ownDays : pair.weekdays,
                 dayShift: target.dayShift,
                 // Only the schedule covering the next morning has a meaningful absolute instant, and
                 // it is the only one `verify` looks at. The others carry the same one rather than a

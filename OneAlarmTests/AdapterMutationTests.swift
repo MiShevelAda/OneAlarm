@@ -215,6 +215,37 @@ final class WhoopMutationTests: XCTestCase {
         XCTAssertEqual(payload.keys.count, 6)
     }
 
+    /// **A split week must survive a sync, and a gap must still be filled.**
+    ///
+    /// Alex, 20 August: *"Whoop bundles the days as set in routine by onealarm."* He had split his
+    /// week and this app put it back together, because it wrote the ROUTINE's days to every schedule
+    /// it owned. Seven schedules collapse into two on the first sync, and the one time change then
+    /// never fires, because nothing covers exactly one day any more.
+    ///
+    /// Widening is still right when it fills a gap: earlier the same night his schedule ran Monday to
+    /// Thursday against a Monday to Friday routine and OneAlarm correctly added the Friday. Both are
+    /// subsets, so subset alone cannot tell them apart. What can is whether anything else covers the
+    /// rest.
+    func testASplitWeekSurvivesButAGapIsStillFilled() {
+        let routine = Locale.Weekday.weekdaysOnly
+
+        func isPartOfASplit(own: Set<Locale.Weekday>, others: Set<Locale.Weekday>) -> Bool {
+            !own.isEmpty && own.isSubset(of: routine) && routine.subtracting(own).isSubset(others)
+        }
+
+        // Split week: Monday's schedule, and Tue to Fri each have their own.
+        XCTAssertTrue(isPartOfASplit(own: [.monday], others: [.tuesday, .wednesday, .thursday, .friday]),
+                      "Monday keeps its own day, because the other four are somebody else's")
+
+        // His Monday to Thursday case, with Friday uncovered by anything.
+        XCTAssertFalse(isPartOfASplit(own: [.monday, .tuesday, .wednesday, .thursday], others: [.saturday, .sunday]),
+                       "Friday is uncovered, so widening is the only way he is woken")
+
+        // The ordinary case, days already equal to the routine's.
+        XCTAssertTrue(isPartOfASplit(own: routine, others: []),
+                      "nothing to add, so keeping its own days and writing the routine's are the same write")
+    }
+
     /// **The strap can never be switched off, because it cannot be switched back on.**
     ///
     /// `E30`, answered on Alex's account 20 August. For a few hours a bent morning switched his Whoop

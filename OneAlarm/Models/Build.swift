@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "20 Aug, 07:15 · a one time change can reach the strap"
+    static let marker = "20 Aug, 07:50 · a split Whoop week survives a sync"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "If you split your Whoop week into single days, a one time change now reaches your strap too. Only that one day schedule moves, and the next sync puts it back. Nothing changes until you do the split, so today it behaves exactly as it did."
+    static let whatIsNew = "You caught OneAlarm putting your split week back together. It wrote your routine days onto every schedule, so seven single days collapsed into two. It now leaves a split alone and only widens a schedule when nothing else covers the missing days. Split the week again and press Set all alarms."
 }
