@@ -353,7 +353,7 @@ struct CascadeView: View {
         }
     }
 
-    /// Whoop holds **one** schedule, so it can only carry one routine at a time.
+    /// **Both the phone and Whoop carry one routine at a time**, and the phone is the serious one.
     ///
     /// Said out loud because it is a real limitation with a real consequence and nothing on screen
     /// admitted it. Eight Sleep holds one alarm per day set, so a whole week fits there. Whoop has a
@@ -366,16 +366,20 @@ struct CascadeView: View {
     /// the service's limit rather than a mistake. Either way he should hear it from the app rather
     /// than from his wrist.
     ///
-    /// Only shown when it can actually bite: more than one live routine, Whoop connected and on.
+    /// Only shown when it can actually bite: more than one live routine on the account.
+    ///
+    /// The phone was in the "carries the whole week" half of this sentence until 17 August, and it
+    /// was not true. `AlarmKitAdapter` schedules **one** alarm from the single resolved target and
+    /// cancels the previous one, so after a Friday night sync the phone is armed for Saturday and
+    /// Sunday and Monday has no alarm on it at all. AlarmKit itself holds several alarms happily;
+    /// this app only ever gives it one. That is a silent missed morning on the leg that exists to be
+    /// the guarantee, and saying so on screen is the least it is owed until it is fixed.
     @ViewBuilder
     private var whoopCarriesOneRoutine: some View {
         let live = store.schedule.routines.filter { $0.isOn && !$0.weekdays.isEmpty }
-        if live.count > 1,
-           store.isConnected(.whoop),
-           store.schedule.rule(for: .whoop)?.isEnabled == true,
-           let next = store.next?.routineName {
-            Notice(.warn, title: "Whoop can only hold one routine at a time.",
-                   "It has a single smart alarm schedule, so OneAlarm sets it to \(next) and that replaces the days it had. Your bed and your phone carry the whole week. Your strap carries the next morning, and follows along the next time you sync.")
+        if live.count > 1, let next = store.next?.routineName {
+            Notice(.bad, title: "Only \(next) is armed. Set again after it.",
+                   "Your phone and your strap each hold one routine at a time, so right now they carry \(next) and nothing else. Your bed holds the whole week. Press Set all alarms again after \(next)'s last morning, or that next morning has no phone alarm. This is a limitation of the app rather than of your devices, and it is the top item on the list to fix.")
         }
     }
 }
