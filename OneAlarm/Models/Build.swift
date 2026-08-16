@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "17 Aug, 19:10 · OneAlarm can delete the alarms it made"
+    static let marker = "17 Aug, 20:00 · the one-off banner stops lying"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Delete a routine and the Eight Sleep alarm OneAlarm made for it is removed, not just switched off, so your bed stops collecting alarms you have to clear by hand. Alarms you made yourself are never deleted, only switched off."
+    static let whatIsNew = "The yellow one-off banner said Weekdays is still 06:01 while your week showed 07:01. It now reads your routine live instead of a stale snapshot. Also here: OneAlarm deletes the Eight Sleep alarms it made, and a one-off no longer wipes your Whoop week."
 }

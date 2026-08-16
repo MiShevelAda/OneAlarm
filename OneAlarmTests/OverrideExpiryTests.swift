@@ -62,6 +62,65 @@ final class OverrideExpiryTests: XCTestCase {
         return ScheduleStore(schedule: schedule)
     }
 
+    /// The banner names the routine's **current** time, not the one captured when the bend was made.
+    ///
+    /// **Observed on his screen, 17 August 14:53.** It said *"Tomorrow only. Weekdays is still 06:01
+    /// and returns after"* directly above a week list showing Weekdays at **07:01**. Both numbers came
+    /// from this app, and the wrong one was on the sentence whose whole job is telling him what he
+    /// goes back to.
+    ///
+    /// `DayOverride.routineTime` is a snapshot, and it has to be: it is what `restoreAfterOverride`
+    /// puts back, so it must survive the routine being edited. The bug was displaying it. The snapshot
+    /// answers "what do I restore", the routine answers "what does he go back to", and those diverge
+    /// the moment he edits a routine while a bend is live.
+    func testTheBannerNamesTheRoutinesCurrentTimeNotTheSnapshot() throws {
+        var schedule = WakeSchedule.default
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let tomorrow = CalendarDay(Date().addingTimeInterval(86_400), in: calendar)
+        let weekday = Locale.Weekday.from(
+            calendarIndex: calendar.component(.weekday, from: Date().addingTimeInterval(86_400))
+        )
+        // Whichever routine owns tomorrow, moved to 07:01 after the bend was made at 06:01.
+        let index = try XCTUnwrap(schedule.routines.firstIndex { $0.isOn && $0.weekdays.contains(weekday) })
+        schedule.routines[index].time = WallClockTime(hour: 7, minute: 1)
+        schedule.override = DayOverride(
+            day: tomorrow,
+            time: WallClockTime(hour: 9, minute: 1),
+            routineTime: WallClockTime(hour: 6, minute: 1),
+            routineName: schedule.routines[index].displayName
+        )
+
+        let notice = try XCTUnwrap(ScheduleStore(schedule: schedule).overrideNotice)
+
+        XCTAssertTrue(notice.contains("07:01"), "the banner says what he actually goes back to: \(notice)")
+        XCTAssertFalse(notice.contains("06:01"), "and never the stale snapshot: \(notice)")
+    }
+
+    /// The snapshot is still the fallback, for a bend whose routine no longer covers that day.
+    ///
+    /// Deleting the routine under a live bend must not blank the sentence. Something true is better
+    /// than nothing, and the snapshot was true when it was taken.
+    func testTheSnapshotStillAnswersWhenNoRoutineCoversThatDay() throws {
+        var schedule = WakeSchedule.default
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let tomorrow = CalendarDay(Date().addingTimeInterval(86_400), in: calendar)
+        // Every routine switched off, so none covers tomorrow.
+        for index in schedule.routines.indices { schedule.routines[index].isOn = false }
+        schedule.override = DayOverride(
+            day: tomorrow,
+            time: WallClockTime(hour: 9, minute: 1),
+            routineTime: WallClockTime(hour: 6, minute: 1),
+            routineName: "Weekdays"
+        )
+
+        let notice = ScheduleStore(schedule: schedule).overrideNotice
+        if let notice {
+            XCTAssertTrue(notice.contains("06:01"), "falls back rather than going silent: \(notice)")
+        }
+    }
+
     /// An expired **skip** leaves the remote legs holding a switched-off alarm, and says so.
     func testAnExpiredSkipAsksToBeReapplied() {
         let subject = store(with: DayOverride(day: yesterday, time: nil,

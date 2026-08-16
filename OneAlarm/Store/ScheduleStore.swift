@@ -422,12 +422,34 @@ final class ScheduleStore {
     }
 
     /// True while a bend is armed, so the screen can say what is temporary and when it ends.
+    ///
+    /// **The routine time is read live, not from the snapshot in the override.** On 17 August Alex's
+    /// screen said *"Tomorrow only. Weekdays is still 06:01 and returns after"* directly above a week
+    /// list showing Weekdays at **07:01**. Both came from this app, an hour apart, and one of them was
+    /// wrong on the sentence whose entire job is telling him what he goes back to.
+    ///
+    /// `DayOverride.routineTime` is captured when the bend is made, and it has to be: it is what
+    /// `restoreAfterOverride` puts back, so it must survive the routine being edited afterwards. What
+    /// it must not do is get **displayed** once it is stale. The snapshot answers "what do I restore",
+    /// the routine answers "what does he go back to", and those stop being the same value the moment
+    /// he edits the routine while a bend is live.
+    ///
+    /// So the live routine wins here, and the snapshot is the fallback for when the routine is gone.
     var overrideNotice: String? {
         guard let override = schedule.override, let next, next.isOverridden || override.isSkip else {
             return nil
         }
         let routine = override.routineName ?? "your routine"
-        guard let was = override.routineTime else { return "Tomorrow only. \(routine) is unchanged." }
+        // Found by the day it bends, not by name. `Routine.displayName` is **derived from its days**,
+        // deliberately, so a name lookup would stop matching the moment he changes them, fall silently
+        // back to the snapshot, and reintroduce the stale number this comment exists to remove. The
+        // same lookup `makeOverridePermanent` uses, so promoting a bend and describing one can never
+        // disagree about which routine is involved.
+        let weekday = Locale.Weekday.from(
+            calendarIndex: calendar.component(.weekday, from: override.day.date(in: calendar) ?? Date())
+        )
+        let live = schedule.routines.first { $0.isOn && $0.weekdays.contains(weekday) }?.time
+        guard let was = live ?? override.routineTime else { return "Tomorrow only. \(routine) is unchanged." }
         if override.isSkip {
             return "No alarm on \(dayLabel(override.day)). \(routine) is still \(was.hhmm) and returns after."
         }
