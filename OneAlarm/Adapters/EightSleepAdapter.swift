@@ -1973,7 +1973,20 @@ actor EightSleepAdapter: DeviceAdapter {
         var oneOffVerdicts: [String] = []
         var weekProblems: [String] = []
         let settled = (try? await fetchAlarms()) ?? []
-        if !settled.isEmpty {
+        if settled.isEmpty {
+            // **A skipped check is not a passed check, and it gets named.**
+            //
+            // If this read fails, both checks below simply do not run, and their silence is
+            // indistinguishable from "nothing to report". That is the shape of every diagnostic this
+            // project has had to fix: `preflight` prints what it could not reach and refuses to call
+            // that run green, and this is the same rule inside the app.
+            //
+            // Only said when there was something to check. On an ordinary sync with no override, the
+            // week check having been skipped is not worth a sentence on his row.
+            if !bends.isEmpty {
+                oneOffVerdicts.append("Could not read your bed back afterwards, so I cannot tell you whether the one time change landed. The write itself was accepted.")
+            }
+        } else {
             for entry in bends {
                 guard let bend = entry.overrideDay, let bentTime = entry.bentTo,
                       let pair = report.pairs.first(where: { $0.routineID == entry.routineID })

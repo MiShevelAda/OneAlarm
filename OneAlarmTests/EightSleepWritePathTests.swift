@@ -1373,6 +1373,68 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertFalse(preview.summary.contains("one time change"), preview.summary)
     }
 
+    /// A read back that fails says so, instead of quietly reporting nothing.
+    ///
+    /// **A skipped check is not a passed check, and it gets named.** If the final read fails, both
+    /// the one time verdict and the week check simply do not run, and their silence is
+    /// indistinguishable from "nothing to report". He would read a row with no `ONE TIME CHECK` on
+    /// it, on a build where that line is the thing he was told to look for, and conclude the feature
+    /// did not run.
+    func testAFailedReadBackIsNamedRatherThanSilent() async throws {
+        StubServer.sequences = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): [
+                (200, ["alarms": [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)]] as [String: Any]),
+                (200, ["alarms": [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)]] as [String: Any]),
+                // The read back fails. Everything before it succeeded.
+                (500, ["error": "boom"] as [String: Any]),
+            ],
+        ]
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+            StubServer.key("POST", "/v1/users/\(userID)/alarms"): (200, ["id": "oneoff-1"] as [String: Any]),
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 6, 20)],
+                              skipsNextMorning: false)
+        )
+
+        XCTAssertTrue(receipt.highlights.contains { $0.contains("cannot tell you") },
+                      "\(receipt.highlights)")
+    }
+
+    /// And an ordinary sync with no override says nothing about it.
+    ///
+    /// The control. A read back failing on a night with nothing to check is not worth a sentence, and
+    /// a diagnostic that speaks when there is nothing to say is one he stops reading.
+    func testAFailedReadBackIsQuietWhenThereWasNothingToCheck() async throws {
+        StubServer.sequences = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): [
+                (200, ["alarms": [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)]] as [String: Any]),
+                (500, ["error": "boom"] as [String: Any]),
+            ],
+        ]
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "his", on: .eightSleep)
+
+        let receipt = try await adapter().write(
+            target,
+            plan: RoutinePlan(
+                device: .eightSleep,
+                entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)],
+                skipsNextMorning: false
+            )
+        )
+
+        XCTAssertTrue(receipt.highlights.isEmpty, "\(receipt.highlights)")
+    }
+
     /// Signing out forgets which alarms OneAlarm made, not just which routine owns which.
     ///
     /// The created list is the only thing that licenses a delete. Left behind across a sign out it

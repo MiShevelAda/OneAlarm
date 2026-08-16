@@ -580,6 +580,20 @@ fail loudly, it falls through to the default answers, the last request 404s, and
 would have caught something quietly never runs. The test goes on passing while testing less than it
 says. **Count the requests against the code, never against the intention.**
 
+**Sweeping the old suite is a technique, not a one off.** `[18 August]` After a three day old test
+caught the day's worst bug, every pre-existing test that stubs a fixed sequence of reads was walked
+against the new code, eight of them, plus every assertion about `isPartial`. No further defect, which
+is worth recording: **a check that ran and found nothing is a result**, and without writing it down
+the next session runs the same sweep again.
+
+It did surface one design gap rather than a bug. Several of those tests now let the final read back
+fall through to a 404, and when that read fails **both new checks simply do not run**. Their silence
+is indistinguishable from "nothing to report", so on a build where `ONE TIME CHECK` is the line Alex
+was told to look for, its absence would read as the feature not running. Named now, and only when
+there was something to check: a diagnostic that speaks when there is nothing to say is one he stops
+reading. This is `preflight`'s own rule, applied inside the app: **a skipped check is not a passed
+check, and it gets named.**
+
 **A three day old test caught the worst bug of the day, and it was testing something else.**
 `[18 August]` The new week check read an alarm with every day flag false as covering no mornings. An
 alarm created inside a routine through `alarmsToCreate` takes its days from the **routine**, so that
