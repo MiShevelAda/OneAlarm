@@ -1,168 +1,263 @@
 import SwiftUI
 import UIKit
 
+/// Setup, start to finish, before the home screen is ever seen.
+///
+/// Alex, 2026-08-16: *"ideally I should set up everything from the beginning, so when I go to the
+/// home screen everything is already set up, and they should be done from the beginning and not
+/// from the settings of the app."*
+///
+/// The previous version was two screens, welcome and the alarm permission, and left both accounts
+/// to be discovered later behind a key icon in the corner. So the first thing the app ever showed
+/// was a home screen with two of its three legs missing and no indication that was unusual.
+///
+/// Pick the devices, then connect them in order, then land on a working screen. Every account step
+/// is skippable, and skipping is a stated outcome rather than a silence: the home screen says which
+/// legs are not connected.
 @MainActor
 struct OnboardingView: View {
     @Environment(ScheduleStore.self) private var store
+
     let onFinished: () -> Void
 
-    @State private var step: Step = .welcome
+    @State private var step: Step = .devices
+    @State private var wanted: Set<DeviceID> = [.iphone, .eightSleep, .whoop]
     @State private var denied = false
+    @State private var linking: DeviceID?
+    @State private var skipped: Set<DeviceID> = []
 
-    enum Step { case welcome, permission }
+    enum Step: Equatable { case devices, permission, connect(DeviceID) }
+
+    /// Accounts to connect, in the order they are asked for.
+    ///
+    /// Whoop first because its sign in can stop at a texted code, which means leaving the app. Doing
+    /// that first means the trip out happens while setup is clearly unfinished, rather than as the
+    /// last thing between him and a working screen.
+    private var accountQueue: [DeviceID] {
+        [.whoop, .eightSleep].filter { wanted.contains($0) }
+    }
 
     var body: some View {
-        switch step {
-        case .welcome: welcome
-        case .permission: denied ? AnyView(permissionDenied) : AnyView(permission)
+        Group {
+            switch step {
+            case .devices: devices
+            case .permission: denied ? AnyView(permissionDenied) : AnyView(permission)
+            case .connect(let device): connect(device)
+            }
         }
-    }
-
-    // MARK: Welcome
-
-    private var welcome: some View {
-        Screen {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("OneAlarm").themeLabel().padding(.bottom, 18)
-
-                Text("You set the same alarm three times. Stop.")
-                    .font(.system(size: 33, weight: .bold))
-                    .tracking(-0.9)
-                    .padding(.bottom, 12)
-
-                Text("One wake time. Your bed, your band and your phone all follow it. Move it once and everything recomputes.")
-                    .font(.system(size: 16))
-                    .foregroundStyle(Theme.grey)
-                    .padding(.bottom, 26)
-
-                VStack(spacing: 0) {
-                    ladder(.eightSleep, "Ten minutes early, so the bed has time")
-                    ladder(.whoop, "Five minutes early, a haptic nudge")
-                    ladder(.iphone, "On the minute, and loud")
+        .sheet(item: $linking) { device in
+            Group {
+                switch device {
+                case .eightSleep: EightSleepLinkView()
+                case .whoop: WhoopLinkView()
+                case .iphone: EmptyView()
                 }
-                .padding(.vertical, 4)
-                .themeCard()
-
-                Text("No account. Nothing to sign up for. Your passwords stay on this phone.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.greyDim)
-                    .padding(.top, 18)
             }
-            .padding(.top, 40)
+            .environment(store)
+        }
+        .onChange(of: linking) { previous, current in
+            // The sheet closing is the signal. It closes on success, on cancel and on a refusal, so
+            // the auth state decides what happened rather than the dismissal.
+            guard current == nil, let previous else { return }
+            Task {
+                await store.refreshAuthStates()
+                advance(past: previous)
+            }
+        }
+    }
+
+    // MARK: 1. Which devices
+
+    private var devices: some View {
+        Screen(title: "OneAlarm") {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("What wakes you up?")
+                        .font(.system(size: 30, weight: .bold)).tracking(-0.7)
+                    Text("Pick everything you use. OneAlarm sets one time and moves all of them to match it.")
+                        .font(.system(size: 15)).foregroundStyle(Theme.grey)
+                }
+                .padding(.top, 4)
+
+                deviceToggle(.iphone, detail: "Always on. This is the one that has to ring.", locked: true)
+                deviceToggle(.whoop, detail: "Haptic wake window on the strap.", locked: false)
+                deviceToggle(.eightSleep, detail: "Thermal and vibration, before the sound.", locked: false)
+                soonRow("Oura Ring")
+                soonRow("Garmin")
+
+                Notice("Nothing is connected yet. The next screens ask for each account, and every one of them can be skipped and done later.")
+            }
+            .padding(.bottom, 20)
         } footer: {
-            SolidButton(title: "Get started") { step = .permission }
+            SolidButton(title: "Continue") { step = .permission }
         }
     }
 
-    private func ladder(_ device: DeviceID, _ why: String) -> some View {
-        HStack(spacing: 14) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Theme.Ramp.rail(for: device))
-                .frame(width: 3, height: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(device.displayName).font(.system(size: 15, weight: .semibold))
-                Text(why).font(.system(size: 13)).foregroundStyle(Theme.grey)
+    private func deviceToggle(_ device: DeviceID, detail: String, locked: Bool) -> some View {
+        let on = wanted.contains(device)
+        return Button {
+            guard !locked else { return }
+            if on { wanted.remove(device) } else { wanted.insert(device) }
+        } label: {
+            HStack(spacing: 13) {
+                Image(systemName: device.symbolName)
+                    .font(.system(size: 17))
+                    .frame(width: 40, height: 40)
+                    .background(Theme.cardLift, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .foregroundStyle(Theme.Ramp.lit(for: device))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(device.displayName).font(.system(size: 17, weight: .semibold))
+                    Text(detail).font(.system(size: 13)).foregroundStyle(Theme.grey)
+                }
+                Spacer(minLength: 8)
+                Toggle("", isOn: .constant(on))
+                    .labelsHidden()
+                    .tint(Theme.State.confirmed)
+                    .allowsHitTesting(false)
+                    .opacity(locked ? 0.55 : 1)
             }
-            Spacer()
+            .padding(15)
+            .frame(maxWidth: .infinity)
+            .background(on ? AnyShapeStyle(Theme.Ramp.card(for: device)) : AnyShapeStyle(Theme.card),
+                        in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
+                .strokeBorder(on ? Theme.State.confirmed.opacity(0.4) : Theme.line, lineWidth: 1))
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 15).padding(.vertical, 11)
+        .buttonStyle(.plain)
     }
 
-    // MARK: Permission
+    /// Named rather than hidden, because "does it work with my Oura" is answered better by a greyed
+    /// row than by an absence.
+    private func soonRow(_ name: String) -> some View {
+        HStack(spacing: 13) {
+            Text(name).font(.system(size: 17, weight: .semibold)).foregroundStyle(Theme.greyDim)
+            Spacer(minLength: 8)
+            Text("LATER")
+                .font(.system(size: 10, weight: .bold)).tracking(1)
+                .padding(.horizontal, 7).padding(.vertical, 4)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 5))
+                .foregroundStyle(Theme.greyDim)
+        }
+        .padding(.horizontal, 15).padding(.vertical, 13)
+        .frame(maxWidth: .infinity)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
+            .strokeBorder(Theme.line, lineWidth: 1))
+    }
+
+    // MARK: 2. The one permission that matters
 
     private var permission: some View {
-        Screen(title: "Step 1 of 2") {
-            VStack(spacing: 0) {
-                Image(systemName: "alarm.waves.left.and.right.fill")
-                    .font(.system(size: 30))
-                    .frame(width: 80, height: 80)
-                    .overlay(Circle().strokeBorder(Theme.lineStrong, lineWidth: 1.5))
-                    .padding(.top, 22).padding(.bottom, 26)
-
-                Text("The one that actually wakes you")
-                    .font(.system(size: 27, weight: .bold))
-                    .tracking(-0.6)
-                    .multilineTextAlignment(.center)
-                    .padding(.bottom, 12)
-
-                Text("iOS will ask permission next. OneAlarm needs it to set a real system alarm, which is the only kind that rings through Silent mode and a Focus.")
-                    .font(.system(size: 16))
-                    .foregroundStyle(Theme.grey)
-                    .multilineTextAlignment(.center)
-                    .padding(.bottom, 26)
-
-                VStack(spacing: 0) {
-                    promise("Rings on Silent and through Focus")
-                    promise("Shows on the Lock Screen and Dynamic Island")
-                    promise("Lands on your Apple Watch automatically")
-                    promise("Works with no accounts connected at all")
+        Screen(title: "iPhone", onBack: { step = .devices }) {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Let OneAlarm set alarms")
+                        .font(.system(size: 30, weight: .bold)).tracking(-0.7)
+                    Text("These are real system alarms. They ring through Silent mode and through Focus, and they show on the Lock Screen.")
+                        .font(.system(size: 15)).foregroundStyle(Theme.grey)
                 }
-                .padding(.vertical, 4)
-                .themeCard()
+                .padding(.top, 4)
+
+                Notice(title: "This is the leg that has to work.",
+                       "Your bed and your strap need an account, a network and a server. The phone needs none of them, which is why it is the one that carries the guarantee.")
+
+                Notice(.warn, title: "Turn off your other wake alarm.",
+                       "OneAlarm cannot see or change the alarm in your iOS sleep schedule, so if it is on, it will ring at its own time as well. Health, Sleep, Change Wake Up, then the Alarm toggle.")
             }
+            .padding(.bottom, 20)
         } footer: {
             SolidButton(title: "Allow alarms") {
                 Task {
                     let granted = await store.alarmKit.requestAuthorization()
                     await store.refreshAuthStates()
-                    if granted { onFinished() } else { denied = true }
+                    if granted { beginAccounts() } else { denied = true }
                 }
             }
-            QuietButton(title: "Not now") { onFinished() }
         }
     }
-
-    private func promise(_ text: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark")
-                .font(.system(size: 11, weight: .bold))
-                .frame(width: 22, height: 22)
-                .background(Theme.State.confirmed.opacity(0.15), in: Circle())
-                .foregroundStyle(Theme.State.confirmed)
-            Text(text).font(.system(size: 14, weight: .medium))
-            Spacer()
-        }
-        .padding(.horizontal, 15).padding(.vertical, 10)
-    }
-
-    // MARK: Denied
 
     private var permissionDenied: some View {
-        Screen(title: "Alarm permission") {
-            VStack(alignment: .leading, spacing: 18) {
-                Notice(.bad, title: "Alarms are turned off for OneAlarm.",
-                       "Without this the app can still show you the plan, but nothing will ring.")
-
-                Text("Turning it back on").font(.system(size: 20, weight: .semibold))
-
-                VStack(spacing: 0) {
-                    numberedStep(1, "Open Settings")
-                    numberedStep(2, "Tap Apps, then OneAlarm")
-                    numberedStep(3, "Turn on Alarms")
-                }
-                .padding(.vertical, 4)
-                .themeCard()
+        Screen(title: "iPhone") {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Alarms are switched off")
+                    .font(.system(size: 30, weight: .bold)).tracking(-0.7)
+                    .padding(.top, 4)
+                Notice(.bad, title: "Nothing can wake you until this is on.",
+                       "1. Open Settings.\n2. Scroll to OneAlarm.\n3. Turn Alarms on.")
             }
-            .padding(.top, 8)
+            .padding(.bottom, 20)
         } footer: {
             SolidButton(title: "Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
                     UIApplication.shared.open(url)
                 }
             }
-            QuietButton(title: "Later") { onFinished() }
+            QuietButton(title: "Carry on without it") { beginAccounts() }
         }
     }
 
-    private func numberedStep(_ n: Int, _ text: String) -> some View {
-        HStack(spacing: 12) {
-            Text("\(n)")
-                .font(Theme.numeral(13))
-                .frame(width: 26, height: 26)
-                .background(Theme.cardLift, in: RoundedRectangle(cornerRadius: 8))
-            Text(text).font(.system(size: 14, weight: .medium))
-            Spacer()
+    // MARK: 3. Each account, in turn
+
+    private func connect(_ device: DeviceID) -> some View {
+        let position = (accountQueue.firstIndex(of: device) ?? 0) + 1
+        return Screen(title: device.displayName) {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Connect \(device.displayName)")
+                        .font(.system(size: 30, weight: .bold)).tracking(-0.7)
+                    Text("Account \(position) of \(accountQueue.count). Then you are done.")
+                        .font(.system(size: 15)).foregroundStyle(Theme.grey)
+                }
+                .padding(.top, 4)
+
+                Notice(title: "OneAlarm moves an alarm you already have.",
+                       device == .whoop
+                       ? "It changes the time on your smart alarm schedule and leaves the wake mode you chose alone. It never creates one and never deletes one."
+                       : "It changes the time on one alarm and leaves your vibration and thermal settings exactly as you set them. It never creates one and never deletes one.")
+
+                if device == .eightSleep {
+                    Notice(.warn, title: "You need one alarm in the Eight Sleep app first.",
+                           "Any time will do. OneAlarm moves it rather than making a new one.")
+                }
+            }
+            .padding(.bottom, 20)
+        } footer: {
+            SolidButton(title: "Sign in to \(device.displayName)") { linking = device }
+            QuietButton(title: "Skip, set this up later") {
+                skipped.insert(device)
+                advance(past: device)
+            }
         }
-        .padding(.horizontal, 15).padding(.vertical, 10)
+    }
+
+    // MARK: Flow
+
+    private func beginAccounts() {
+        denied = false
+        if let first = accountQueue.first {
+            step = .connect(first)
+        } else {
+            onFinished()
+        }
+    }
+
+    /// Move to the next account, or finish.
+    ///
+    /// Deliberately advances whether the account connected or not. A sheet that closed on a refusal
+    /// still means "this one is done for now", and blocking setup on an account that may be
+    /// unreachable at that moment would trap somebody behind a device they cannot fix from here.
+    private func advance(past device: DeviceID) {
+        guard let index = accountQueue.firstIndex(of: device) else {
+            onFinished()
+            return
+        }
+        let next = index + 1
+        if next < accountQueue.count {
+            step = .connect(accountQueue[next])
+        } else {
+            onFinished()
+        }
     }
 }
