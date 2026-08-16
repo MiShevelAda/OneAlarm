@@ -360,7 +360,6 @@ struct CascadeView: View {
                        "Its days shift back to match, so the bed reacts on the right night.")
             }
 
-            whoopCarriesOneRoutine
 
             if store.needsApply, store.lastSyncedAt != nil {
                 Text("Changed since last set")
@@ -390,38 +389,24 @@ struct CascadeView: View {
         }
     }
 
-    /// **Both the phone and Whoop carry one routine at a time**, and the phone is the serious one.
-    ///
-    /// Said out loud because it is a real limitation with a real consequence and nothing on screen
-    /// admitted it. Eight Sleep holds one alarm per day set, so a whole week fits there. Whoop has a
-    /// single smart alarm schedule with a single day list, so OneAlarm writes the routine covering
-    /// the next morning and that list replaces whatever was on it.
-    ///
-    /// On a Friday night that puts his strap on Saturday and Sunday, and Monday morning has no Whoop
-    /// alarm unless he syncs again on the Sunday. Same shape as the damage done on 15 August, when a
-    /// test wrote all seven days over his real Monday to Friday schedule, except that this time it is
-    /// the service's limit rather than a mistake. Either way he should hear it from the app rather
-    /// than from his wrist.
-    ///
-    /// Only shown when it can actually bite: more than one live routine on the account.
-    ///
-    /// The phone was in the "carries the whole week" half of this sentence until 17 August, and it
-    /// was not true. `AlarmKitAdapter` schedules **one** alarm from the single resolved target and
-    /// cancels the previous one, so after a Friday night sync the phone is armed for Saturday and
-    /// Sunday and Monday has no alarm on it at all. AlarmKit itself holds several alarms happily;
-    /// this app only ever gives it one. That is a silent missed morning on the leg that exists to be
-    /// the guarantee, and saying so on screen is the least it is owed until it is fixed.
-    @ViewBuilder
-    private var whoopCarriesOneRoutine: some View {
-        let live = store.schedule.routines.filter { $0.isOn && !$0.weekdays.isEmpty }
-        if live.count > 1,
-           store.isConnected(.whoop),
-           store.schedule.rule(for: .whoop)?.isEnabled == true,
-           let next = store.next?.routineName {
-            Notice(.warn, title: "Your strap holds one routine at a time.",
-                   "Whoop has a single smart alarm schedule, so OneAlarm sets it to \(next) and that replaces the days it had. Your phone and your bed carry the whole week. Your strap catches up the next time you sync.")
-        }
-    }
+    // **A warning that had been false for two days, removed 19 August.**
+    //
+    // It read: *"Your strap holds one routine at a time. Whoop has a single smart alarm schedule, so
+    // OneAlarm sets it to Weekdays and that replaces the days it had."* Both halves were true when
+    // written and neither survived 17 August.
+    //
+    // Whoop holds **several** schedules. That was confirmed on Alex's own account, which has two, and
+    // the adapter was rebuilt the same day to write one per routine. And the phone holds one alarm
+    // per routine as of the same day, so it no longer needs the apology either.
+    //
+    // He found it by reading his own screen: this banner claimed Whoop has a single schedule while
+    // the picker two taps away said *"This account has 2."* An app contradicting itself in two places
+    // is worse than an app that says nothing, because he cannot tell which half to believe.
+    //
+    // Fourth stale note in a day, and the pattern is now written down in `LEARNED.md`: **a fix that
+    // changes how something works has to go back and edit every sentence describing it**, including
+    // the ones on screen. Deleted rather than reworded: there is no limitation left here to explain.
+
 }
 
 // MARK: Row
