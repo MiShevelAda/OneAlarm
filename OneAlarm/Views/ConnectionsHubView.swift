@@ -75,7 +75,7 @@ struct ConnectionsHubView: View {
     private func subtitle(for device: DeviceID) -> String {
         switch device {
         case .iphone: return "No account needed"
-        case .eightSleep: return "Warms the bed before you wake"
+        case .eightSleep: return "Time only. Vibration and thermal stay yours"
         case .whoop: return "Haptic wake window"
         }
     }

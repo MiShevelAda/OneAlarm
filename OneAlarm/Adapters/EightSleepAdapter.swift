@@ -714,21 +714,28 @@ actor EightSleepAdapter: DeviceAdapter {
         // discovery routine.
         var created: [String] = []
         var createdIDs = Set<String>()
-        if !report.routinesWithNoAlarm.isEmpty,
-           let template = Self.template(from: alarms),
-           alarms.count < Self.alarmCeiling {
-            // Iterating the entries rather than the names, so each routine gets at most one alarm
-            // even if two of them happen to derive the same display name.
-            for entry in entries where report.routinesWithNoAlarm.contains(entry.routineName) {
-                guard !entry.weekdays.isEmpty,
-                      alarms.count + created.count < Self.alarmCeiling
-                else { continue }
+        // Every reason a create did not happen, in words. Silence here is what made "it does not
+        // create them" impossible to diagnose: a refused POST and a branch that never ran looked
+        // exactly the same on screen, which is to say they both looked like nothing.
+        var createNotes: [String] = []
 
-                if let newID = try await postAlarm(
+        if !report.routinesWithNoAlarm.isEmpty {
+            guard let template = Self.template(from: alarms) else {
+                throw AdapterError.noAlarmToUpdate
+            }
+            for entry in entries where report.routinesWithNoAlarm.contains(entry.routineName) {
+                guard !entry.weekdays.isEmpty else { continue }
+                guard alarms.count + created.count < Self.alarmCeiling else {
+                    createNotes.append("Did not create \(entry.routineName): this account is already at the \(Self.alarmCeiling) alarm limit OneAlarm will not go past.")
+                    continue
+                }
+
+                switch try await postAlarm(
                     Self.clone(template, days: entry.weekdays, time: entry.timeToWrite),
                     token: token,
                     user: user
                 ) {
+                case .created(let newID):
                     created.append(entry.routineName)
                     createdIDs.insert(newID)
                     report.pairs.append(
@@ -740,6 +747,12 @@ actor EightSleepAdapter: DeviceAdapter {
                             isDisabledRemotely: false
                         )
                     )
+                case .createdUnknownID:
+                    // The alarm is real, it just cannot be verified this run. Reported as created,
+                    // because sending him looking for something that is not there is the worse lie.
+                    created.append(entry.routineName)
+                case .refused(let detail):
+                    createNotes.append("Eight Sleep refused the new \(entry.routineName) alarm: \(detail)")
                 }
             }
             // The create already carried the right time, so these need no follow up PUT.
@@ -817,6 +830,10 @@ actor EightSleepAdapter: DeviceAdapter {
             // needs to know which one to go and look at.
             note = "Created a new alarm on your bed for \(created.joined(separator: " and ")), copied from your existing one. " + note
         }
+        if !createNotes.isEmpty {
+            // A refusal is louder than a success. Nothing was created and something was meant to be.
+            note = createNotes.joined(separator: " ") + " " + note
+        }
         if !failures.isEmpty {
             note += " Failed: \(failures.joined(separator: ", "))."
         }
@@ -840,7 +857,7 @@ actor EightSleepAdapter: DeviceAdapter {
             // alarm and calling tonight verified.
             remoteID: verifiableID.flatMap { written.contains($0) ? $0 : nil },
             note: note,
-            isPartial: !report.isComplete || !failures.isEmpty
+            isPartial: !report.isComplete || !failures.isEmpty || !createNotes.isEmpty
         )
     }
 
@@ -852,17 +869,35 @@ actor EightSleepAdapter: DeviceAdapter {
     ///
     /// The 4xx cases that must stop everything, a dead subscription, a rejected token, a throttle,
     /// still throw, because none of them is specific to this one alarm.
+    /// The outcome of one create, with the server's own words when it refused.
+    ///
+    /// A bare `String?` was the first version, and it was wrong for exactly the reason this project
+    /// keeps re-learning: a refusal came back as `nil`, the reason was discarded, and the screen
+    /// then said nothing at all about a create that had been attempted and rejected. Alex reported
+    /// "it does not create them" and there was no way to tell a refusal from a code path that never
+    /// ran. **When it fails, print what the server said.**
+    enum CreateOutcome {
+        case created(String)
+        /// Succeeded, but the response carried no id we could read. The alarm is real.
+        case createdUnknownID
+        case refused(String)
+    }
+
     private func postAlarm(
         _ payload: [String: Any],
         token: String,
         user: String
-    ) async throws -> String? {
-        guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms") else { return nil }
+    ) async throws -> CreateOutcome {
+        guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms") else {
+            return .refused("bad URL")
+        }
 
         let response = try await http.send(
             "POST", url, headers: Self.baseHeaders(token: token), body: try HTTPClient.json(payload)
         )
 
+        // These three are about the account rather than about this one alarm, so they stop
+        // everything rather than being reported per routine.
         if response.status == 403 { throw AdapterError.subscriptionRequired }
         if response.status == 429 {
             backOff()
@@ -872,13 +907,28 @@ actor EightSleepAdapter: DeviceAdapter {
             accessToken = nil
             throw AdapterError.authenticationFailed("Token was rejected.")
         }
-        guard response.isSuccess else { return nil }
+        guard response.isSuccess else {
+            return .refused("HTTP \(response.status), \(Self.serverMessage(response.data))")
+        }
 
-        // The id can arrive bare or wrapped. Both spellings are read rather than assumed, because
-        // returning nil here would leave a real alarm on his account that the app then reports as
-        // not created, which is the worst of both.
-        guard let json = try? HTTPClient.dictionary(response.data) else { return nil }
-        return Self.alarmID(json) ?? (json["alarm"] as? [String: Any]).flatMap(Self.alarmID)
+        // The id can arrive bare or wrapped. Both spellings are read rather than assumed. Note the
+        // separate `createdUnknownID` case: the alarm exists either way, and reporting it as failed
+        // would send him looking for something that is sitting on his bed.
+        guard let json = try? HTTPClient.dictionary(response.data) else { return .createdUnknownID }
+        if let id = Self.alarmID(json) ?? (json["alarm"] as? [String: Any]).flatMap(Self.alarmID) {
+            return .created(id)
+        }
+        return .createdUnknownID
+    }
+
+    /// Whatever the server sent back, trimmed to something that fits on a phone.
+    ///
+    /// Ported from the Whoop leg, where printing the response body is what ended five hours of
+    /// wrong reasoning. Same rule, same reason.
+    static func serverMessage(_ data: Data) -> String {
+        guard var text = String(data: data, encoding: .utf8), !text.isEmpty else { return "no body" }
+        text = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
+        return text.count > 200 ? String(text.prefix(200)) + "..." : text
     }
 
     /// The seven named booleans, as a set.

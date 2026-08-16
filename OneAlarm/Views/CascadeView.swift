@@ -336,7 +336,7 @@ struct CascadeView: View {
                        "It is the only one that rings with no account, no network and no subscription. Everything else is a nudge.")
             } else if store.targets.contains(where: { $0.crossesMidnight }) {
                 Notice(.warn, title: "One device fires the night before.",
-                       "Its days shift back to match, so the bed warms on the right night.")
+                       "Its days shift back to match, so the bed reacts on the right night.")
             }
 
             if store.needsApply, store.lastSyncedAt != nil {

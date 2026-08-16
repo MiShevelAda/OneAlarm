@@ -70,9 +70,20 @@ struct GoodnightView: View {
         .frame(maxWidth: 260)
     }
 
+    /// What each device does at its time, and nothing about how it does it.
+    ///
+    /// Alex, 2026-08-16: *"it says the bed will be warming from 06:55. No, it should say the bed
+    /// will be at desired temperature at this time, because the actual modification, how I want it
+    /// to be set up, if it's vibrating, how hard it is, is it a temperature, I want that to be
+    /// inside the Eight Sleep app."*
+    ///
+    /// He is right twice over. "Bed starts warming" describes a ramp OneAlarm neither sets nor
+    /// reads: it writes one field, `time`, and what happens at that time is whatever vibration and
+    /// thermal he configured in their app. The old caption invented a mechanism and implied
+    /// ownership of a setting this app deliberately never touches.
     private func caption(for device: DeviceID) -> String {
         switch device {
-        case .eightSleep: return "Bed starts warming"
+        case .eightSleep: return "Bed, as you set it up in Eight Sleep"
         case .whoop: return "Wrist buzzes"
         case .iphone: return "Phone and watch, loud"
         }

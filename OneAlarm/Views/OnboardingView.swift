@@ -81,7 +81,7 @@ struct OnboardingView: View {
 
                 deviceToggle(.iphone, detail: "Always on. This is the one that has to ring.", locked: true)
                 deviceToggle(.whoop, detail: "Haptic wake window on the strap.", locked: false)
-                deviceToggle(.eightSleep, detail: "Thermal and vibration, before the sound.", locked: false)
+                deviceToggle(.eightSleep, detail: "Whatever you set it to do, at the right time.", locked: false)
                 soonRow("Oura Ring")
                 soonRow("Garmin")
 
