@@ -42,7 +42,11 @@ final class ScheduleStore {
         return calendar
     }
 
-    private static let storageKey = "OneAlarm.schedule.v1"
+    /// v2 because `routines` is a new non optional field, and Swift's synthesized decoder does not
+    /// fall back to a property's default value when the key is missing: it throws. A v1 payload
+    /// would therefore fail to decode and fall through to `.default` anyway. Bumping the key makes
+    /// that a deliberate reset rather than a silent one, at the cost of re-entering the times once.
+    private static let storageKey = "OneAlarm.schedule.v2"
 
     init(schedule: WakeSchedule? = nil) {
         self.schedule = schedule ?? Self.load() ?? .default
@@ -57,7 +61,170 @@ final class ScheduleStore {
         }
     }
 
+    // MARK: The next alarm
+
+    /// Which morning is next, what time, and whether that time came from a routine or from a bend.
+    struct NextAlarm: Equatable {
+        var day: CalendarDay
+        var date: Date
+        var weekday: Locale.Weekday
+        var time: WallClockTime
+        var routineName: String?
+        var isOverridden: Bool
+        var isSkipped: Bool
+        /// What the routine would have said, when an override is in force.
+        var routineTime: WallClockTime?
+    }
+
+    private(set) var next: NextAlarm?
+
+    /// The first day from today onwards that has an alarm, looking at most two weeks ahead.
+    ///
+    /// Two weeks rather than seven days because a single routine with one day on it, plus a skip on
+    /// that day, is eight days out and is a real thing somebody can configure.
+    private func resolveNext() -> NextAlarm? {
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+
+        for offset in 0...14 {
+            guard let date = calendar.date(byAdding: .day, value: offset, to: today) else { continue }
+            let day = CalendarDay(date, in: calendar)
+            let weekday = Locale.Weekday.from(calendarIndex: calendar.component(.weekday, from: date))
+            let routine = schedule.routine(covering: weekday)
+            let override = schedule.override?.day == day ? schedule.override : nil
+
+            if override?.isSkip == true { continue }
+
+            guard let time = override?.time ?? routine?.time else { continue }
+
+            // Today only counts if the time has not already passed.
+            if offset == 0 {
+                var parts = calendar.dateComponents([.year, .month, .day], from: date)
+                parts.hour = time.hour
+                parts.minute = time.minute
+                if let instant = calendar.date(from: parts), instant <= now { continue }
+            }
+
+            return NextAlarm(
+                day: day,
+                date: date,
+                weekday: weekday,
+                time: time,
+                routineName: routine?.name,
+                isOverridden: override != nil,
+                isSkipped: false,
+                routineTime: override != nil ? routine?.time : nil
+            )
+        }
+        return nil
+    }
+
+    /// Drop an override whose day has passed, so it can never fire on a morning nobody chose.
+    ///
+    /// Runs on launch and on every recompute rather than on a timer, because a timer that did not
+    /// run is indistinguishable from one that did.
+    private func purgeExpiredOverride() {
+        guard let override = schedule.override else { return }
+        if override.day < CalendarDay(Date(), in: calendar) {
+            schedule.override = nil
+            phoneNeedsRearm = true
+            persist()
+        }
+    }
+
+    /// Set when an expired bend has just been cleared.
+    ///
+    /// This is a real hazard rather than tidiness. While a bend is in force the phone is armed for
+    /// **one weekday**, because that is the only way AlarmKit can express "this Saturday and not
+    /// every Saturday". When the bend expires, the routine's other days are unarmed until something
+    /// re-arms them, and waiting for the next manual press is how a Monday goes missing.
+    private(set) var phoneNeedsRearm = false
+
+    /// Re-arm the phone by itself. Never the two remote legs.
+    ///
+    /// Safe to do unattended precisely because it is local: no account, no network, no request, and
+    /// the value is one the user already authored. The same act against Eight Sleep or Whoop would
+    /// be an unattended write to a live account and needs a tap.
+    func rearmPhoneIfNeeded() async {
+        guard phoneNeedsRearm else { return }
+        phoneNeedsRearm = false
+        guard let target = targets.first(where: { $0.device == .iphone }),
+              schedule.rule(for: .iphone)?.isEnabled == true else { return }
+        await apply(target: target, using: alarmKit)
+    }
+
     // MARK: Editing
+
+    /// Bend the next morning only, leaving the routine alone.
+    ///
+    /// This is the default for every change made from the main screen. At 23:41 the intent is
+    /// almost always "tomorrow", changing a routine is a twice a year act, and a decision the user
+    /// answers the same way nine times in ten is a tax rather than a safeguard. The mistake this
+    /// makes is visible and one tap from being fixed; the opposite default rewrites a routine
+    /// silently and is discovered a week later.
+    func bendNextMorning(to time: WallClockTime) {
+        guard let next else { return }
+        schedule.override = DayOverride(
+            day: next.day,
+            time: time,
+            routineTime: next.routineTime ?? next.time,
+            routineName: next.routineName
+        )
+        persistAndRecompute()
+    }
+
+    /// No alarm on the next morning. The routine is untouched and returns the day after.
+    func skipNextMorning() {
+        guard let next else { return }
+        schedule.override = DayOverride(
+            day: next.day,
+            time: nil,
+            routineTime: next.routineTime ?? next.time,
+            routineName: next.routineName
+        )
+        persistAndRecompute()
+    }
+
+    /// Promote the bend into the routine that covers that day.
+    func makeOverridePermanent() {
+        guard let override = schedule.override, let time = override.time else { return }
+        let weekday = Locale.Weekday.from(
+            calendarIndex: calendar.component(.weekday, from: override.day.date(in: calendar) ?? Date())
+        )
+        if let index = schedule.routines.firstIndex(where: { $0.isOn && $0.weekdays.contains(weekday) }) {
+            schedule.routines[index].time = time
+        }
+        schedule.override = nil
+        persistAndRecompute()
+    }
+
+    func clearOverride() {
+        schedule.override = nil
+        persistAndRecompute()
+    }
+
+    func setRoutineTime(_ time: WallClockTime, routineID: String) {
+        guard let index = schedule.routines.firstIndex(where: { $0.id == routineID }) else { return }
+        schedule.routines[index].time = time
+        persistAndRecompute()
+    }
+
+    /// Move a day from whichever routine holds it into this one, or out of every routine.
+    ///
+    /// A day in two routines is two answers to the same question, so the move is a move rather than
+    /// an add. A day in none means no alarm, which is a legitimate answer and is printed by name.
+    func toggleDay(_ day: Locale.Weekday, in routineID: String) {
+        guard let index = schedule.routines.firstIndex(where: { $0.id == routineID }) else { return }
+        if schedule.routines[index].weekdays.contains(day) {
+            schedule.routines[index].weekdays.remove(day)
+        } else {
+            for other in schedule.routines.indices {
+                schedule.routines[other].weekdays.remove(day)
+            }
+            schedule.routines[index].weekdays.insert(day)
+        }
+        persistAndRecompute()
+    }
 
     func setMasterTime(_ time: WallClockTime) {
         schedule.masterTime = time
@@ -101,7 +268,57 @@ final class ScheduleStore {
     }
 
     func recompute() {
+        purgeExpiredOverride()
+        next = resolveNext()
+
+        // The derived pair. Everything downstream works in these terms, so resolution ends by
+        // writing the answer into them rather than by teaching four other files about routines.
+        if let next {
+            schedule.masterTime = next.time
+            if next.isOverridden {
+                // A bend arms one morning. The routine's other days are deliberately dropped from
+                // this pass: on the phone that is the suppression an override requires, and on the
+                // two remote legs it is what stops the bend leaking onto every day the routine
+                // covers. `restoreAfterOverride()` puts them back.
+                schedule.weekdays = [next.weekday]
+            } else if let routine = schedule.routine(covering: next.weekday) {
+                schedule.weekdays = routine.weekdays
+            }
+        }
+
         targets = RulesEngine.resolve(schedule: schedule, calendar: calendar, now: Date())
+    }
+
+    /// True while a bend is armed, so the screen can say what is temporary and when it ends.
+    var overrideNotice: String? {
+        guard let override = schedule.override, let next, next.isOverridden || override.isSkip else {
+            return nil
+        }
+        let routine = override.routineName ?? "your routine"
+        guard let was = override.routineTime else { return "Tomorrow only. \(routine) is unchanged." }
+        if override.isSkip {
+            return "No alarm on \(dayLabel(override.day)). \(routine) is still \(was.hhmm) and returns after."
+        }
+        return "\(dayLabel(override.day)) only. \(routine) is still \(was.hhmm) and returns after."
+    }
+
+    func dayLabel(_ day: CalendarDay) -> String {
+        guard let date = day.date(in: calendar) else { return "that day" }
+        if calendar.isDateInToday(date) { return "Today" }
+        if calendar.isDateInTomorrow(date) { return "Tomorrow" }
+        return date.formatted(.dateTime.weekday(.wide).day().month(.abbreviated))
+    }
+
+    /// How the next alarm should be described, with the day always named.
+    ///
+    /// A time with no day is what made a correct weekday alarm read as a broken app when it was
+    /// tested at 01:00 on a Sunday.
+    var nextAlarmHeadline: String {
+        guard let next else { return "No alarm set" }
+        let date = next.date
+        if calendar.isDateInToday(date) { return "Later today" }
+        if calendar.isDateInTomorrow(date) { return "Tomorrow, " + date.formatted(.dateTime.weekday(.wide)) }
+        return date.formatted(.dateTime.weekday(.wide).day().month(.wide))
     }
 
     func target(for device: DeviceID) -> ResolvedTarget? {

@@ -21,11 +21,16 @@ struct OneAlarmApp: App {
             .preferredColorScheme(.dark)
             .task {
                 await store.refreshAuthStates()
+                await store.rearmPhoneIfNeeded()
             }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 Task {
                     await store.refreshAuthStates()
+                    // Before the clock check, because an expired bend leaves the phone armed for one
+                    // weekday and the routine's other days unarmed. That is an oversleep waiting for
+                    // the next manual press, and it is fixed locally with no request.
+                    await store.rearmPhoneIfNeeded()
                     await store.applyIfClockMoved()
                 }
             }

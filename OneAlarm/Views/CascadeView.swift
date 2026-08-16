@@ -27,6 +27,7 @@ struct CascadeView: View {
             )
         ) {
             VStack(spacing: 26) {
+                nextMorning
                 masterTime
                 wakeWindow
                 cascade
@@ -50,11 +51,94 @@ struct CascadeView: View {
         .sheet(isPresented: $showingGoodnight) { GoodnightView().environment(store) }
     }
 
+    // MARK: The next morning
+
+    /// The screen's first job is to say which morning it means.
+    ///
+    /// A time on its own is what made a correct weekday alarm read as broken when it was tested at
+    /// 01:00 on a Sunday: the screen said 08:00 and nothing else, and the next occurrence was two
+    /// days away. The day is now the first thing on the screen, always, and the second line says
+    /// whether the time came from a routine or from a bend.
+    @ViewBuilder
+    private var nextMorning: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(store.nextAlarmHeadline).themeLabel()
+
+            if let notice = store.overrideNotice {
+                Notice(.warn, title: notice,
+                       "Nothing about your routine changed. It comes back on its own.")
+
+                HStack(spacing: 8) {
+                    Button("Make this the routine") { store.makeOverridePermanent() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 13, weight: .bold))
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(Theme.card, in: Capsule())
+                        .overlay(Capsule().strokeBorder(Theme.lineStrong, lineWidth: 1))
+
+                    Button("Undo") { store.clearOverride() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.State.confirmed)
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+            } else if let next = store.next, let routine = next.routineName {
+                Text("\(routine) · \(next.time.hhmm)")
+                    .font(.system(size: 14)).foregroundStyle(Theme.grey)
+            } else if store.next == nil {
+                Notice(.warn, title: "No alarm is set.",
+                       "No routine covers the next two weeks. Nothing will wake you.")
+            }
+
+            HStack(spacing: 8) {
+                nudge("−15", minutes: -15)
+                nudge("+15", minutes: 15)
+                Button {
+                    store.skipNextMorning()
+                } label: {
+                    Text("Skip")
+                        .font(.system(size: 13, weight: .bold))
+                        .frame(maxWidth: .infinity).frame(height: 44)
+                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Theme.line, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .disabled(store.next == nil)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Nudges bend the next morning only. Never the routine.
+    ///
+    /// The default is the frequent intent: a routine changes twice a year, a single morning bends
+    /// twice a month. A question answered the same way nine times in ten is a tax, not a safeguard,
+    /// and one answered half asleep is one that gets dismissed unread. Getting this wrong is visible
+    /// on the line above and one tap from fixed; the opposite default rewrites a routine silently.
+    private func nudge(_ label: String, minutes: Int) -> some View {
+        Button {
+            guard let next = store.next else { return }
+            store.bendNextMorning(to: WallClockTime(
+                minutesSinceMidnight: next.time.minutesSinceMidnight + minutes
+            ))
+        } label: {
+            Text(label)
+                .font(Theme.numeral(17))
+                .frame(maxWidth: .infinity).frame(height: 44)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Theme.line, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(store.next == nil)
+    }
+
     // MARK: Master time
 
     private var masterTime: some View {
         VStack(spacing: 14) {
-            Text("Wake at").themeLabel()
+            Text(store.overrideNotice == nil ? "Wake at" : "Wake at, this morning only").themeLabel()
 
             DatePicker(
                 "Wake time",
@@ -66,8 +150,10 @@ struct CascadeView: View {
                         return Calendar.current.date(from: c) ?? Date()
                     },
                     set: {
+                        // Bends the next morning, never the routine. Same rule as the nudges: the
+                        // frequent intent is the default, and the rare one is a labelled tap.
                         let c = Calendar.current.dateComponents([.hour, .minute], from: $0)
-                        store.setMasterTime(WallClockTime(hour: c.hour ?? 7, minute: c.minute ?? 0))
+                        store.bendNextMorning(to: WallClockTime(hour: c.hour ?? 7, minute: c.minute ?? 0))
                     }
                 ),
                 displayedComponents: .hourAndMinute
@@ -81,11 +167,27 @@ struct CascadeView: View {
         .padding(.top, 4)
     }
 
+    /// The days of the routine that covers the next morning, not a free floating day set.
+    ///
+    /// A day moved into this routine leaves whichever one held it, because a day in two routines is
+    /// two answers to the same question. A day in none means no alarm, which is a real answer.
     private var weekdays: some View {
-        HStack(spacing: 6) {
+        let routineID = store.next.flatMap { next in
+            store.schedule.routine(covering: next.weekday)?.id
+        }
+        return VStack(alignment: .leading, spacing: 6) {
+            if let routineID,
+               let routine = store.schedule.routines.first(where: { $0.id == routineID }) {
+                Text("\(routine.name) · \(routine.time.hhmm)").themeLabel()
+            }
+            HStack(spacing: 6) {
             ForEach(Locale.Weekday.displayOrder, id: \.calendarIndex) { day in
-                let on = store.schedule.weekdays.contains(day)
-                Button { store.toggleWeekday(day) } label: {
+                let on = routineID.flatMap { id in
+                    store.schedule.routines.first(where: { $0.id == id })?.weekdays.contains(day)
+                } ?? false
+                Button {
+                    if let routineID { store.toggleDay(day, in: routineID) }
+                } label: {
                     Text(day.shortLabel)
                         .font(.system(size: 13, weight: .semibold))
                         .frame(maxWidth: .infinity, minHeight: 38)
@@ -98,6 +200,7 @@ struct CascadeView: View {
                         .foregroundStyle(on ? .white : Theme.greyDim)
                 }
                 .buttonStyle(.plain)
+            }
             }
         }
     }

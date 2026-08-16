@@ -57,17 +57,99 @@ struct DeviceRule: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// Master wake time plus the per device rules. The single source of truth: edit `masterTime` once
-/// and every enabled device recomputes.
-struct WakeSchedule: Codable, Equatable, Sendable {
-    var masterTime: WallClockTime
+/// A named set of days with one wake time. Two by default, matching the split both services already
+/// hold on the account: Weekdays and Weekend.
+///
+/// A day belongs to at most one routine. That is enforced when days are toggled, because two
+/// routines claiming the same day means two answers to "when do I wake on Tuesday" and no way to
+/// pick between them.
+struct Routine: Codable, Equatable, Sendable, Identifiable {
+    var id: String
+    var name: String
     var weekdayIndices: [Int]
-    var rules: [DeviceRule]
+    var time: WallClockTime
+    var isOn: Bool = true
 
     var weekdays: Set<Locale.Weekday> {
         get { WeekdaySetCoding.decode(weekdayIndices) }
         set { weekdayIndices = WeekdaySetCoding.encode(newValue) }
     }
+}
+
+/// A calendar day, stored as three integers rather than a `Date`.
+///
+/// A `Date` is an instant, and an instant means a different day depending on where you are standing.
+/// "Saturday the sixteenth" has to survive a flight.
+struct CalendarDay: Codable, Equatable, Sendable, Comparable {
+    var year: Int
+    var month: Int
+    var day: Int
+
+    init(year: Int, month: Int, day: Int) {
+        self.year = year
+        self.month = month
+        self.day = day
+    }
+
+    init(_ date: Date, in calendar: Calendar) {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        self.init(year: parts.year ?? 0, month: parts.month ?? 0, day: parts.day ?? 0)
+    }
+
+    var sortKey: Int { year * 10_000 + month * 100 + day }
+
+    static func < (lhs: CalendarDay, rhs: CalendarDay) -> Bool { lhs.sortKey < rhs.sortKey }
+
+    func date(in calendar: Calendar) -> Date? {
+        calendar.date(from: DateComponents(year: year, month: month, day: day))
+    }
+}
+
+/// One day bent away from its routine, or skipped.
+///
+/// **Keyed by a date, never by a weekday.** Alex, 2026-08-16: a weekend routine covers Saturday and
+/// Sunday, and moving Saturday must leave Sunday and every future Saturday alone. Keyed by weekday
+/// it would move all of them, which is editing the routine rather than deviating from it.
+///
+/// It expires by itself. An override that has to be cancelled is one that eventually fires on a
+/// morning nobody chose.
+struct DayOverride: Codable, Equatable, Sendable {
+    var day: CalendarDay
+    /// `nil` means skip: no alarm at all that day, routine untouched.
+    var time: WallClockTime?
+    /// What the routine said, so it can be put back and so the screen can name it.
+    var routineTime: WallClockTime?
+    var routineName: String?
+
+    var isSkip: Bool { time == nil }
+}
+
+/// The plan. Routines are the source; `masterTime` and `weekdayIndices` are **derived** from them
+/// and from any override, recomputed on every change.
+///
+/// The derived pair is kept because every downstream consumer, the rules engine and all three
+/// adapters, already works in those terms. Changing them into a routine-aware pipeline in one step
+/// would touch everything at once, and nothing here has a compiler.
+struct WakeSchedule: Codable, Equatable, Sendable {
+    var masterTime: WallClockTime
+    var weekdayIndices: [Int]
+    var rules: [DeviceRule]
+    var routines: [Routine] = WakeSchedule.defaultRoutines
+    var override: DayOverride?
+
+    var weekdays: Set<Locale.Weekday> {
+        get { WeekdaySetCoding.decode(weekdayIndices) }
+        set { weekdayIndices = WeekdaySetCoding.encode(newValue) }
+    }
+
+    static let defaultRoutines: [Routine] = [
+        Routine(id: "weekdays", name: "Weekdays",
+                weekdayIndices: WeekdaySetCoding.encode(Locale.Weekday.weekdaysOnly),
+                time: WallClockTime(hour: 7, minute: 0)),
+        Routine(id: "weekend", name: "Weekend",
+                weekdayIndices: WeekdaySetCoding.encode([.saturday, .sunday]),
+                time: WallClockTime(hour: 9, minute: 0)),
+    ]
 
     static let `default` = WakeSchedule(
         masterTime: WallClockTime(hour: 7, minute: 0),
@@ -76,10 +158,16 @@ struct WakeSchedule: Codable, Equatable, Sendable {
             DeviceRule(device: .eightSleep, offsetMinutes: -10, isEnabled: true, weekdayOverrideIndices: nil),
             DeviceRule(device: .whoop, offsetMinutes: -5, isEnabled: true, weekdayOverrideIndices: nil),
             DeviceRule(device: .iphone, offsetMinutes: 0, isEnabled: true, weekdayOverrideIndices: nil),
-        ]
+        ],
+        routines: WakeSchedule.defaultRoutines,
+        override: nil
     )
 
     func rule(for device: DeviceID) -> DeviceRule? {
         rules.first { $0.device == device }
+    }
+
+    func routine(covering day: Locale.Weekday) -> Routine? {
+        routines.first { $0.isOn && $0.weekdays.contains(day) }
     }
 }
