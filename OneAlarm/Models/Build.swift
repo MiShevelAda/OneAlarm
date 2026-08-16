@@ -12,7 +12,7 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 23:40 · the one time change uses their own one-shot"
+    static let marker = "19 Aug, 00:20 · one-shot override, and Whoop keeps your wake mode"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///

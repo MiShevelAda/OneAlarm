@@ -580,10 +580,43 @@ actor WhoopAdapter: DeviceAdapter {
     /// The spec's names were never actually tried on their own: the first attempt set them **on
     /// top of** the view model, so the body was half screen description and half resource. That is
     /// its own reason for a 422 and it masked whether the names were right.
+    /// The write body: six keys, and `alarm_mode` is always **his**.
+    ///
+    /// The `mode:` override parameter was removed on 18 August along with its only caller. A
+    /// parameter whose whole purpose is to substitute a setting he chose is a loaded gun left on the
+    /// table: the next person to need "just one retry" finds it ready to use. `LEARNED.md` records
+    /// what happened the first time.
+    /// The three `alarm_mode` values the write is known to accept.
+    ///
+    /// Captured, not guessed: `briangaoo/whoop-mcp` builds its schema from mitmproxy captures of the
+    /// real iOS app, and its enum is exactly these. `alarm_mode` is a **wake timing strategy**, not a
+    /// haptic setting: `IN_THE_GREEN` wakes him inside a light sleep window, the two exact time
+    /// variants wake him at the time he asked for. Swapping one for another moves when he wakes up.
+    static let writableModes: Set<String> = [
+        "IN_THE_GREEN", "EXACT_TIME_PEAK", "EXACT_TIME_OPTIMIZE_SLEEP",
+    ]
+
+    /// A mode safe to send on a **newly created** schedule.
+    ///
+    /// Only ever applied to a schedule being made. A mode already sitting on a schedule of his is by
+    /// definition one the server accepted, and is echoed untouched.
+    ///
+    /// `SLEEP_GOAL` means Whoop derives the wake time from sleep need, so a schedule created in that
+    /// mode ignores the routine's time entirely: it would look written, report as written, and wake
+    /// him whenever Whoop felt like it.
+    static func writableMode(_ inherited: String) -> String {
+        writableModes.contains(inherited) ? inherited : "EXACT_TIME_PEAK"
+    }
+
+    /// The write body: six keys.
+    ///
+    /// `forcing` is create-only and deliberately named so it cannot be mistaken for a retry knob. It
+    /// was once a `mode:` parameter used to substitute his wake strategy on a failed write, which is
+    /// the rule in `LEARNED.md` being broken by the code the rule was written about.
     static func domainBody(
         _ schedule: [String: Any],
         to target: ResolvedTarget,
-        mode: String? = nil
+        forcing mode: String? = nil
     ) -> [String: Any] {
         [
             "latest_wake_time": target.localTime.hhmmss,
@@ -592,6 +625,9 @@ actor WhoopAdapter: DeviceAdapter {
                 .map(\.whoopName),
             "enabled": true,
             "time_zone_offset": target.utcOffsetString,
+            // His, echoed. `forcing` is create-only and `observedMode` only stands in when the
+            // schedule carries no mode at all. Neither path ever overwrites a mode on a schedule
+            // that already exists.
             "alarm_mode": mode ?? (schedule["alarm_mode"] as? String) ?? Self.observedMode,
             // Empty string in the captured request, so an empty string here. Not a placeholder.
             "sleep_goal": "",
@@ -613,13 +649,27 @@ actor WhoopAdapter: DeviceAdapter {
         var shapes: [(String, [String: Any])] = [
             ("domain", Self.domainBody(schedule, to: target)),
         ]
-        // A rejected enum is a parse failure, so a mode the write does not know would fail the whole
-        // body for a reason that has nothing to do with the rest of it. One retry on the value that
-        // is known to have worked, and only when it differs from what we just sent.
-        if (schedule["alarm_mode"] as? String) != Self.observedMode {
-            shapes.append(("domain/\(Self.observedMode)",
-                           Self.domainBody(schedule, to: target, mode: Self.observedMode)))
-        }
+        // **The mode substitution rung was removed on 18 August, and it should never have shipped.**
+        //
+        // It appended a retry that replaced his `alarm_mode` with `IN_THE_GREEN` whenever his own
+        // differed, on the theory that an unknown enum value would fail the whole body for a reason
+        // unrelated to the rest of it. That theory required not knowing the enum.
+        //
+        // The enum is now known, verified at source in `briangaoo/whoop-mcp`:
+        //
+        //     AlarmMode = z.enum(["IN_THE_GREEN", "EXACT_TIME_PEAK", "EXACT_TIME_OPTIMIZE_SLEEP"])
+        //
+        // Three legal values, and `alarm_mode` is a **wake timing strategy**, not a haptic setting:
+        // `IN_THE_GREEN` wakes him in a light sleep window, `EXACT_TIME_PEAK` wakes him at the time
+        // he asked for. Substituting one for the other changes when he actually wakes up.
+        //
+        // A mode already sitting on his schedule is by definition one the server accepted, so
+        // echoing it cannot be the parse failure this rung was guarding against. The rung could only
+        // ever overwrite a choice of his to get past an error caused by something else.
+        //
+        // `LEARNED.md` already carries the rule, written after this exact thing happened once:
+        // **never silently change a setting Alex chose. Adopt, or ask, never overwrite.** The rung
+        // was that rule being broken by the code the rule was written about.
         shapes.append(("viewmodel", Self.trimmed(try Self.mutate(schedule, to: target))))
         return shapes
     }
@@ -1040,12 +1090,28 @@ actor WhoopAdapter: DeviceAdapter {
         // report as written, and wake him whenever Whoop felt like it. Flagged in an expert review
         // on 17 August.
         //
-        // `EXACT_TIME` is the honest substitute for a schedule whose whole purpose is a time OneAlarm
-        // was given. It is a choice rather than a copy, so it is named in the receipt. Nothing is
-        // changed on a schedule he already has: this only ever applies to one being made.
+        // **The substitute was `EXACT_TIME`, and that is very likely not a value the write accepts.**
+        //
+        // Verified at source on 18 August, from a client built on mitmproxy captures of the real app:
+        //
+        //     AlarmMode = z.enum(["IN_THE_GREEN", "EXACT_TIME_PEAK", "EXACT_TIME_OPTIMIZE_SLEEP"])
+        //
+        // Three values, and `EXACT_TIME` is not among them. Where did ours come from? From the
+        // **view model**, per `observedMode`'s own note that `SLEEP_GOAL` and `EXACT_TIME` are
+        // recent. That is exactly the divergence this adapter has already been burned by: the read
+        // shape and the write enum use different vocabularies, and five hours went into learning it
+        // the first time.
+        //
+        // So `EXACT_TIME_PEAK` is used instead: it is in the verified enum, and of the two exact time
+        // variants it is the one that does not also optimise for sleep, which is what a schedule
+        // built from a time OneAlarm was given actually wants.
+        //
+        // **Inferred, not captured.** The enum is captured; that our `EXACT_TIME` came from the view
+        // model is inference from a comment in this file. If a create is ever refused on the mode,
+        // `EXACT_TIME_OPTIMIZE_SLEEP` is the next value to try, and the receipt names which was sent.
         let inherited = (template["alarm_mode"] as? String) ?? Self.observedMode
-        let mode = inherited == "SLEEP_GOAL" ? "EXACT_TIME" : inherited
-        let body = Self.domainBody(template, to: forRoutine, mode: mode)
+        let mode = Self.writableMode(inherited)
+        let body = Self.domainBody(template, to: forRoutine, forcing: mode)
 
         // **The rungs, reordered on 17 August after research rather than before it.**
         //

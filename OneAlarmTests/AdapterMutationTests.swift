@@ -215,6 +215,42 @@ final class WhoopMutationTests: XCTestCase {
         XCTAssertEqual(payload.keys.count, 6)
     }
 
+    /// **His wake strategy is never substituted to get past an error.**
+    ///
+    /// The write ladder used to append a retry that replaced `alarm_mode` with `IN_THE_GREEN`
+    /// whenever his differed, on the theory that an unknown enum would fail the whole body. The enum
+    /// is now known and has three values, so a mode already on his schedule is one the server
+    /// accepted and cannot be that parse failure. The rung could only ever overwrite a choice of his.
+    ///
+    /// `alarm_mode` is a wake **timing strategy**: `IN_THE_GREEN` wakes him in a light sleep window,
+    /// `EXACT_TIME_PEAK` at the time he asked for. Swapping them moves when he wakes up.
+    func testTheWriteLadderNeverSubstitutesHisAlarmMode() throws {
+        var schedule = serverSchedule
+        schedule["alarm_mode"] = "EXACT_TIME_PEAK"
+
+        let shapes = try WhoopAdapter.variants(schedule, to: target)
+
+        for (name, body) in shapes {
+            let mode = body["alarm_mode"] as? String
+                ?? (body["schedule"] as? [String: Any])?["alarm_mode"] as? String
+            if let mode {
+                XCTAssertEqual(mode, "EXACT_TIME_PEAK", "rung \(name) rewrote his wake strategy")
+            }
+        }
+    }
+
+    /// A mode the write enum knows is kept. Anything else is only replaced on a create.
+    func testOnlyAnUnwritableModeIsReplacedAndOnlyOnACreate() {
+        XCTAssertEqual(WhoopAdapter.writableMode("EXACT_TIME_PEAK"), "EXACT_TIME_PEAK")
+        XCTAssertEqual(WhoopAdapter.writableMode("IN_THE_GREEN"), "IN_THE_GREEN")
+        XCTAssertEqual(WhoopAdapter.writableMode("EXACT_TIME_OPTIMIZE_SLEEP"), "EXACT_TIME_OPTIMIZE_SLEEP")
+
+        // SLEEP_GOAL makes Whoop derive its own wake time, which would ignore the routine entirely.
+        XCTAssertEqual(WhoopAdapter.writableMode("SLEEP_GOAL"), "EXACT_TIME_PEAK")
+        // And the old substitute, which is not in the captured enum at all.
+        XCTAssertEqual(WhoopAdapter.writableMode("EXACT_TIME"), "EXACT_TIME_PEAK")
+    }
+
     func testTheModeRetryUsesTheOnlyValueEverAccepted() throws {
         let labels = try WhoopAdapter.variants(serverSchedule, to: target).map(\.0)
 

@@ -657,6 +657,44 @@ One irony in our favour: a native Swift app naturally produces the iOS TLS and H
 that totem explicitly says it cannot fake from Node. Our port is less detectable than the thing we
 are porting from.
 
+### 2.3b The `alarm_mode` enum, captured, and two live bugs it exposed
+
+**Verified at source 18 August**, from `briangaoo/whoop-mcp`, a client built on mitmproxy captures of
+the real iOS app:
+
+```ts
+export const AlarmMode = z.enum(["IN_THE_GREEN", "EXACT_TIME_PEAK", "EXACT_TIME_OPTIMIZE_SLEEP"]);
+```
+
+Three values, and **`alarm_mode` is a wake timing strategy, not a haptic or audio setting**.
+`IN_THE_GREEN` wakes him inside a light sleep window; the two exact time variants wake him at the
+time he asked for. Substituting one for another moves when he actually wakes up.
+
+That enum exposed two bugs in code that was live:
+
+1. **The write ladder substituted his mode on a retry.** If his schedule's `alarm_mode` differed from
+   `IN_THE_GREEN`, a rung was appended that replaced it, to get past a suspected enum parse failure.
+   With the enum known, a mode already on his schedule is by definition one the server accepted, so
+   it cannot be that parse failure. The rung could only ever overwrite a choice of his. **Removed**,
+   along with the `mode:` parameter that enabled it: a parameter whose purpose is to substitute a
+   setting he chose is a loaded gun left on the table.
+
+   `LEARNED.md` already carried the rule, written the first time this happened: *never silently
+   change a setting Alex chose. Adopt, or ask, never overwrite.* The rung was that rule being broken
+   by the code the rule was written about.
+
+2. **The create substituted `EXACT_TIME`, which is not in the enum.** A schedule inheriting
+   `SLEEP_GOAL` must not keep it, because Whoop then derives its own wake time and ignores the
+   routine entirely. Correct. But the substitute was `EXACT_TIME`, and the note beside it admits that
+   value came from the **view model**. That is this leg's oldest trap: the read shape and the write
+   enum use different vocabularies. Now `EXACT_TIME_PEAK`, which is in the captured enum.
+   **Inferred rather than captured**, and if a create is ever refused on the mode,
+   `EXACT_TIME_OPTIMIZE_SLEEP` is the next value to try.
+
+The same file confirms the read/write divergence already recorded here: the read model uses
+`days_of_week`, `timezone_offset` and `schedule_id` where the write uses `day_of_week_list` and
+`time_zone_offset`.
+
 ### 2.4 Whoop hazards
 
 **Never build a retry loop around `USER_PASSWORD_AUTH`.** `429 TooManyRequestsException` is real on
