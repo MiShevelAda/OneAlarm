@@ -15,6 +15,31 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**Extracting an inline `let` into a function can break the build, because the annotation loses its
+inference.** `[observed]` 17 August. `AlarmManager.AlarmConfiguration` is generic over
+`Metadata: AlarmMetadata`. As a `let` inside `write`, Swift inferred `Metadata` from the `attributes`
+argument. Pulling the same six lines into `configuration(for:)` turned that into a return type, where
+there is nothing to infer from, and the build failed with two errors that are really one:
+"Reference to generic type ... requires arguments in <..>" and "Generic parameter 'Metadata' could
+not be inferred". The body was byte-identical to the version that compiled. Nothing was wrong with
+the code that moved; the failure was created by the act of moving it.
+
+Two things follow. **A refactor of working code is a change and needs the same suspicion as new
+code.** And `npm run check` cannot see this at all: the file is syntactically perfect, the parse is
+clean, and only a compiler finds it. Which is the standing rule restated with a fourth example: a
+green check has never meant it builds, and this project has now shipped four different kinds of
+error that a parse structurally cannot catch. The first three were an unannotated heterogeneous
+dictionary literal, eleven empty collection literals in `Any` position, and a member landing at file
+scope. **When a session refactors without a compiler, the diff to read is the one against the
+version that last built on Alex's Mac.** That is what found this in two minutes after four rounds of
+reading the new code found nothing.
+
+**Ask for the error text rather than reasoning about the failure.** `[observed]` "Build fail" with
+no text produced one round of guessing, one wrong theory about the Xcode project file, and a hand
+audit of initialiser call sites that found nothing. A screenshot of the Issue navigator named the
+cause in one line. This is the dump-the-response rule again, on a different surface: the compiler is
+a server that sends a response, and reasoning about it instead of reading it fails the same way.
+
 **Dump the response, do not reason about it.** `[observed, twice]` The Whoop write failed six times
 across five hours. Every fix derived by reasoning was wrong. Both breakthroughs came from printing
 what the server actually sent: the field names on 15 August, and the envelope keys on 16 August,

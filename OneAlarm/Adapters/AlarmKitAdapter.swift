@@ -239,7 +239,18 @@ actor AlarmKitAdapter: DeviceAdapter {
     }
 
     /// The AlarmKit configuration for one wanted alarm. Pulled out so `write` reads as what it does.
-    private func configuration(for wanted: AlarmKitReconciler.Scheduled) -> AlarmManager.AlarmConfiguration {
+    ///
+    /// **The generic argument is not optional and is what broke the build on 17 August.**
+    /// `AlarmManager.AlarmConfiguration` is generic over `Metadata: AlarmMetadata`. While this was
+    /// inline in `write` it was a `let` and Swift inferred `Metadata` from `attributes`. Pulling it
+    /// into a function turned that into a return type annotation, where nothing is on the right hand
+    /// side to infer from, so it has to be written: `<OneAlarmMetadata>`. Xcode reports it twice,
+    /// once as "requires arguments in <...>" and once as "Generic parameter 'Metadata' could not be
+    /// inferred", and the second is a consequence of the first.
+    ///
+    /// Worth naming because the parse check in `npm run check` cannot see this class of error at
+    /// all. It is a type error, the file is syntactically perfect, and only a compiler finds it.
+    private func configuration(for wanted: AlarmKitReconciler.Scheduled) -> AlarmManager.AlarmConfiguration<OneAlarmMetadata> {
         // `.relative` and not `.fixed`. A fixed schedule is an absolute instant that does not track
         // the device time zone and cannot repeat, so a 07:00 wake up expressed that way drifts the
         // moment you change zone. This is the easiest bug to ship in the whole app.
