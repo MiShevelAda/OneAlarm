@@ -34,6 +34,19 @@ scope. **When a session refactors without a compiler, the diff to read is the on
 version that last built on Alex's Mac.** That is what found this in two minutes after four rounds of
 reading the new code found nothing.
 
+**A checker that has never failed has not been tested.** `[observed]` 17 August. `check_arg_order.js`
+was written to catch the argument order error Alex's build had just found, ran clean, and reported
+"argument order agrees everywhere". It was reading the wrong node type for an argument label, so it
+had silently skipped all but 3 of the 143 call sites, including the broken one. Reintroducing the bug
+was the only thing that revealed it: the checker failed its own negative control and did not notice.
+
+The general rule, and this project keeps paying for it: **a green check across zero items is not a
+pass.** `CLAUDE.md` already says a glob matching nothing is a failure, learned when the page list
+twice pointed at a moved directory. This is the same mistake in a different shape, so the practice is
+now: write the checker, **break the code on purpose, watch it fail**, fix the code, watch it pass.
+Both directions, every time. It took two minutes and would otherwise have shipped a checker that
+enforced nothing while reporting that it did.
+
 **Ask for the error text rather than reasoning about the failure.** `[observed]` "Build fail" with
 no text produced one round of guessing, one wrong theory about the Xcode project file, and a hand
 audit of initialiser call sites that found nothing. A screenshot of the Issue navigator named the
