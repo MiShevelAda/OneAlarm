@@ -362,6 +362,75 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertTrue(receipt.isPartial, "a week with a hole in it is not a done write")
     }
 
+    /// The routines read falls back to `v1`, and says which one answered.
+    ///
+    /// `E19`: the routine write is `/v2/routines/{id}` in two captures, and an OpenAPI description
+    /// puts the read at `/v1/users/{id}/routines`. Guessing one and being wrong is the worst outcome
+    /// available, because a 404 makes the read return empty, empty is indistinguishable from "this
+    /// account has no routines", and the routine write then silently does nothing while the receipt
+    /// reports the alarm times as set.
+    func testTheRoutinesReadFallsBackToTheOtherVersion() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "a1", time: "07:00:00", days: weekdayNames, routine: "r1")],
+            ]),
+            // v2 refuses, exactly as the prediction says it will.
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (404, ["message": "no route"]),
+            StubServer.key("GET", "/v1/users/\(userID)/routines"): (200, [
+                "routines": [routine(id: "r1", days: weekdayNames)],
+            ]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1"): accepted,
+            StubServer.key("PUT", "/v2/users/\(userID)/routines/r1"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "a1", on: .eightSleep)
+
+        let subject = await adapter()
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [entry("weekdays", "Weekdays", [.monday, .tuesday], hour: 6, minute: 50)],
+            skipsNextMorning: false
+        )
+
+        _ = try await subject.write(target, plan: plan)
+
+        XCTAssertTrue(StubServer.calls.contains { $0.path == "/v1/users/\(userID)/routines" },
+                      "a refused v2 has to fall through to v1")
+        // And the routine's days were written, which is the whole point of reading it at all.
+        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v2/users/\(userID)/routines/r1")])
+        XCTAssertEqual(body["days"] as? [String], ["monday", "tuesday"])
+
+        let version = await subject.routinesVersion
+        XCTAssertEqual(version, "v1", "which address answered is recorded, not guessed at again")
+    }
+
+    /// A refused read must not pass as "you have no routines".
+    ///
+    /// The two are indistinguishable from the outside and mean opposite things. One is a setting,
+    /// the other is OneAlarm calling the wrong address, and only the second is a bug.
+    func testARefusedRoutinesReadIsNamedRatherThanReadAsEmpty() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "a1", time: "07:00:00", days: weekdayNames, routine: "r1")],
+            ]),
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (404, ["message": "no route"]),
+            StubServer.key("GET", "/v1/users/\(userID)/routines"): (404, ["message": "no route"]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1"): accepted,
+        ]
+        RemoteAlarmLink.link(routine: "weekdays", to: "a1", on: .eightSleep)
+
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 50)],
+            skipsNextMorning: false
+        )
+
+        let receipt = try await adapter().write(target, plan: plan)
+        let note = try XCTUnwrap(receipt.note)
+
+        XCTAssertTrue(note.contains("Could not read your Eight Sleep routines"))
+        XCTAssertTrue(note.contains("404"), "with the status, so it can be diagnosed in one look")
+    }
+
     /// The whole point of recording ownership: nothing is created twice.
     func testALinkedAlarmIsUpdatedRatherThanDuplicated() async throws {
         StubServer.responses = [
