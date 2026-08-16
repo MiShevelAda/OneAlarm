@@ -1050,10 +1050,18 @@ struct BedConfirmScreen: View {
             // They do not appear in the Eight Sleep app, so there is nothing there to switch off, and
             // OneAlarm deletes only alarms it recorded creating, and these predate that record.
             ForEach(choices.filter(\.isHidden)) { choice in
+                // **The warning is conditional on it actually being able to fire, and that was a bug
+                // for about an hour.** Both of his hidden alarms came back `enabled=0` on 17 August
+                // 17:14 and this row still said "This one still rings", which is the same failure
+                // three other screens made today in the other direction: text describing a state the
+                // device is not in. A switched-off alarm is not a problem and saying it is teaches
+                // him to ignore the warning that matters.
                 MatchRow(
                     title: choice.summary,
                     detail: "OneAlarm made this before 17 August and left a nap tag on it, so the Eight Sleep app does not list it",
-                    warning: "This one still rings, and you cannot switch it off in the Eight Sleep app because it is not shown there. OneAlarm leaves it alone rather than quietly taking it over, and will not delete it either, because it cannot prove it made this one.",
+                    warning: choice.isEnabled
+                        ? "This one still rings, and you cannot switch it off in the Eight Sleep app because it is not shown there. OneAlarm leaves it alone rather than quietly taking it over, and will not delete it either, because it cannot prove it made this one."
+                        : nil,
                     live: false
                 )
             }
