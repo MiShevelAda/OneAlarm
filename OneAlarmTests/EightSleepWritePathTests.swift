@@ -79,6 +79,13 @@ final class EightSleepWritePathTests: XCTestCase {
         override func stopLoading() {}
     }
 
+    /// A 200 with an empty body.
+    ///
+    /// Spelled out rather than written as `(200, [:])`. An empty collection literal in an `Any`
+    /// position is a hard Swift error, "empty collection literal requires an explicit type", and
+    /// this file exists precisely because there is no compiler in the session to catch that.
+    private let accepted: (Int, Any) = (200, [String: Any]())
+
     private var session: URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [StubServer.self]
@@ -137,7 +144,7 @@ final class EightSleepWritePathTests: XCTestCase {
             "days": days,
             // The field that must survive untouched. When he goes to bed is not an alarm setting.
             "bedtime": ["time": bedtime, "dayOffset": 0] as [String: Any],
-            "alarms": [],
+            "alarms": [Any](),
         ]
     }
 
@@ -185,9 +192,9 @@ final class EightSleepWritePathTests: XCTestCase {
                     routine(id: "r2", days: ["saturday", "sunday"]),
                 ],
             ]),
-            StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1"): (200, [:]),
-            StubServer.key("PUT", "/v2/users/\(userID)/routines/r2"): (200, [:]),
-            StubServer.key("PUT", "/v2/users/\(userID)/routines/r1"): (200, [:]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1"): accepted,
+            StubServer.key("PUT", "/v2/users/\(userID)/routines/r2"): accepted,
+            StubServer.key("PUT", "/v2/users/\(userID)/routines/r1"): accepted,
         ]
 
         let plan = RoutinePlan(
@@ -225,7 +232,7 @@ final class EightSleepWritePathTests: XCTestCase {
             StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, [
                 "routines": [routine(id: "r2", days: ["saturday", "sunday"])],
             ]),
-            StubServer.key("PUT", "/v2/users/\(userID)/routines/r2"): (200, [:]),
+            StubServer.key("PUT", "/v2/users/\(userID)/routines/r2"): accepted,
         ]
 
         // One routine, and it has no alarm. Before the fix this threw `noMatchingDays` one line
@@ -254,8 +261,8 @@ final class EightSleepWritePathTests: XCTestCase {
             StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, [
                 "routines": [routine(id: "r1", days: weekdayNames, bedtime: "22:45:00")],
             ]),
-            StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1"): (200, [:]),
-            StubServer.key("PUT", "/v2/users/\(userID)/routines/r1"): (200, [:]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1"): accepted,
+            StubServer.key("PUT", "/v2/users/\(userID)/routines/r1"): accepted,
         ]
 
         // Monday to Wednesday: the change that day set matching could never have made.
@@ -293,7 +300,7 @@ final class EightSleepWritePathTests: XCTestCase {
             StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, [
                 "routines": [routine(id: "r1", days: weekdayNames), routine(id: "r9", days: ["wednesday"])],
             ]),
-            StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1"): (200, [:]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1"): accepted,
         ]
 
         let plan = RoutinePlan(
@@ -314,8 +321,10 @@ final class EightSleepWritePathTests: XCTestCase {
             StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
                 "alarms": [alarm(id: "a1", time: "07:00:00", days: weekdayNames, routine: "r1")],
             ]),
-            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": []]),
-            StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1"): (200, [:]),
+            // Annotated: the tuple's second element is `Any`, so the inner `[]` has no contextual
+            // type and Swift rejects it. Same trap as `(200, [:])`, one level deeper.
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, ["routines": [Any]()] as [String: Any]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1"): accepted,
             StubServer.key("POST", "/v1/users/\(userID)/alarms"): (422, ["message": "bad shape"]),
             StubServer.key("POST", "/v2/users/\(userID)/alarms"): (404, ["message": "no route"]),
         ]
@@ -346,8 +355,8 @@ final class EightSleepWritePathTests: XCTestCase {
             StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, [
                 "routines": [routine(id: "r1", days: ["monday"])],
             ]),
-            StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1"): (200, [:]),
-            StubServer.key("PUT", "/v2/users/\(userID)/routines/r1"): (200, [:]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/a1"): accepted,
+            StubServer.key("PUT", "/v2/users/\(userID)/routines/r1"): accepted,
         ]
         RemoteAlarmLink.link(routine: "weekdays", to: "a1", on: .eightSleep)
 
