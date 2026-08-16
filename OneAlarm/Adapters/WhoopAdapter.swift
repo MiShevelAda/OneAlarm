@@ -1330,9 +1330,22 @@ actor WhoopAdapter: DeviceAdapter {
                 // is **not** `alarm-schedule/enable` or `/disable`, which are the account wide master
                 // switch he sets by hand and are banned in `CLAUDE.md`.
                 let name = entry?.routineName ?? pair.routineName
+                // **`pair.time` is the BENT time, and using it here wrote the one-off to the strap.**
+                //
+                // From Alex's account, 19 August 22:00, an hour after this shipped. His Whoop read
+                // `MON TUE WED THU FRI 09:36 ALARM OFF`. The switch off worked and the time went with
+                // it, so his weekday schedule moved from 07:50 to the one-off time: exactly the thing
+                // this branch exists to prevent, done by the code preventing it.
+                //
+                // `AlarmMatchReport.Pair.time` is built from `entry.timeToWrite`, which is
+                // `bentTo ?? localTime`. That is right for every ordinary write and wrong for this
+                // one, which is the only place that deliberately does not want the bend.
+                //
+                // `localTime` is the routine's own time and is what the schedule keeps.
+                let routineTime = entry?.localTime ?? pair.time
                 let hush = ResolvedTarget(
                     device: .whoop,
-                    localTime: pair.time,
+                    localTime: routineTime,
                     weekdays: pair.weekdays,
                     dayShift: target.dayShift,
                     nextOccurrence: target.nextOccurrence,
@@ -1345,7 +1358,7 @@ actor WhoopAdapter: DeviceAdapter {
                 } catch {
                     // Named, because the consequence is him being woken at the routine time on a
                     // morning he moved, and that is worth a sentence rather than a shrug.
-                    failures.append("\(name): could not switch the strap off for that morning, so it still buzzes at \(pair.time.hhmm). \((error as? AdapterError)?.errorDescription ?? "refused")")
+                    failures.append("\(name): could not switch the strap off for that morning, so it still buzzes at \(routineTime.hhmm). \((error as? AdapterError)?.errorDescription ?? "refused")")
                 }
                 continue
             }
@@ -1590,7 +1603,17 @@ actor WhoopAdapter: DeviceAdapter {
 
         guard echoed == expected else {
             let actual = Self.instant(matching: echoed, offset: echoedOffset, near: target.nextOccurrence)
-            return .mismatch(expected: target.nextOccurrence, actual: actual ?? target.nextOccurrence)
+            // **Report the time actually compared, not the target.**
+            //
+            // Alex's row read "Accepted, but it reads back as Mon 09:36 instead of Mon 09:36". The
+            // same time twice, which is a sentence nobody can act on. `expected` had correctly become
+            // the routine time while this line still rendered `target.nextOccurrence`, the bent
+            // instant, so the two halves of the complaint came from different questions.
+            //
+            // A mismatch that prints one time twice is worse than no mismatch: it looks like a
+            // display bug, so the real disagreement underneath it gets dismissed.
+            let wanted = Self.instant(matching: expected, offset: echoedOffset, near: target.nextOccurrence)
+            return .mismatch(expected: wanted ?? target.nextOccurrence, actual: actual ?? target.nextOccurrence)
         }
         // A refusal that landed exactly as intended is `unavailable`, not `confirmed`. Green next to
         // a time he did not ask for would be its own small lie, and the note above says why the

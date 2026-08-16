@@ -233,6 +233,41 @@ final class WhoopMutationTests: XCTestCase {
                        "the next sync with no override turns the strap back on")
     }
 
+    /// **Silencing must not carry the bend with it.**
+    ///
+    /// From Alex's account an hour after the silencing shipped: his Whoop read `MON TUE WED THU FRI
+    /// 09:36 ALARM OFF`. The switch off worked and the time went with it, so his weekday schedule
+    /// moved from 07:50 to the one-off time. Exactly the thing the branch exists to prevent, done by
+    /// the code preventing it.
+    ///
+    /// The cause is that `AlarmMatchReport.Pair.time` is `bentTo ?? localTime`, which is right for
+    /// every ordinary write and wrong for the one place that deliberately does not want the bend.
+    func testSilencingKeepsTheRoutineTimeAndNotTheBentOne() {
+        let routineTime = WallClockTime(hour: 7, minute: 50)
+        let bent = WallClockTime(hour: 9, minute: 36)
+
+        let entry = RoutinePlan.Entry(
+            routineID: "weekdays", routineName: "Weekdays",
+            weekdays: Locale.Weekday.weekdaysOnly,
+            localTime: routineTime, bentTo: bent,
+            isOn: true, isSkippedNextMorning: false
+        )
+        // The pair a bent routine produces carries the bend, which is the trap.
+        XCTAssertEqual(entry.timeToWrite, bent, "the pair's time is the bent one, by design")
+        XCTAssertEqual(entry.localTime, routineTime, "and this is what the schedule must keep")
+
+        let hushed = WhoopAdapter.domainBody(
+            serverSchedule,
+            to: ResolvedTarget(device: .whoop, localTime: entry.localTime,
+                               weekdays: entry.weekdays, dayShift: 0,
+                               nextOccurrence: Date(), utcOffsetSeconds: 7200),
+            silenced: true
+        )
+        XCTAssertEqual(hushed["latest_wake_time"] as? String, "07:50:00",
+                       "the strap keeps his routine time while it is switched off")
+        XCTAssertEqual(hushed["enabled"] as? Bool, false)
+    }
+
     /// The view model rung is dropped when silencing, because it would undo the silence.
     ///
     /// It is built by mutating the read shape, which carries its own on switch. A fallback that

@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "19 Aug, 23:15 · removed a Whoop warning that was two days out of date"
+    static let marker = "20 Aug, 00:05 · silencing the strap no longer moves its time"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "The yellow box saying Whoop has a single schedule is gone. It was wrong, and it contradicted the picker two taps away that correctly said your account has 2. Also, on a morning you move, your strap is now switched off for that one morning instead of buzzing at the old time, and it comes back on by itself next sync."
+    static let whatIsNew = "Fixes the bug you just found. Switching your strap off for a moved morning was also writing the new time into your Monday to Friday schedule. It now keeps 07:50 and only switches off. Press Undo then Set all alarms once and your Whoop schedule goes back to normal by itself."
 }

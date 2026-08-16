@@ -498,6 +498,26 @@ fact, and twice it existed in an endpoint nobody had called. The third time the 
 better still: the field was missing because the **relationship does not exist**, and the question
 had to be rephrased rather than answered.
 
+**The fix for a bug reintroduced the bug, one hour later, through the code that was preventing it.**
+`[19 August]` The Whoop leg was switched from "leave the strap alone on a moved morning" to "switch
+the strap off for that morning". An hour later his schedule read `MON TUE WED THU FRI 09:36 ALARM
+OFF`. The switch off worked and **the one-off time went with it**, moving his whole weekday schedule
+from 07:50 to 09:36. That is precisely what the refusal exists to prevent.
+
+One line. The silencing call was built from `AlarmMatchReport.Pair.time`, which is
+`bentTo ?? localTime`. That is correct for every ordinary write and wrong for the single place in the
+codebase that deliberately does **not** want the bend.
+
+**The rule.** When adding the one path that must not apply the override, check every value it inherits
+for whether the override is already baked into it. A field named `time` on a pair that a bent routine
+produced is not the routine's time, and nothing at the call site says so.
+
+**And a second defect the same screenshot exposed.** His row read *"Accepted, but it reads back as
+Mon 09:36 instead of Mon 09:36"*, the same time twice. The comparison had correctly moved to the
+routine time while the message still rendered the bent target, so the two halves came from different
+questions. **A mismatch that prints one time twice is worse than no mismatch**: it reads as a display
+bug, so the real disagreement underneath gets dismissed.
+
 **Refusing to act is an action, and on the Whoop leg it was waking him two hours early.**
 `[19 August]` He bent Monday to 09:41. The bed took the one-shot, the phone split correctly, and the
 Whoop adapter **deliberately** left the strap alone, reporting *"your phone and your bed have it"*.
