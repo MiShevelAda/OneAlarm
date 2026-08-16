@@ -15,6 +15,26 @@ Rules for this file:
 
 ## 1. Method: what actually worked
 
+**"OneAlarm never touches it" was true and left out the part that decides whether he wakes up.**
+`[observed, 17 August 17:14]` He consolidated his week to a single **Every day** routine. His two real
+alarms, `09:30 weekdays` and `10:55 Sa Su`, instantly matched no routine, and the bed screen said
+OneAlarm never touches them.
+
+Correct, and one Set all alarms away from **three alarms on one morning**: a new Every day alarm plus
+both of those, still ringing. Which is precisely the state he cleaned up by hand hours earlier and
+asked never to have again.
+
+Not touching an unowned alarm is right and stays. **Saying so without saying it still rings is the
+third instance today of the same failure**, after the routine "still 06:01" above a list showing
+07:01, and the bed screen giving the wrong reason for the alarms it skipped. The pattern is now
+nameable:
+
+> **A screen that is accurate about what the app did, and silent about what the device will do, is
+> read as a claim about the device.** He does not care what OneAlarm touched. He cares what wakes him.
+
+Every row that says OneAlarm left something alone now also says whether that something rings.
+
+
 **The one-off write to Eight Sleep is confirmed broken on his bed, and the display half is confirmed
 right.** `[observed, 17 August 17:02 and 17:03]` He bent one Monday to 09:40 against a 09:05 routine.
 

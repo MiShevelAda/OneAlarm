@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 01:20 · one-off shown the way you liked it"
+    static let marker = "18 Aug, 02:00 · alarms nobody owns say they still ring"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "A one-off now reads like the Eight Sleep screen you pointed at: the day above in yellow, the new time large, and your routine time struck through beside it. The paragraph is gone. Also: the raw Eight Sleep panel prints every field now."
+    static let whatIsNew = "An alarm on your bed that no routine covers is left alone, which was always true, and the screen now also says the part that matters: it still rings. With an Every day routine you were one Set away from three alarms on one morning."
 }

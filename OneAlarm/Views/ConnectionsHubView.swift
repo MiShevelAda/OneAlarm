@@ -1025,8 +1025,23 @@ struct BedConfirmScreen: View {
                 MatchRow(title: name, detail: "no alarm on this bed runs on these days", warning: nil, live: false)
             }
             ForEach(report.alarmsWithNoRoutine, id: \.self) { label in
+                // **"OneAlarm never touches it" is true and was not the whole truth.**
+                //
+                // 17 August 17:14. Alex consolidated his week to one "Every day" routine. His two
+                // real alarms, `09:30 weekdays` and `10:55 Sa Su`, immediately matched no routine and
+                // this screen said OneAlarm never touches them. Correct, and it left out the part
+                // that decides whether he wakes up at the right time: **they still ring.** On the
+                // next Set all alarms he would have had a new Every day alarm plus both of these,
+                // three alarms on one morning, which is the exact state he cleaned up by hand on
+                // 17 August and asked never to have again.
+                //
+                // Not touching an alarm is the correct behaviour and stays. Saying so without saying
+                // it still rings is the same shape as the sentence that told him his routine was
+                // "still 06:01" while the list showed 07:01: technically about a different thing,
+                // read as being about this one.
                 MatchRow(title: label, detail: "no routine has these days, so OneAlarm never touches it",
-                         warning: nil, live: false)
+                         warning: "It still rings. Change a routine to cover these days and OneAlarm takes it over, or delete it in the Eight Sleep app.",
+                         live: false)
             }
             // Alarms his own Eight Sleep app will not list.
             //
