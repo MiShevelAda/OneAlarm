@@ -1139,7 +1139,39 @@ no raw block at all.
 
 
 
-## E30 🟢 ANSWERED, NEGATIVE. OneAlarm cannot switch a Whoop schedule back on.
+## E31 🔴 Is a live one-off what is holding his schedule off? **One minute, and it may reopen E30.**
+
+**Alex's own app, 20 August, verbatim:**
+
+> **TURN OFF SCHEDULE.** *"Your schedule is currently on. Turn off your schedule to set a new alarm
+> for tomorrow."* `[ TURN OFF & SET NEW ALARM ]`
+
+So in Whoop's product a recurring schedule and a one-time alarm cannot both be on, and setting the
+one-off **switches the schedule off**. That is a second, entirely sufficient explanation for the
+observation `E30` was built on.
+
+| | `E30`'s reading | This reading |
+|---|---|---|
+| why the schedule stayed off | `enabled: true` is ignored on write | a live one-off is holding it off |
+| what fixes it | nothing we can send | clearing the one-off |
+| what it means for silencing | one way door, remove it | still remove it, but for a smaller reason |
+
+**The test, and it is his.** In Whoop's app, clear or cancel the one-time alarm. Then press Set all
+alarms in OneAlarm and look at the schedule.
+
+| Result | Reading |
+|---|---|
+| the alarm comes back on | `enabled` works both ways. `E30` is **wrong** and gets corrected |
+| still off | `E30` stands, and the write genuinely cannot re-enable |
+
+**Prediction, before it runs.** Slightly favour the one-off explanation. Their modal says the two are
+exclusive, and a server enforcing that would refuse to re-enable a schedule while a one-off is live,
+which is precisely what we saw. But his account has been through a lot of writes tonight, so a
+confounded state is entirely possible and the answer may be neither clean.
+
+**Either way the silencing stays removed.** A door this project cannot prove opens is not a door.
+
+## E30 🟠 ANSWERED NEGATIVE, and now contested by `E31`. OneAlarm could not switch a schedule back on.
 
 **Alex's account, 20 August.** He ran Set all alarms with no override in force, on a schedule
 OneAlarm had switched off itself. The row came back:

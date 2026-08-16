@@ -498,6 +498,24 @@ fact, and twice it existed in an endpoint nobody had called. The third time the 
 better still: the field was missing because the **relationship does not exist**, and the question
 had to be rephrased rather than answered.
 
+**A feature request thread is not evidence the feature is missing.** `[20 August]` A research sweep
+found WHOOP Community threads asking for "change alarm for tomorrow only", filed under Product
+Feedback, and inferred the feature does not exist. That inference then cast doubt on a correct older
+note in this project saying Whoop's one-off is mutually exclusive with the recurring schedule *"per
+its own dialog"*.
+
+Alex opened his app and the dialog was right there: **"Your schedule is currently on. Turn off your
+schedule to set a new alarm for tomorrow."** The feature exists, it is exactly as the old note
+described, and the doubt was manufactured from an absence of the wrong kind.
+
+**The rule.** People ask for features that already exist, in the wrong words, on the wrong screen, or
+for a variant of what shipped. A request thread tells you what somebody wanted, never what the
+product does. This is the same error as **never infer absence from an object you did not look at**,
+which this project already had written down, applied to a forum instead of a JSON body.
+
+**And the thing that actually answered it was one person opening the app.** Two research sweeps and
+several hours of reading other people's code were beaten by the owner tapping the button.
+
 **A feature that can switch something off, on a leg that cannot switch it back on, is a one way
 door.** `[20 August]` The Whoop silencing lived about four hours. It solved a real problem, a strap
 buzzing two hours before a moved morning, and it was removed the moment `E30` showed OneAlarm cannot

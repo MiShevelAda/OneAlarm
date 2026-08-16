@@ -774,6 +774,47 @@ either.
 because that prefix also carries telemetry and the master switch he sets by hand. And a wrong write
 here does not fail loudly, it changes the instant his wrist buzzes.
 
+### 2.3e Whoop's own one-off turns the schedule OFF, from their own modal
+
+**The single most useful thing anybody has learned about this leg, and it came from Alex opening
+his own app on 20 August.** He tried to set a one-time alarm and Whoop showed him this, verbatim:
+
+> **TURN OFF SCHEDULE**
+> *"Your schedule is currently on. Turn off your schedule to set a new alarm for tomorrow."*
+> `[ TURN OFF & SET NEW ALARM ]` `[ CANCEL ]`
+
+His reading, which is the right one: *"if you work with a schedule, you cannot set an individual
+alarm, because whenever I want to set a new alarm manually, the schedule is being turned off."*
+
+**Four consequences, and one of them may undo a conclusion reached hours earlier.**
+
+1. **A recurring schedule and a one-time alarm are mutually exclusive in Whoop's product**, and the
+   one-off is implemented as *turn the schedule off, then set the alarm*. This project's older note
+   said exactly that "per its own dialog", the 19 August sweep cast doubt on it after finding
+   community threads requesting the feature, and the modal settles it. **The old note was right.**
+   A feature request thread is not evidence of absence.
+
+2. **`E30` may have the wrong answer.** It concluded that `enabled: true` cannot switch a schedule
+   back on, from the observation that the time landed and the switch did not. A competing explanation
+   now exists and cannot be ruled out from here: **the schedule may be refusing to re-enable because
+   a one-time alarm is active on the account.** Same observation, different cause, opposite
+   implication. Removing the silencing was still right, because a door we cannot prove opens is not
+   a door, but the reasoning behind it is no longer settled.
+
+3. **The capture worth having has changed.** Not "how do you turn a schedule on" but **what the app
+   sends when somebody presses `TURN OFF & SET NEW ALARM`**. One action, both halves.
+
+4. **`strap-status` gains a purpose.** `PUT /smart-alarm-service/v1/strap-status` with
+   `{"strap_driven_alarm_time": "<absolute instant>"}` is described in the capture as pushing the
+   alarm time to the strap firmware, and two BLE projects confirm the strap holds one alarm as an
+   epoch time. An absolute instant is exactly the shape of "an alarm for tomorrow". That endpoint and
+   this modal may be the same mechanism seen from two sides. Still behind the `CLAUDE.md` ban on the
+   `smart-alarm-service` prefix, and still Alex's ruling to make.
+
+**What settles point 2, and it costs one minute of his time.** Clear the one-time alarm in Whoop's
+app, then press Set all alarms. If the schedule comes back on, `enabled` works and the one-off was
+blocking it. If it stays off, `E30` stands.
+
 ### 2.4 Whoop hazards
 
 **Never build a retry loop around `USER_PASSWORD_AUTH`.** `429 TooManyRequestsException` is real on
