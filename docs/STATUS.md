@@ -76,18 +76,27 @@ never touched, and a write where any routine had no home reports as a **warning*
 
 Everything under "designed, not built" below is on paper.
 
-## What is designed and not built
+## The design documents, and which parts of them exist
 
-| Document | What it holds |
+**This section said "designed and not built" until 17 August, and most of it had been built by then.**
+Routines, skip, bend, the ownership model and the redesigned home screen all shipped on 16 and 17
+August. A list of unbuilt work that quietly contains built work is the same failure as the header
+that said "It works" above a table saying one leg did not, and it is the third one found in this file
+in two days.
+
+| Document | Built? |
 |---|---|
-| `docs/SETTINGS.md` | the full settings and scheduling spec from a 39 agent design round |
-| `docs/USER-CASES.md` | Alex's own words on who uses this and how, plus the cases they expose |
-| `docs/SCHEDULING.md` | the routines and override design, with its corrections |
-| `design/prototype-v2.html` | a clickable prototype of the redesigned screen and its failure states |
+| `docs/SCHEDULING.md`, the routines and override design | **shipped**, with two corrections it did not anticipate: ownership is recorded rather than matched by days, and a routine's days are written rather than only read |
+| `docs/USER-CASES.md`, Alex's own words on who uses this and how | the routine-led and day-by-day cases are served. "No alarm at all" is expressible and untested |
+| `docs/SETTINGS.md`, the settings and scheduling spec | partly. The parts about per-device leads, the anchor and the wake window are live; snooze, foreign change detection and ranges instead of points are not |
+| `design/prototype-v2.html`, the clickable prototype | **superseded**. It shows the design as of the morning of 16 August, before the screens were split by scope and before the phone held one alarm per routine. Read it as a record of what was proposed, never as a description of the app |
 
-The spec **did not reach consensus**: nineteen of twenty one persona votes were no across three
-rounds, and eight disagreements are recorded at the end of it, unresolved on purpose. A second run
-is attacking it now, with an adversary at every stage.
+The spec **did not reach consensus** when it was written: nineteen of twenty one persona votes were
+no across three rounds, and eight disagreements are recorded at the end of it, unresolved on purpose.
+A second adversarial run was in flight on 16 August and its verdict was not-ready with twenty three
+unfixed findings. **Nothing since then has been fed back to it**, including the routine object, the
+ownership model and the twelve defects found on the night of 16 to 17 August, so its verdict is
+evidence about that morning's design and not about this code.
 
 ## Known problems, worst first
 
