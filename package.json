@@ -6,7 +6,7 @@
     "check": "python3 tools/validate_project.py && node tools/parse_swift.js && node tools/check_arg_order.js"
   },
   "dependencies": {
-    "tree-sitter": "^0.21.0",
+    "tree-sitter": "^0.22.1",
     "tree-sitter-swift": "^0.7.0"
   }
 }
