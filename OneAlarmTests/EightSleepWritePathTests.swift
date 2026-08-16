@@ -424,6 +424,40 @@ final class EightSleepWritePathTests: XCTestCase {
         )
     }
 
+    /// A sync that did everything asked reports as done, not as a warning.
+    ///
+    /// The success message for a create used to sit in the same list as the failures, so creating an
+    /// alarm successfully set `isPartial` and the row went yellow. Reporting success as a warning is
+    /// the same class of lie as reporting failure as done, one step further from useful: it teaches
+    /// him to stop reading the row, and the row is the only thing that tells him whether his bed is
+    /// set.
+    func testAFullySuccessfulRunIsNotFlaggedAsPartial() async throws {
+        let before = [alarm(id: "a1", time: "07:00:00", days: weekdayNames, routine: "r1")]
+        let after = before + [alarm(id: "brand-new", time: "08:50:00", days: [], routine: "r2")]
+
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/routines"): (200, [
+                "routines": [routine(id: "r2", days: ["saturday", "sunday"])],
+            ]),
+            StubServer.key("PUT", "/v2/users/\(userID)/routines/r2"): accepted,
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, ["alarms": after]),
+        ]
+        StubServer.sequences[StubServer.key("GET", "/v2/users/\(userID)/alarms")] = [
+            (200, ["alarms": before] as Any),
+        ]
+
+        let plan = RoutinePlan(
+            device: .eightSleep,
+            entries: [entry("weekend", "Weekend", [.saturday, .sunday], hour: 8, minute: 50)],
+            skipsNextMorning: false
+        )
+
+        let receipt = try await adapter().write(target, plan: plan)
+
+        XCTAssertFalse(receipt.isPartial, "everything asked for happened, so the row says done")
+        XCTAssertTrue(receipt.note?.contains("Added the Weekend alarm") ?? false)
+    }
+
     /// The routines read falls back to `v1`, and says which one answered.
     ///
     /// `E19`: the routine write is `/v2/routines/{id}` in two captures, and an OpenAPI description

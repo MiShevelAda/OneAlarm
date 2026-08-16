@@ -905,10 +905,19 @@ actor EightSleepAdapter: DeviceAdapter {
         // discovery routine.
         var created: [String] = []
         var createdIDs = Set<String>()
+        // Two lists, not one, and the split decides whether the sync reports as done or as a
+        // warning.
+        //
+        // `createNotes` is what happened, including the good news: an alarm was added inside a
+        // routine and his app will show it. `createProblems` is what did not happen. Lumping them
+        // together made a completely successful create report as a warning, because the success
+        // message itself was evidence of a problem. Reporting success as a warning is the same class
+        // of lie as reporting a failure as done, one direction further from useful.
+        var createNotes: [String] = []
         // Every reason a create did not happen, in words. Silence here is what made "it does not
         // create them" impossible to diagnose: a refused POST and a branch that never ran looked
         // exactly the same on screen, which is to say they both looked like nothing.
-        var createNotes: [String] = []
+        var createProblems: [String] = []
 
         if !report.routinesWithNoAlarm.isEmpty {
             guard let template = Self.template(from: alarms) else {
@@ -925,7 +934,7 @@ actor EightSleepAdapter: DeviceAdapter {
             for entry in entries where report.routinesWithNoAlarm.contains(entry.routineName) {
                 guard !entry.weekdays.isEmpty, entry.isOn else { continue }
                 guard alarms.count + created.count < Self.alarmCeiling else {
-                    createNotes.append("Did not create \(entry.routineName): this account is already at the \(Self.alarmCeiling) alarm limit OneAlarm will not go past.")
+                    createProblems.append("Did not create \(entry.routineName): this account is already at the \(Self.alarmCeiling) alarm limit OneAlarm will not go past.")
                     continue
                 }
 
@@ -983,7 +992,7 @@ actor EightSleepAdapter: DeviceAdapter {
                         } else {
                             // Reported rather than silently accepted, because the consequence is a
                             // duplicate next time and he is the only one who can see it.
-                            createNotes.append("Added the \(entry.routineName) alarm inside its routine, but could not tell which new alarm is it (\(fresh.count) appeared). Check the Eight Sleep app before the next sync, in case it makes a second one.")
+                            createProblems.append("Added the \(entry.routineName) alarm inside its routine, but could not tell which new alarm is it (\(fresh.count) appeared). Check the Eight Sleep app before the next sync, in case it makes a second one.")
                         }
                         continue
                     }
@@ -1031,7 +1040,7 @@ actor EightSleepAdapter: DeviceAdapter {
                 case .refused:
                     // Every rung, with the server's own words for each. This is the dump, and it is
                     // the only thing that can end this without another guess.
-                    createNotes.append("Eight Sleep refused the new \(entry.routineName) alarm. Tried \(attempts.joined(separator: " | ")).")
+                    createProblems.append("Eight Sleep refused the new \(entry.routineName) alarm. Tried \(attempts.joined(separator: " | ")).")
                 }
 
                 // Which rung landed, when it was not the first. Worth saying out loud so the shape
@@ -1199,9 +1208,12 @@ actor EightSleepAdapter: DeviceAdapter {
             // needs to know which one to go and look at.
             note = "Created a new alarm on your bed for \(created.joined(separator: " and ")), copied from your existing one. " + note
         }
-        if !createNotes.isEmpty {
+        if !createProblems.isEmpty {
             // A refusal is louder than a success. Nothing was created and something was meant to be.
-            note = createNotes.joined(separator: " ") + " " + note
+            note = createProblems.joined(separator: " ") + " " + note
+        }
+        if !createNotes.isEmpty {
+            note += " " + createNotes.joined(separator: " ")
         }
         if !failures.isEmpty {
             note += " Failed: \(failures.joined(separator: ", "))."
@@ -1235,7 +1247,7 @@ actor EightSleepAdapter: DeviceAdapter {
             // alarm and calling tonight verified.
             remoteID: verifiableID.flatMap { written.contains($0) ? $0 : nil },
             note: note,
-            isPartial: !report.isComplete || !failures.isEmpty || !createNotes.isEmpty
+            isPartial: !report.isComplete || !failures.isEmpty || !createProblems.isEmpty
                 || routineNotes.contains { $0.hasPrefix("Could not") }
         )
     }
