@@ -1357,6 +1357,78 @@ actor EightSleepAdapter: DeviceAdapter {
     /// Takes ids rather than re-deriving the list, so what he confirmed on screen is exactly what is
     /// written. Re-reading here would let the account change between the dialog and the write, and
     /// "it switched off something I did not see" is the one outcome worth engineering against.
+    /// Delete the tagged alarms his own app will not show him. **The one deliberate exception to
+    /// provenance**, authorised by Alex on 19 August.
+    ///
+    /// The standing rule is that only an id in `RemoteAlarmLink.created` may ever be deleted, and
+    /// these two predate that list, so OneAlarm cannot prove it made them. It plainly did: they carry
+    /// `oneOff-napMode`, they sit at a routine time minus this device's ten minute lead, and the tags
+    /// bug that produced them is documented and fixed.
+    ///
+    /// Alex, 19 August, after switching them off: *"I do see the old artifacts, the alarms, but I
+    /// cannot delete them. So if they poison everything, then we should delete them from the system,
+    /// and you should do it."* He cannot remove them himself, because the Eight Sleep app does not
+    /// list a tagged alarm. Leaving litter on his bed that only this app can see, and then refusing
+    /// to clear it, is the app protecting a rule instead of the person the rule is for.
+    ///
+    /// **What keeps the exception narrow**, and it is three things, all re-checked here against a
+    /// fresh read rather than trusted from the screen that offered the button:
+    ///
+    /// 1. hidden by a nap tag, so it is invisible in his app and cannot be one he manages there
+    /// 2. **already switched off**, so it is doing nothing and he has already seen and approved it
+    ///    once through the silence flow
+    /// 3. named in a confirmation he tapped, one row per alarm
+    ///
+    /// Anything failing any of those is skipped and says so. This never widens to "delete what
+    /// OneAlarm thinks is stale": an alarm he can see in his own app is his to delete in his own app.
+    func deleteRetiredAlarms(_ ids: [String]) async throws -> [String] {
+        guard !ids.isEmpty else { return [] }
+        let (token, user) = try await currentToken()
+        let alarms = try await fetchAlarms()
+
+        var done: [String] = []
+        for id in ids {
+            guard let existing = alarms.first(where: { Self.alarmID($0) == id }) else {
+                done.append("\(id) was already gone")
+                continue
+            }
+            guard Self.isVisibleToHim(existing) == false else {
+                done.append("\(Self.shortLabel(existing)) was left alone, you can see that one in the Eight Sleep app")
+                continue
+            }
+            // Switched off first, always. A ringing alarm gets silenced and looked at, not deleted in
+            // the same breath, and this is the check that keeps the exception from widening.
+            guard (existing["enabled"] as? Bool) == false || (existing["enabled"] as? Int) == 0 else {
+                done.append("\(Self.shortLabel(existing)) is still on, so it was switched off rather than deleted. Press this again to remove it.")
+                continue
+            }
+            guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms/\(id)") else { continue }
+
+            let response = try await http.send("DELETE", url, headers: Self.baseHeaders(token: token))
+
+            if response.status == 403 { throw AdapterError.subscriptionRequired }
+            if response.status == 429 {
+                backOff()
+                throw AdapterError.rateLimited
+            }
+            if response.status == 401 {
+                accessToken = nil
+                throw AdapterError.authenticationFailed("Token was rejected.")
+            }
+            // 404 counts, because the outcome he wanted is the outcome he has.
+            guard response.isSuccess || response.status == 404 else {
+                // **This is `E20`'s answer arriving through a different door.** The delete endpoint
+                // is a convention rather than a capture, so its status is reported rather than
+                // swallowed, and the alarm stays off, which is where it already was.
+                done.append("\(Self.shortLabel(existing)) could not be deleted (HTTP \(response.status): \(Self.serverMessage(response.data))). It is still switched off.")
+                continue
+            }
+            RemoteAlarmLink.forgetCreated(id, on: .eightSleep)
+            done.append("\(Self.shortLabel(existing)) is deleted")
+        }
+        return done
+    }
+
     func silenceAlarms(_ ids: [String]) async throws -> [String] {
         guard !ids.isEmpty else { return [] }
         let (token, user) = try await currentToken()

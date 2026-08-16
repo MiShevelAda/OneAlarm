@@ -766,6 +766,8 @@ struct BedConfirmScreen: View {
     @State private var routines: [String] = []
     /// Alarms OneAlarm made before 17 August that his own app will not show him.
     @State private var confirmingSilence = false
+    /// The narrow delete for tagged alarms his own app will not list. `E29`.
+    @State private var confirmingRetiredDelete = false
     @State private var silenceResult: [String] = []
     @State private var isSilencing = false
 
@@ -1113,6 +1115,28 @@ struct BedConfirmScreen: View {
                     .buttonStyle(.plain)
                     .disabled(isSilencing)
                 }
+
+                // **Delete, once they are already off.** Alex, 19 August: *"I do see the old
+                // artifacts, the alarms, but I cannot delete them ... you should do it."* His app
+                // does not list a tagged alarm, so switching them off left litter only this screen
+                // can see. Offering to silence and then refusing to clear up is the app protecting a
+                // rule rather than the person it is for.
+                //
+                // Second tap, deliberately, and only for an alarm that is already switched off. The
+                // silence flow is the first look; this is the second.
+                if retired.allSatisfy({ !$0.isEnabled }) {
+                    Button {
+                        confirmingRetiredDelete = true
+                    } label: {
+                        Text(isSilencing ? "Working..." : "Delete \(retired.count == 1 ? "it" : "them") from the bed")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.State.unconfirmed)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSilencing)
+                }
             }
             // Names every alarm it will touch, because the whole problem with these is that he
             // cannot go and look at them anywhere else.
@@ -1138,6 +1162,28 @@ struct BedConfirmScreen: View {
                 Button("Leave them", role: .cancel) {}
             } message: {
                 Text("They keep their time, their days and their temperature. Nothing is deleted, and your \(retired.count == 1 ? "other alarm is" : "other alarms are") untouched.")
+            }
+            // Names every alarm, again, because he still cannot go and look at them anywhere else.
+            // A second dialog rather than a second button on the first one: deleting and switching
+            // off are different enough that sharing a confirmation would be the thing that gets
+            // mis-tapped.
+            .confirmationDialog(
+                "Delete \(retired.map(\.summary).joined(separator: " and "))?",
+                isPresented: $confirmingRetiredDelete,
+                titleVisibility: .visible
+            ) {
+                Button("Delete from the bed", role: .destructive) {
+                    isSilencing = true
+                    let ids = retired.map(\.id)
+                    Task {
+                        silenceResult = (try? await store.eightSleep.deleteRetiredAlarms(ids))
+                            ?? ["That did not work. Nothing was changed."]
+                        isSilencing = false
+                    }
+                }
+                Button("Keep them", role: .cancel) {}
+            } message: {
+                Text("These are already switched off and the Eight Sleep app will not list them, so this is the only place they can be removed from. Your \(retired.count == 1 ? "other alarm is" : "other alarms are") untouched.")
             }
         }
     }

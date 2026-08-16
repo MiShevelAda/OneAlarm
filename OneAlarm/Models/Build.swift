@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "19 Aug, 02:00 · a self-clearing one-off is reported, not silent"
+    static let marker = "19 Aug, 09:30 · you can delete the two invisible alarms"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Two things to test. Today: set a one time change, press Set all alarms, and the row now names which shape Eight Sleep accepted. Tomorrow: press Set all alarms again, and the row says whether the one time alarm went away by itself or whether OneAlarm had to remove it. Both answers are useful."
+    static let whatIsNew = "Connections, Eight Sleep: there is now a Delete them from the bed button under the two hidden alarms. They are already switched off, the Eight Sleep app will not list them, so this is the only place they can be removed from. It names both before it does anything."
 }
