@@ -683,7 +683,13 @@ struct BedConfirmScreen: View {
         guard let plan = store.plans[.eightSleep], !plan.entries.isEmpty else {
             return AlarmMatchReport()
         }
-        return RoutinePlan.match(entries: plan.entries, against: choices.map(\.candidate))
+        // The same links the write uses. A screen that matched by days while the write matched by
+        // recorded ownership would draw a picture of a different account.
+        return RoutinePlan.match(
+            entries: plan.entries,
+            against: choices.map(\.candidate),
+            links: RemoteAlarmLink.all(for: .eightSleep)
+        )
     }
 
     var body: some View {
@@ -693,7 +699,7 @@ struct BedConfirmScreen: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(bed?.label.map { "You are on \($0)" } ?? "Your bed")
                         .font(.system(size: 25, weight: .bold)).tracking(-0.6)
-                    Text("OneAlarm matches each of your routines to the alarm on this bed that already runs on the same days, and changes only its time. You do not pick an alarm, and its days are never rewritten.")
+                    Text("Each of your routines drives one alarm on this bed. OneAlarm sets its time, its days and whether it is on, and creates one if a routine has none. You do not pick an alarm.")
                         .font(.system(size: 15)).foregroundStyle(Theme.grey)
                 }
                 .padding(.top, 4)
@@ -714,7 +720,8 @@ struct BedConfirmScreen: View {
                            "Add one in the Eight Sleep app with those days, at any time you like, and OneAlarm will keep it in step from then on. It will not reshape an existing alarm's days to fit, because that would move a morning you did not ask it to move.")
                 }
 
-                Notice("Nothing else on the account is touched. Vibration, thermal, the on switch and any alarm no routine describes are read and sent back exactly as they are.")
+                Notice(title: "OneAlarm owns the when. Eight Sleep owns the how.",
+                       "Times, days and the on switch come from your routines here and are written to your bed. Temperature, vibration, level and pattern are read from Eight Sleep and handed straight back untouched, so set those in their app. Any alarm OneAlarm has not taken over is never touched at all.")
 
                 serverTruth
 
@@ -797,9 +804,9 @@ struct BedConfirmScreen: View {
                     title: pair.routineName,
                     detail: choices.first { $0.id == pair.alarmID }
                         .map { "follows the alarm at \($0.timeLabel), \($0.daysLabel)" } ?? "matched",
-                    warning: pair.isDisabledRemotely
-                        ? "Switched off in Eight Sleep, so it will not fire. OneAlarm keeps its time up to date and leaves the switch to you."
-                        : nil,
+                    warning: pair.shouldBeEnabled
+                        ? nil
+                        : "Switched off, because this routine is off in OneAlarm. Turn the routine back on in My week and the bed follows.",
                     live: true
                 )
             }

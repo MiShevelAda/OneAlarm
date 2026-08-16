@@ -1,120 +1,21 @@
 import XCTest
 @testable import OneAlarm
 
-/// Both remote legs work by read modify write, so the thing worth testing without a network is that
-/// the modify step changes what it should and leaves everything else exactly as the server sent it.
+/// Reading an Eight Sleep alarm.
 ///
-/// This is the test that protects the Eight Sleep design decision. Its reference library's create
-/// payload and its documented read shape disagree about field names, so the adapter never names
-/// those fields at all and echoes them back untouched. If a future edit "tidies" that into a typed
-/// struct, unknown fields start disappearing and this test is what notices.
-final class EightSleepMutationTests: XCTestCase {
+/// Writing one is covered by `AlarmAuthoringTests`. This class kept only the tests about what the
+/// adapter reads **off** an alarm, because getting that wrong pairs a routine with the wrong alarm,
+/// and the symptom is somebody not waking up.
+final class EightSleepReadingTests: XCTestCase {
 
-    private func time(hour: Int = 6, minute: Int = 50) -> WallClockTime {
-        WallClockTime(hour: hour, minute: minute)
-    }
-
-    /// The read shape as captured in the research, plus a field nobody has seen yet.
     private var serverAlarm: [String: Any] {
         [
             "id": "abc-123",
             "enabled": false,
             "time": "07:00:00",
-            "repeat": [
-                "enabled": true,
-                "weekDays": ["monday": true, "saturday": true],
-            ] as [String: Any],
-            "thermal": ["enabled": true, "temperature": -10] as [String: Any],
-            "vibration": [
-                "enabled": true, "level": 50, "pattern": "rise", "duration": 300,
-            ] as [String: Any],
-            "snoozing": false,
-            "snoozedUntil": NSNull(),
-            "nextTimestamp": "2026-08-16T05:00:00Z",
-            "startTimestamp": "2026-08-16T04:55:00Z",
-            "endTimestamp": "2026-08-16T05:30:00Z",
-            "dismissedUntil": NSNull(),
-            "futureFieldNobodyHasSeenYet": 42,
+            "repeat": ["enabled": true, "weekDays": ["monday": true, "saturday": true]] as [String: Any],
         ]
     }
-
-    func testAllFiveComputedFieldsAreStripped() {
-        let payload = EightSleepAdapter.mutate(serverAlarm, to: time())
-
-        for field in ["nextTimestamp", "startTimestamp", "endTimestamp", "dismissedUntil", "snoozedUntil"] {
-            XCTAssertNil(payload[field], "\(field) is server computed and must not be sent back")
-        }
-    }
-
-    /// The one field this adapter writes.
-    func testOnlyTheTimeIsChanged() {
-        let payload = EightSleepAdapter.mutate(serverAlarm, to: time())
-
-        XCTAssertEqual(payload["time"] as? String, "06:50:00")
-    }
-
-    /// The regression that mattered most.
-    ///
-    /// Writing `repeat.weekDays` is what rewrote a real Monday to Friday schedule into every day:
-    /// with one alarm chosen by hand, the app had no way to express two routines, so each time the
-    /// week turned over it reshaped the chosen alarm's days. Days are now the key a routine is
-    /// matched on, so there is nothing to write, and this test is what notices if that comes back.
-    func testDaysAreNeverWritten() {
-        let payload = EightSleepAdapter.mutate(serverAlarm, to: time())
-
-        let repeatBlock = payload["repeat"] as? [String: Any]
-        let weekDays = repeatBlock?["weekDays"] as? [String: Any]
-        XCTAssertEqual(weekDays?.count, 2, "the server sent two day keys and must get exactly those back")
-        XCTAssertEqual(weekDays?["monday"] as? Bool, true)
-        XCTAssertEqual(weekDays?["saturday"] as? Bool, true)
-        XCTAssertNil(weekDays?["friday"], "a day the server never sent must not appear")
-    }
-
-    /// A switch he turned off in the Eight Sleep app stays off.
-    ///
-    /// This used to be forced to `true` on every write, which is authoring a decision rather than
-    /// syncing a time. The time still gets updated so that switching it back on gives today's time.
-    func testTheOnSwitchIsNeverForced() {
-        let payload = EightSleepAdapter.mutate(serverAlarm, to: time())
-
-        XCTAssertEqual(payload["enabled"] as? Bool, false, "the server said false and must get false back")
-    }
-
-    /// The whole point of the design. Vibration and thermal settings are his, we never asked what
-    /// they mean, and they have to come back unchanged.
-    func testEverythingElseSurvivesUntouched() {
-        let payload = EightSleepAdapter.mutate(serverAlarm, to: time())
-
-        XCTAssertEqual(payload["id"] as? String, "abc-123")
-        XCTAssertEqual(payload["snoozing"] as? Bool, false)
-        XCTAssertEqual(payload["futureFieldNobodyHasSeenYet"] as? Int, 42)
-
-        let thermal = payload["thermal"] as? [String: Any]
-        XCTAssertEqual(thermal?["enabled"] as? Bool, true)
-        XCTAssertEqual(thermal?["temperature"] as? Int, -10)
-
-        let vibration = payload["vibration"] as? [String: Any]
-        XCTAssertEqual(vibration?["level"] as? Int, 50)
-        XCTAssertEqual(vibration?["pattern"] as? String, "rise")
-        XCTAssertEqual(vibration?["duration"] as? Int, 300)
-    }
-
-    /// A round trip through JSONSerialization has to preserve booleans as booleans rather than
-    /// collapsing them to 1 and 0, or every weekday flag changes meaning on the wire.
-    func testPayloadSurvivesAJSONRoundTrip() throws {
-        let payload = EightSleepAdapter.mutate(serverAlarm, to: time())
-        let data = try JSONSerialization.data(withJSONObject: payload)
-        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-
-        XCTAssertEqual(decoded["enabled"] as? Bool, false)
-        XCTAssertEqual(decoded["snoozing"] as? Bool, false)
-        XCTAssertEqual(decoded["futureFieldNobodyHasSeenYet"] as? Int, 42)
-        let weekDays = (decoded["repeat"] as? [String: Any])?["weekDays"] as? [String: Bool]
-        XCTAssertEqual(weekDays?["monday"], true)
-        XCTAssertEqual(weekDays?["saturday"], true)
-    }
-
-    // MARK: Reading days off an alarm
 
     func testRepeatDisabledMeansNoDays() {
         var alarm = serverAlarm
@@ -137,6 +38,31 @@ final class EightSleepMutationTests: XCTestCase {
         ] as [String: Any]
 
         XCTAssertEqual(EightSleepAdapter.weekdays(of: alarm), Locale.Weekday.weekdaysOnly)
+    }
+
+    /// A numeric id, or one spelled `alarmId`, used to be dropped silently, and an empty list means
+    /// the app reports no alarms at all on an account that has several.
+    func testTheIdIsReadWhicheverWayItIsSpelled() {
+        XCTAssertEqual(EightSleepAdapter.alarmID(["id": "abc"]), "abc")
+        XCTAssertEqual(EightSleepAdapter.alarmID(["alarmId": "def"]), "def")
+        XCTAssertEqual(EightSleepAdapter.alarmID(["id": 42]), "42")
+        XCTAssertNil(EightSleepAdapter.alarmID(["nothing": true]))
+    }
+
+    /// A payload has to survive JSONSerialization with its booleans still booleans, or every weekday
+    /// flag changes meaning on the wire.
+    func testAuthoredPayloadSurvivesAJSONRoundTrip() throws {
+        let payload = EightSleepAdapter.author(
+            serverAlarm, time: WallClockTime(hour: 6, minute: 50),
+            days: Locale.Weekday.weekdaysOnly, enabled: true
+        )
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(decoded["enabled"] as? Bool, true)
+        let weekDays = (decoded["repeat"] as? [String: Any])?["weekDays"] as? [String: Bool]
+        XCTAssertEqual(weekDays?["monday"], true)
+        XCTAssertEqual(weekDays?["saturday"], false)
     }
 }
 

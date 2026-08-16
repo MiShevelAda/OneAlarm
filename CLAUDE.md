@@ -61,7 +61,13 @@ finished.
   shouldn't do it manually."* What makes it safe is not care, it is that `clone` copies an alarm the
   account already has and changes two fields. No field is ever guessed, the account is capped at 8
   alarms, and nothing here can delete what it makes.
-- Author Eight Sleep `vibration` or `thermal`. Echo them; they are his.
+- Author Eight Sleep `vibration`, `thermal`, `audio`, level or pattern. Echo them; they are his, and
+  he set the line himself: *"only the modifications of temperature, vibration etc should be done in
+  the respective app."* OneAlarm authors exactly three fields on an alarm it owns: `time`,
+  `repeat.weekDays`, `enabled`.
+- Write anything at all to an alarm OneAlarm does not own. Ownership means a `RemoteAlarmLink` entry
+  or an exact day set adoption recorded in the same run. Writing days to an unowned alarm is what
+  turned a real Monday to Friday schedule into every day.
 - Retry `USER_PASSWORD_AUTH` or the Eight Sleep password grant. One attempt, surface the error, stop.
 - Delete a Keychain item on `errSecInteractionNotAllowed`. That is a locked device, not a missing
   credential.

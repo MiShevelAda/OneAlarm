@@ -22,6 +22,17 @@ Routines, one per day set, each with its own time. Eight Sleep is written at mas
 at master minus 5, the iPhone at master. Each row reports what happened, and the two remote legs are
 read back rather than trusted.
 
+**OneAlarm is the source of truth for the Eight Sleep schedule** as of 16 August. Each routine owns
+one alarm on the bed, recorded in `RemoteAlarmLink` rather than re-guessed from days each time.
+OneAlarm authors that alarm's `time`, its `repeat.weekDays` and its `enabled`. A routine with no
+alarm gets one created, cloned from an existing alarm so no field is composed. A routine deleted in
+OneAlarm switches its alarm off, never deletes it. A skip switches it off for one morning. An alarm
+OneAlarm has never owned is never touched, and temperature, vibration, level and pattern are read
+from Eight Sleep and handed straight back on every write.
+
+The cost, stated: switching an owned alarm off inside the Eight Sleep app is undone by the next sync.
+Turn the routine off in OneAlarm instead.
+
 **The home screen is one morning; routines live on their own screen** as of 16 August. The master
 wheel is gone from home: the big time is tomorrow's, tapping it opens a sheet that bends tomorrow and
 says so, and the three verbs under it sit beneath the words "This morning only". Every routine is

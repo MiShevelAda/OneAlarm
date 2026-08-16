@@ -268,6 +268,10 @@ actor EightSleepAdapter: DeviceAdapter {
     }
 
     func signOut() {
+        // The links go with the account. Keeping them would mean a different account's alarm ids
+        // sitting in a map that the next sign in trusts, and the first sync after that would author
+        // alarms that belong to somebody else's bed.
+        RemoteAlarmLink.forget(for: .eightSleep)
         try? keychain.delete(.eightSleepEmail)
         try? keychain.delete(.eightSleepPassword)
         accessToken = nil
@@ -423,29 +427,68 @@ actor EightSleepAdapter: DeviceAdapter {
         "nextTimestamp", "startTimestamp", "endTimestamp", "dismissedUntil", "snoozedUntil",
     ]
 
-    /// Change the time. Nothing else.
+    /// Author an alarm OneAlarm owns: its time, its days, its on switch. Nothing else, ever.
     ///
-    /// This used to also write `enabled = true` and rebuild the whole `repeat.weekDays` block from
-    /// the target. Both are gone, and both were doing real damage.
+    /// Alex's goal, 2026-08-16: *"OneAlarm is my one single source of truth for alarm setting...
+    /// only the modifications of temperature, vibration etc should be done in the respective app."*
+    /// That sentence is the whole specification for this function. Three fields are the schedule and
+    /// belong to OneAlarm. Everything else on the object is his, is read from the server, and is
+    /// handed straight back untouched, including every field with no known meaning.
     ///
-    /// **Days.** With one alarm chosen by hand, the app had no way to express two routines, so when
-    /// the weekend routine came round it rewrote the weekday alarm's days to Saturday and Sunday.
-    /// Alex, 2026-08-16: *"picking one routine can break the entire thing."* Days are now the key
-    /// the routine is matched on rather than a field that gets written, so the alarm being moved
-    /// already has the right days by definition and there is nothing to set.
+    /// **Days are written again, and that is a reversal.** Four hours earlier this function wrote
+    /// only `time`, because writing days is what turned a real Monday to Friday schedule into every
+    /// day. That ban was correct at the time and it was never about days being sacred: it was about
+    /// writing them to an alarm nobody had established was ours. One hand-picked alarm had to serve
+    /// two routines, so every turn of the week reshaped it. With `RemoteAlarmLink` recording the
+    /// owner, exactly one routine reaches each alarm and the ambiguity that made it destructive is
+    /// gone. Without a recorded link this must never be called: see `write`, which only reaches here
+    /// for a pair.
     ///
-    /// **`enabled`.** Forcing it on switched an alarm back on that he had switched off in the Eight
-    /// Sleep app, which is authoring a decision rather than syncing a time. The time is still
-    /// written to a switched-off alarm, so turning it back on gives today's time rather than an old
-    /// one, and the receipt says out loud that it will not fire.
+    /// **The on switch follows the routine**, which is also a reversal, and it has a visible cost:
+    /// switch a OneAlarm-owned alarm off inside the Eight Sleep app and the next sync switches it
+    /// back on. That is what a single source of truth means, and it is the right way round now that
+    /// each routine carries its own switch in OneAlarm. Turn the routine off there instead.
     ///
     /// Internal rather than private so the test suite can assert that unknown fields survive.
-    static func mutate(_ alarm: [String: Any], to time: WallClockTime) -> [String: Any] {
+    static func author(
+        _ alarm: [String: Any],
+        time: WallClockTime,
+        days: Set<Locale.Weekday>,
+        enabled: Bool
+    ) -> [String: Any] {
         var payload = alarm
         for field in computedFields {
             payload.removeValue(forKey: field)
         }
+
         payload["time"] = time.hhmmss
+        payload["enabled"] = enabled
+
+        // Seven lowercase named booleans, not a bitmask and not an array. All seven are always
+        // named: sending only the true ones leaves the others at whatever they were, which is a
+        // merge, and this API replaces rather than merges.
+        var weekDays: [String: Bool] = [:]
+        for day in Locale.Weekday.displayOrder {
+            weekDays[day.eightSleepKey] = days.contains(day)
+        }
+        var repeatBlock = (payload["repeat"] as? [String: Any]) ?? [:]
+        repeatBlock["enabled"] = !days.isEmpty
+        repeatBlock["weekDays"] = weekDays
+        payload["repeat"] = repeatBlock
+
+        return payload
+    }
+
+    /// Switch an owned alarm off without touching anything else about it.
+    ///
+    /// For an alarm whose routine has been deleted in OneAlarm. It is switched off rather than
+    /// deleted because this app has no delete on either service and is not getting one, and because
+    /// off is something he can undo in the Eight Sleep app in one tap. Leaving it alone is not an
+    /// option: an abandoned alarm goes on firing on a morning he deleted the routine for.
+    static func silence(_ alarm: [String: Any]) -> [String: Any] {
+        var payload = alarm
+        for field in computedFields { payload.removeValue(forKey: field) }
+        payload["enabled"] = false
         return payload
     }
 
@@ -521,20 +564,26 @@ actor EightSleepAdapter: DeviceAdapter {
     }
 
     nonisolated func preview(_ target: ResolvedTarget, plan: RoutinePlan) -> WritePreview {
-        let sketch: [String: Any] = ["time": target.localTime.hhmmss]
+        var weekDays: [String: Bool] = [:]
+        for day in Locale.Weekday.displayOrder { weekDays[day.eightSleepKey] = target.weekdays.contains(day) }
+        let sketch: [String: Any] = [
+            "time": target.localTime.hhmmss,
+            "enabled": true,
+            "repeat": ["enabled": true, "weekDays": weekDays] as [String: Any],
+        ]
 
         let lines: String
         if plan.entries.isEmpty {
             lines = "one PUT, setting time to \(target.localTime.hhmm)"
         } else {
             lines = plan.entries
-                .map { "\($0.routineName) (\($0.weekdays.count) days) to \($0.timeToWrite.hhmm)" }
+                .map { "\($0.routineName) (\($0.weekdays.count) days) to \($0.timeToWrite.hhmm)\($0.shouldBeEnabled ? "" : ", switched off")" }
                 .joined(separator: ", ")
         }
 
         return WritePreview(
             device: .eightSleep,
-            summary: "One PUT per routine, each carrying a single changed field, `time`. \(lines). Days, vibration, thermal and the on switch are echoed back exactly as the server gave them. A routine with no alarm on the bed gets one created, as a copy of an alarm you already have with its days and time changed, capped at \(Self.alarmCeiling) alarms on the account.",
+            summary: "One PUT per routine, carrying three changed fields: `time`, `repeat.weekDays` and `enabled`. \(lines). Vibration, thermal, level, pattern and every field with no known meaning are echoed back exactly as the server gave them. A routine with no alarm on the bed gets one created, as a copy of an alarm you already have, capped at \(Self.alarmCeiling) alarms. An alarm whose routine you deleted is switched off, never deleted. An alarm OneAlarm has never owned is not touched at all.",
             method: "PUT",
             url: "\(Self.appHost)/v1/users/{userId}/alarms/{alarmId}",
             body: HTTPClient.redactedPreview(sketch, showing: Self.previewKeys),
@@ -655,7 +704,8 @@ actor EightSleepAdapter: DeviceAdapter {
 
     /// One key, because one key is now the entire diff. It used to have to name every weekday too,
     /// because the write rebuilt the whole `repeat` block; that write is gone.
-    private static let previewKeys: Set<String> = ["time"]
+    private static let previewKeys: Set<String> = Set(["time", "enabled", "repeat", "weekDays"])
+        .union(Locale.Weekday.displayOrder.map(\.eightSleepKey))
 
     func write(_ target: ResolvedTarget) async throws -> WriteReceipt {
         // A plan with no entries. Every routine-aware caller goes through the overload; this exists
@@ -663,15 +713,24 @@ actor EightSleepAdapter: DeviceAdapter {
         try await write(target, plan: RoutinePlan(device: .eightSleep, entries: [], skipsNextMorning: false))
     }
 
-    /// Match every routine to the alarm that already has its days, and change that alarm's time.
+    /// Make his bed's alarms say what OneAlarm says.
     ///
-    /// No alarm is chosen by hand any more, because there is nothing to choose: a routine's days
-    /// name exactly one alarm, or they name none and the app says so. What the user picks is the
-    /// bed, which is the thing the account can genuinely be ambiguous about and the thing he
-    /// actually recognises.
+    /// Alex's goal, 2026-08-16: *"OneAlarm is my one single source of truth for alarm setting...
+    /// whenever I change something on the routine or one time off, it should be done in the OneAlarm
+    /// app and should be written into the other apps."*
     ///
-    /// Everything that does not line up is reported rather than resolved. A routine with no matching
-    /// alarm is not written anywhere, and an alarm no routine describes is not touched.
+    /// Four things happen, in this order, and each one is reported by name:
+    ///
+    /// 1. **Owned alarms are authored.** Time, days and on switch all follow the routine. Ownership
+    ///    comes from `RemoteAlarmLink`, or from an exact day set match the first time round, which
+    ///    is then recorded so a later change of days cannot lose the alarm.
+    /// 2. **A routine with no alarm gets one**, cloned from one he already has so no field is
+    ///    composed.
+    /// 3. **An alarm whose routine was deleted is switched off**, not deleted, and its link dropped.
+    ///    Leaving it would leave it firing on a morning he deleted the routine for.
+    /// 4. **Everything else is untouched.** An alarm OneAlarm has never owned stays his, and every
+    ///    field on an owned alarm other than those three is read from the server and handed back
+    ///    exactly as it came. Temperature, vibration, level and pattern are his, in their app.
     func write(_ target: ResolvedTarget, plan: RoutinePlan) async throws -> WriteReceipt {
         let alarms = try await fetchAlarms()
         guard !alarms.isEmpty else {
@@ -687,7 +746,8 @@ actor EightSleepAdapter: DeviceAdapter {
         // than two. A one-entry plan is just a plan with one routine in it.
         let entries = plan.entries.isEmpty
             ? [RoutinePlan.Entry(routineID: "target", routineName: "your alarm",
-                                 weekdays: target.weekdays, localTime: target.localTime, bentTo: nil)]
+                                 weekdays: target.weekdays, localTime: target.localTime,
+                                 bentTo: nil, isOn: true, isSkippedNextMorning: false)]
             : plan.entries
 
         let described = alarms.compactMap { alarm -> RoutinePlan.CandidateAlarm? in
@@ -700,8 +760,15 @@ actor EightSleepAdapter: DeviceAdapter {
             )
         }
 
-        var report = RoutinePlan.match(entries: entries, against: described)
+        let links = RemoteAlarmLink.all(for: .eightSleep)
+        var report = RoutinePlan.match(entries: entries, against: described, links: links)
         let (token, user) = try await currentToken()
+
+        // Record every adoption before anything is written. From here on this routine's alarm is
+        // identified by the link rather than by its days, which is what lets the days change.
+        for pair in report.pairs where pair.isAdoption {
+            RemoteAlarmLink.link(routine: pair.routineID, to: pair.alarmID, on: .eightSleep)
+        }
 
         // A routine with no alarm gets one, rather than a warning telling him to go and make it.
         //
@@ -724,7 +791,7 @@ actor EightSleepAdapter: DeviceAdapter {
                 throw AdapterError.noAlarmToUpdate
             }
             for entry in entries where report.routinesWithNoAlarm.contains(entry.routineName) {
-                guard !entry.weekdays.isEmpty else { continue }
+                guard !entry.weekdays.isEmpty, entry.isOn else { continue }
                 guard alarms.count + created.count < Self.alarmCeiling else {
                     createNotes.append("Did not create \(entry.routineName): this account is already at the \(Self.alarmCeiling) alarm limit OneAlarm will not go past.")
                     continue
@@ -738,13 +805,18 @@ actor EightSleepAdapter: DeviceAdapter {
                 case .created(let newID):
                     created.append(entry.routineName)
                     createdIDs.insert(newID)
+                    // Linked immediately. An alarm created and not recorded is one this app will
+                    // fail to recognise the moment its days change, and will then create again.
+                    RemoteAlarmLink.link(routine: entry.routineID, to: newID, on: .eightSleep)
                     report.pairs.append(
                         AlarmMatchReport.Pair(
                             routineID: entry.routineID,
                             routineName: entry.routineName,
                             alarmID: newID,
                             time: entry.timeToWrite,
-                            isDisabledRemotely: false
+                            weekdays: entry.weekdays,
+                            shouldBeEnabled: entry.shouldBeEnabled,
+                            isAdoption: false
                         )
                     )
                 case .createdUnknownID:
@@ -798,7 +870,9 @@ actor EightSleepAdapter: DeviceAdapter {
                 continue
             }
 
-            let body = try HTTPClient.json(Self.mutate(existing, to: pair.time))
+            let body = try HTTPClient.json(
+                Self.author(existing, time: pair.time, days: pair.weekdays, enabled: pair.shouldBeEnabled)
+            )
             let response = try await http.send("PUT", url, headers: Self.baseHeaders(token: token), body: body)
 
             if response.status == 403 { throw AdapterError.subscriptionRequired }
@@ -815,6 +889,38 @@ actor EightSleepAdapter: DeviceAdapter {
                 continue
             }
             written.insert(pair.alarmID)
+        }
+
+        // A routine deleted in OneAlarm leaves a real alarm on his bed. Switching it off is the
+        // other half of being the source of truth: without this, deleting a routine here changes
+        // nothing there and the bed goes on waking him on a morning he removed.
+        //
+        // Off, never deleted. This app has no DELETE on either service and is not getting one, and
+        // off is something he can undo in the Eight Sleep app in one tap.
+        var silenced: [String] = []
+        if !plan.entries.isEmpty {
+            let living = Set(entries.map(\.routineID))
+            for (routineID, alarmID) in RemoteAlarmLink.orphans(for: .eightSleep, livingRoutines: living) {
+                guard let existing = alarms.first(where: { Self.alarmID($0) == alarmID }) else {
+                    // Already gone from the account, so the link is the only thing left to clean up.
+                    RemoteAlarmLink.unlink(routine: routineID, on: .eightSleep)
+                    continue
+                }
+                guard (existing["enabled"] as? Bool) != false else {
+                    RemoteAlarmLink.unlink(routine: routineID, on: .eightSleep)
+                    continue
+                }
+                guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms/\(alarmID)") else { continue }
+
+                let response = try await http.send(
+                    "PUT", url, headers: Self.baseHeaders(token: token),
+                    body: try HTTPClient.json(Self.silence(existing))
+                )
+                if response.isSuccess {
+                    silenced.append(Self.shortLabel(existing))
+                    RemoteAlarmLink.unlink(routine: routineID, on: .eightSleep)
+                }
+            }
         }
 
         guard failures.count < report.pairs.count else {
@@ -843,10 +949,16 @@ actor EightSleepAdapter: DeviceAdapter {
             // the app never runs again, the bed keeps the bent time.
             note += " \(bent.routineName) is holding \(bent.timeToWrite.hhmm) for one morning, and goes back to \(bent.localTime.hhmm) on the next sync."
         }
-        if plan.skipsNextMorning {
-            // Eight Sleep has a `skipNext` field this app has never written. Reasoning about a field
-            // from its name is what cost five hours on Whoop, so it is stated rather than sent.
-            note += " Your bed is not skipped: OneAlarm does not switch off an Eight Sleep alarm. Skip it in their app if you do not want the bed to react."
+        if !silenced.isEmpty {
+            note += " Switched off \(silenced.joined(separator: ", ")) on your bed, because the routine that owned it is gone. It is switched off rather than deleted, so you can turn it back on in the Eight Sleep app if that was not what you wanted."
+        }
+        if let skipped = entries.first(where: \.isSkippedNextMorning) {
+            // A skip now reaches the bed. It is expressed as `enabled: false` on the alarm this
+            // routine owns, which is a field this adapter has read and written since the first
+            // build, rather than as `skipNext`, whose behaviour is known from its name and nothing
+            // else. Reasoning about a field name is what cost five hours on Whoop. `skipNext` is
+            // the better long term answer and is filed as E11.
+            note += " \(skipped.routineName) is switched off on your bed for one morning and comes back on the next sync."
         }
 
         return WriteReceipt(

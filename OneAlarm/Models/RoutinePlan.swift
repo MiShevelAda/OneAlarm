@@ -14,9 +14,22 @@ import Foundation
 /// meant that when the weekend routine came round, the app rewrote the weekday alarm's **days** to
 /// Saturday and Sunday. That is how a real Monday to Friday Whoop schedule became `EVERY DAY`.
 ///
-/// This type removes the destructive operation rather than guarding it. Days stop being something
-/// OneAlarm writes: they become the key it matches on. A routine finds the alarm that already has
-/// its days and changes that alarm's time, and nothing else.
+/// This type removes the destructive operation rather than guarding it. A routine drives exactly one
+/// remote alarm and no routine ever reaches another's.
+///
+/// **Amended the same day.** The first version of this comment said days stop being something
+/// OneAlarm writes, and that they become only a key to match on. That was right for about four
+/// hours and then Alex set the goal properly: *"OneAlarm is my one single source of truth for alarm
+/// setting... only the modifications of temperature, vibration etc should be done in the respective
+/// app. So whenever I change something on the routine or one time off, it should be done in the
+/// OneAlarm app and should be written into the other apps."*
+///
+/// Matching by days cannot reach that. Change a routine from Monday to Friday into Monday to
+/// Wednesday and the match evaporates: the alarm that has served it for weeks is no longer
+/// recognised, and his bed keeps the old days forever. So ownership is recorded instead, in
+/// `RemoteAlarmLink`, and an owned alarm has its time, its days and its on switch authored from the
+/// routine. The original ban was never about days being sacred. It was about writing them to an
+/// alarm nobody had established was ours.
 struct RoutinePlan: Equatable, Sendable {
     /// One routine, already offset for this device.
     struct Entry: Equatable, Sendable, Identifiable {
@@ -28,10 +41,25 @@ struct RoutinePlan: Equatable, Sendable {
         let localTime: WallClockTime
         /// A time to hold instead, for as long as a one day bend is armed. `nil` normally.
         let bentTo: WallClockTime?
+        /// The routine's own switch.
+        ///
+        /// Carried rather than filtered out, because a switched off routine still has an alarm on
+        /// his bed and that alarm has to be switched off too. Dropping it from the plan would leave
+        /// it firing on a morning he turned off in OneAlarm, which is the opposite of a single
+        /// source of truth.
+        let isOn: Bool
+        /// The next morning this routine covers is skipped.
+        ///
+        /// Only ever true for the one routine the skip falls on, and only until that morning has
+        /// passed. It suppresses the alarm for one night and is put back by the next sync.
+        let isSkippedNextMorning: Bool
 
         var id: String { routineID }
         var timeToWrite: WallClockTime { bentTo ?? localTime }
         var isBent: Bool { bentTo != nil }
+
+        /// Whether the remote alarm this routine owns should be able to fire.
+        var shouldBeEnabled: Bool { isOn && !isSkippedNextMorning && !weekdays.isEmpty }
     }
 
     let device: DeviceID
@@ -62,9 +90,17 @@ struct AlarmMatchReport: Equatable, Sendable {
         let routineName: String
         let alarmID: String
         let time: WallClockTime
-        /// The alarm's switch is off on the service. Its time is still updated, so that turning it
-        /// back on gives the right time rather than an old one, but it will not fire.
-        let isDisabledRemotely: Bool
+        /// The days this alarm should carry, which are the routine's days.
+        ///
+        /// Written, not merely compared, once the alarm is owned. Before ownership was recorded
+        /// there was no safe way to write days at all: see `RemoteAlarmLink`.
+        let weekdays: Set<Locale.Weekday>
+        /// Whether it should be able to fire, from the routine's switch and any skip.
+        let shouldBeEnabled: Bool
+        /// This alarm was found by its days rather than by a recorded link, and is being adopted.
+        /// The caller records the link so the next change does not depend on the days still lining
+        /// up.
+        let isAdoption: Bool
     }
 
     var pairs: [Pair] = []
@@ -90,9 +126,9 @@ struct AlarmMatchReport: Equatable, Sendable {
         if !alarmsWithNoRoutine.isEmpty {
             parts.append("Left alone: \(alarmsWithNoRoutine.joined(separator: ", ")).")
         }
-        let off = pairs.filter(\.isDisabledRemotely).map(\.routineName)
+        let off = pairs.filter { !$0.shouldBeEnabled }.map(\.routineName)
         if !off.isEmpty {
-            parts.append("\(off.joined(separator: " and ")) is switched off in Eight Sleep, so it will not fire.")
+            parts.append("\(off.joined(separator: " and ")) is switched off, so it will not fire.")
         }
         return parts.joined(separator: " ")
     }
@@ -111,37 +147,68 @@ extension RoutinePlan {
         let label: String
     }
 
-    /// Pair each routine with the alarms whose days are **exactly** its days.
+    /// Pair each routine with the alarm it owns.
     ///
-    /// Exact set equality, never a subset and never an overlap. A Monday to Friday routine landing on
-    /// a Monday to Wednesday alarm would move an alarm covering days the routine does not describe,
-    /// and the only way to make that correct is to rewrite the alarm's days, which is the operation
-    /// this whole design exists to delete. When the sets differ, say so and write nothing.
+    /// Three ways a routine finds its alarm, in strict order:
     ///
-    /// Several alarms with the same day set are all moved, and counted in the report. On this API the
-    /// alarm list is scoped to one account, so they are all his; leaving one behind is how two Monday
-    /// alarms end up at two different times.
-    static func match(entries: [Entry], against alarms: [CandidateAlarm]) -> AlarmMatchReport {
+    /// 1. **A recorded link.** Once OneAlarm has established that an alarm belongs to a routine, the
+    ///    link is what identifies it, forever, whatever its days say. This is the one that makes the
+    ///    single source of truth possible: changing a routine's days changes the owned alarm's days,
+    ///    instead of losing track of it.
+    /// 2. **Exact day set equality**, for an alarm nobody owns yet. Never a subset and never an
+    ///    overlap: adopting a Monday to Wednesday alarm for a Monday to Friday routine would take
+    ///    over an alarm covering days the routine does not describe. The adoption is reported so the
+    ///    caller can record the link.
+    /// 3. **Nothing**, and the routine is named. The caller creates an alarm for it.
+    ///
+    /// An alarm that is neither linked nor adopted is never touched. His own alarms stay his, and
+    /// that is the line between OneAlarm owning the schedule and OneAlarm owning his account.
+    static func match(
+        entries: [Entry],
+        against alarms: [CandidateAlarm],
+        links: [String: String] = [:]
+    ) -> AlarmMatchReport {
         var report = AlarmMatchReport()
         var claimed = Set<String>()
 
-        for entry in entries where !entry.weekdays.isEmpty {
-            let hits = alarms.filter { $0.weekdays == entry.weekdays }
-            guard !hits.isEmpty else {
-                report.routinesWithNoAlarm.append(entry.routineName)
+        func pair(_ entry: Entry, _ alarm: CandidateAlarm, adopted: Bool) {
+            claimed.insert(alarm.id)
+            report.pairs.append(
+                AlarmMatchReport.Pair(
+                    routineID: entry.routineID,
+                    routineName: entry.routineName,
+                    alarmID: alarm.id,
+                    time: entry.timeToWrite,
+                    weekdays: entry.weekdays,
+                    shouldBeEnabled: entry.shouldBeEnabled,
+                    isAdoption: adopted
+                )
+            )
+        }
+
+        // Recorded owners first, and in their own pass. Doing it in one pass would let a routine
+        // with no link adopt an alarm that a later routine already owns.
+        var linked: [String: CandidateAlarm] = [:]
+        for entry in entries {
+            guard let id = links[entry.routineID],
+                  let alarm = alarms.first(where: { $0.id == id }) else { continue }
+            linked[entry.routineID] = alarm
+            claimed.insert(alarm.id)
+        }
+
+        for entry in entries {
+            if let alarm = linked[entry.routineID] {
+                pair(entry, alarm, adopted: false)
                 continue
             }
-            for hit in hits {
-                claimed.insert(hit.id)
-                report.pairs.append(
-                    AlarmMatchReport.Pair(
-                        routineID: entry.routineID,
-                        routineName: entry.routineName,
-                        alarmID: hit.id,
-                        time: entry.timeToWrite,
-                        isDisabledRemotely: !hit.isEnabled
-                    )
-                )
+            // A routine with no days owns nothing and adopts nothing. It is not a gap either: he
+            // took every day off it, which is a setting.
+            guard !entry.weekdays.isEmpty else { continue }
+
+            if let hit = alarms.first(where: { $0.weekdays == entry.weekdays && !claimed.contains($0.id) }) {
+                pair(entry, hit, adopted: true)
+            } else {
+                report.routinesWithNoAlarm.append(entry.routineName)
             }
         }
 

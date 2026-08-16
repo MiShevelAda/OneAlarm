@@ -125,6 +125,32 @@ otherwise, and check, because checking is free: both legs already read before ev
 not degraded routine users, and "no alarm" is a chosen setting rather than an empty state.
 `[2026-08-16]`
 
+> *"OneAlarm is my one single source of truth for alarm setting, and the main alarm setting should
+> be done there. Only the modifications of temperature, vibration etc should be done in the
+> respective app. So whenever I change something on the routine or one time off, it should be done
+> in the OneAlarm app and should be written into the other apps."*
+
+**The split is when against how.** OneAlarm owns the time, the days and whether an alarm is on.
+Eight Sleep owns temperature, vibration, level and pattern. Every field on the alarm object falls on
+one side of that line, and the adapter writes three of them and echoes the rest. `[2026-08-16]`
+
+**Ownership has to be recorded, not inferred.** Matching a routine to an alarm by their days works
+only while the days agree, and the whole point is that he changes days in OneAlarm. Change Monday to
+Friday into Monday to Wednesday and the match evaporates, the bed keeps the old days forever, and
+the app creates a second alarm beside the one it just lost. `RemoteAlarmLink` records the owner, so
+the alarm is found by identity and its days follow the routine. `[2026-08-16]`
+
+**A ban can be right for its reason and wrong as a rule.** Writing days was banned at 09:00 and
+restored at 13:00 the same day. The ban was never about days being sacred: it was about writing them
+to an alarm nobody had established was ours, where one hand-picked alarm served two routines and
+every turn of the week reshaped it. Once ownership is recorded the ambiguity is gone and the same
+write is safe. **Record why a rule exists, or the next session cannot tell when it has stopped
+applying.** `[2026-08-16]`
+
+**Being the source of truth has a cost, and it gets stated.** Switch a OneAlarm-owned alarm off in
+the Eight Sleep app and the next sync switches it back on. That is what single source of truth
+means. The routine's own switch is where to turn it off. `[2026-08-16]`
+
 > *"I shouldn't actually pick routines. The routine should be updated accordingly. So if I'm
 > updating a routine Monday to Friday, they should override the Eight Sleep routine Monday to
 > Friday. And if I update the routine Friday, Saturday, it should update the Friday, Saturday

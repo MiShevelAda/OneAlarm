@@ -21,14 +21,18 @@ final class RoutineMatchingTests: XCTestCase {
         _ days: Set<Locale.Weekday>,
         at hour: Int,
         minute: Int = 0,
-        bentTo: WallClockTime? = nil
+        bentTo: WallClockTime? = nil,
+        isOn: Bool = true,
+        skipped: Bool = false
     ) -> RoutinePlan.Entry {
         RoutinePlan.Entry(
             routineID: id,
             routineName: id,
             weekdays: days,
             localTime: WallClockTime(hour: hour, minute: minute),
-            bentTo: bentTo
+            bentTo: bentTo,
+            isOn: isOn,
+            isSkippedNextMorning: skipped
         )
     }
 
@@ -141,8 +145,10 @@ final class RoutineMatchingTests: XCTestCase {
         XCTAssertTrue(report.alarmsWithNoRoutine.isEmpty)
     }
 
-    /// A switch he turned off stays off, and the receipt says so out loud.
-    func testADisabledMatchIsFlaggedRatherThanSwitchedOn() {
+    /// The remote switch is no longer an input. OneAlarm is the source of truth for it, so an alarm
+    /// switched off in the Eight Sleep app is switched back on by the next sync when its routine is
+    /// on. That is a real cost of the goal Alex set, and it is what the routine switch is for.
+    func testTheRemoteSwitchDoesNotOverrideTheRoutine() {
         let off = Alarm(id: "a4", weekdays: Locale.Weekday.weekdaysOnly,
                         isEnabled: false, label: "07:00 weekdays")
         let report = RoutinePlan.match(
@@ -150,8 +156,8 @@ final class RoutineMatchingTests: XCTestCase {
             against: [off]
         )
 
-        XCTAssertEqual(report.pairs.first?.isDisabledRemotely, true)
-        XCTAssertTrue(report.note.contains("switched off"))
+        XCTAssertTrue(report.pairs.first?.shouldBeEnabled == true,
+                      "the remote switch no longer decides: the routine does")
     }
 
     /// A one day bend writes the bent time, not the routine's time.
@@ -376,5 +382,195 @@ final class AlarmCloneTests: XCTestCase {
         let inert: [String: Any] = ["id": "dead", "enabled": false, "repeat": ["enabled": false]]
         XCTAssertEqual(EightSleepAdapter.template(from: [inert])?["id"] as? String, "dead")
         XCTAssertNil(EightSleepAdapter.template(from: []))
+    }
+}
+
+/// Recorded ownership, which is what makes OneAlarm the source of truth rather than a guesser.
+///
+/// Alex, 2026-08-16: *"OneAlarm is my one single source of truth for alarm setting... whenever I
+/// change something on the routine or one time off, it should be done in the OneAlarm app and
+/// should be written into the other apps."*
+///
+/// Day set matching alone cannot reach that goal, and these tests are the proof. Change a routine's
+/// days and the match is gone; the link survives.
+final class AlarmOwnershipTests: XCTestCase {
+
+    private typealias Alarm = RoutinePlan.CandidateAlarm
+
+    private func entry(_ id: String, _ days: Set<Locale.Weekday>, isOn: Bool = true, skipped: Bool = false)
+    -> RoutinePlan.Entry {
+        RoutinePlan.Entry(
+            routineID: id, routineName: id, weekdays: days,
+            localTime: WallClockTime(hour: 7, minute: 0), bentTo: nil,
+            isOn: isOn, isSkippedNextMorning: skipped
+        )
+    }
+
+    private let weekdayAlarm = Alarm(id: "a1", weekdays: Locale.Weekday.weekdaysOnly,
+                                     isEnabled: true, label: "07:00 weekdays")
+
+    /// The case the whole design exists for.
+    ///
+    /// He changes Monday to Friday into Monday to Wednesday. By days, the alarm that has served that
+    /// routine is no longer a match and would be abandoned, leaving his bed on the old days forever
+    /// while OneAlarm creates a second alarm beside it. By link, it is still his routine's alarm and
+    /// its days get rewritten to follow.
+    func testALinkedAlarmSurvivesTheRoutineChangingItsDays() {
+        let report = RoutinePlan.match(
+            entries: [entry("weekdays", [.monday, .tuesday, .wednesday])],
+            against: [weekdayAlarm],
+            links: ["weekdays": "a1"]
+        )
+
+        XCTAssertEqual(report.pairs.count, 1)
+        XCTAssertEqual(report.pairs.first?.alarmID, "a1")
+        XCTAssertEqual(report.pairs.first?.weekdays, [.monday, .tuesday, .wednesday],
+                       "the owned alarm takes the routine's new days")
+        XCTAssertTrue(report.routinesWithNoAlarm.isEmpty)
+        XCTAssertFalse(report.pairs.first?.isAdoption ?? true)
+    }
+
+    /// The first run, before anything is linked. Days find the alarm once, and the caller records it.
+    func testAnUnlinkedAlarmIsAdoptedByItsDaysAndFlagged() {
+        let report = RoutinePlan.match(
+            entries: [entry("weekdays", Locale.Weekday.weekdaysOnly)],
+            against: [weekdayAlarm]
+        )
+
+        XCTAssertEqual(report.pairs.first?.alarmID, "a1")
+        XCTAssertTrue(report.pairs.first?.isAdoption ?? false, "the caller has to record this link")
+    }
+
+    /// A link always beats a day match, even when another alarm looks like a better fit. Otherwise
+    /// two routines fight over one alarm every time their days happen to coincide.
+    func testALinkBeatsABetterLookingDayMatch() {
+        let tempting = Alarm(id: "a2", weekdays: Locale.Weekday.weekdaysOnly,
+                             isEnabled: true, label: "06:00 weekdays")
+        let report = RoutinePlan.match(
+            entries: [entry("weekdays", Locale.Weekday.weekdaysOnly)],
+            against: [weekdayAlarm, tempting],
+            links: ["weekdays": "a2"]
+        )
+
+        XCTAssertEqual(report.pairs.first?.alarmID, "a2")
+        XCTAssertEqual(report.alarmsWithNoRoutine, ["07:00 weekdays"], "the other one stays his")
+    }
+
+    /// One alarm cannot end up owned by two routines. A routine with no link must not adopt an alarm
+    /// another routine already owns, whatever its days say.
+    func testAnOwnedAlarmIsNotAdoptedByAnotherRoutine() {
+        let report = RoutinePlan.match(
+            entries: [entry("owner", Locale.Weekday.weekdaysOnly),
+                      entry("intruder", Locale.Weekday.weekdaysOnly)],
+            against: [weekdayAlarm],
+            links: ["owner": "a1"]
+        )
+
+        XCTAssertEqual(report.pairs.count, 1)
+        XCTAssertEqual(report.pairs.first?.routineID, "owner")
+        XCTAssertEqual(report.routinesWithNoAlarm, ["intruder"], "the second one gets its own created")
+    }
+
+    /// The routine's switch drives the alarm's switch. This is the cost of the goal, stated: an
+    /// alarm switched off in the Eight Sleep app comes back on if its routine is on.
+    func testTheRoutineSwitchDrivesTheAlarm() {
+        let offRemotely = Alarm(id: "a1", weekdays: Locale.Weekday.weekdaysOnly,
+                                isEnabled: false, label: "07:00 weekdays")
+        let on = RoutinePlan.match(entries: [entry("r", Locale.Weekday.weekdaysOnly)],
+                                   against: [offRemotely], links: ["r": "a1"])
+        XCTAssertTrue(on.pairs.first?.shouldBeEnabled ?? false)
+
+        let off = RoutinePlan.match(entries: [entry("r", Locale.Weekday.weekdaysOnly, isOn: false)],
+                                    against: [weekdayAlarm], links: ["r": "a1"])
+        XCTAssertFalse(off.pairs.first?.shouldBeEnabled ?? true)
+    }
+
+    /// A skip reaches the bed now. One morning off, and the routine is untouched.
+    func testASkipSwitchesTheOwnedAlarmOff() {
+        let report = RoutinePlan.match(
+            entries: [entry("r", Locale.Weekday.weekdaysOnly, skipped: true)],
+            against: [weekdayAlarm], links: ["r": "a1"]
+        )
+
+        XCTAssertFalse(report.pairs.first?.shouldBeEnabled ?? true)
+        XCTAssertTrue(report.note.contains("switched off"))
+    }
+
+    /// A routine emptied of days owns nothing and asks for nothing. Not a gap: he took every day off
+    /// it, which is a setting.
+    func testARoutineWithNoDaysIsNeitherPairedNorReported() {
+        let report = RoutinePlan.match(entries: [entry("r", [])], against: [weekdayAlarm])
+
+        XCTAssertTrue(report.pairs.isEmpty)
+        XCTAssertTrue(report.routinesWithNoAlarm.isEmpty)
+    }
+}
+
+/// Authoring an owned alarm, and what is deliberately left alone.
+final class AlarmAuthoringTests: XCTestCase {
+
+    private var serverAlarm: [String: Any] {
+        [
+            "id": "abc-123",
+            "enabled": false,
+            "time": "07:00:00",
+            "repeat": ["enabled": true, "weekDays": ["monday": true]] as [String: Any],
+            "thermal": ["enabled": true, "temperature": -10] as [String: Any],
+            "vibration": ["enabled": true, "level": 50, "pattern": "rise"] as [String: Any],
+            "nextTimestamp": "2026-08-16T05:00:00Z",
+            "futureFieldNobodyHasSeenYet": 42,
+        ]
+    }
+
+    private func authored(
+        days: Set<Locale.Weekday> = Locale.Weekday.weekdaysOnly,
+        enabled: Bool = true
+    ) -> [String: Any] {
+        EightSleepAdapter.author(serverAlarm, time: WallClockTime(hour: 6, minute: 50),
+                                 days: days, enabled: enabled)
+    }
+
+    func testTheThreeScheduleFieldsAreAuthored() {
+        let payload = authored()
+
+        XCTAssertEqual(payload["time"] as? String, "06:50:00")
+        XCTAssertEqual(payload["enabled"] as? Bool, true)
+        let weekDays = (payload["repeat"] as? [String: Any])?["weekDays"] as? [String: Bool]
+        XCTAssertEqual(weekDays?.count, 7, "all seven are named: this API replaces rather than merges")
+        XCTAssertEqual(weekDays?["friday"], true)
+        XCTAssertEqual(weekDays?["saturday"], false)
+    }
+
+    /// The line between owning the schedule and owning his account.
+    func testEverythingHeOwnsComesBackUntouched() {
+        let payload = authored()
+
+        XCTAssertEqual((payload["thermal"] as? [String: Any])?["temperature"] as? Int, -10)
+        XCTAssertEqual((payload["vibration"] as? [String: Any])?["level"] as? Int, 50)
+        XCTAssertEqual((payload["vibration"] as? [String: Any])?["pattern"] as? String, "rise")
+        XCTAssertEqual(payload["futureFieldNobodyHasSeenYet"] as? Int, 42)
+        XCTAssertNil(payload["nextTimestamp"], "server computed, never sent back")
+    }
+
+    func testASkippedOrOffRoutineSwitchesTheAlarmOff() {
+        XCTAssertEqual(authored(enabled: false)["enabled"] as? Bool, false)
+    }
+
+    /// A routine with no days must not leave a recurring alarm behind claiming to repeat on nothing.
+    func testNoDaysTurnsOffTheRepeatBlock() {
+        let payload = authored(days: [])
+
+        XCTAssertEqual((payload["repeat"] as? [String: Any])?["enabled"] as? Bool, false)
+    }
+
+    /// Silencing an orphan changes exactly one field. Its days and its settings are left intact so
+    /// he can switch it back on in their app and get what he had.
+    func testSilencingChangesOnlyTheSwitch() {
+        let payload = EightSleepAdapter.silence(serverAlarm)
+
+        XCTAssertEqual(payload["enabled"] as? Bool, false)
+        XCTAssertEqual(payload["time"] as? String, "07:00:00")
+        let weekDays = (payload["repeat"] as? [String: Any])?["weekDays"] as? [String: Any]
+        XCTAssertEqual(weekDays?.count, 1, "the server sent one key and gets one key back")
     }
 }

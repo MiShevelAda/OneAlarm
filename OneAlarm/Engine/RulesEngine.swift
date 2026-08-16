@@ -121,8 +121,15 @@ enum RulesEngine {
             bentRoutineID = schedule.routine(covering: weekday)?.id
         }
 
+        // Which weekday a skip falls on, so only the routine covering it is suppressed.
+        let skippedWeekday: Locale.Weekday? = {
+            guard override?.isSkip == true, let date = override?.day.date(in: calendar) else { return nil }
+            return Locale.Weekday.from(calendarIndex: calendar.component(.weekday, from: date))
+        }()
+
+        // Switched off routines stay in the plan. Their alarm is still on his bed, and leaving it
+        // out would leave it firing on a morning he turned off in OneAlarm.
         let entries = schedule.routines
-            .filter { $0.isOn && !$0.weekdays.isEmpty }
             .map { routine -> RoutinePlan.Entry in
                 let shifted = routine.time.minutesSinceMidnight + rule.offsetMinutes
                 let dayShift = Int(floor(Double(shifted) / 1440.0))
@@ -133,12 +140,21 @@ enum RulesEngine {
                     bent = WallClockTime(minutesSinceMidnight: bentShifted)
                 }
 
+                let days = Set(routine.weekdays.map { $0.shifted(by: dayShift) })
                 return RoutinePlan.Entry(
                     routineID: routine.id,
                     routineName: routine.displayName,
-                    weekdays: Set(routine.weekdays.map { $0.shifted(by: dayShift) }),
+                    weekdays: days,
                     localTime: WallClockTime(minutesSinceMidnight: shifted),
-                    bentTo: bent
+                    bentTo: bent,
+                    isOn: routine.isOn,
+                    // The lead can walk this device's alarm onto the day before, so the skip is
+                    // tested against the shifted day set rather than the routine's own. A bed
+                    // firing at 23:55 on Friday is Saturday's alarm, and skipping Saturday has to
+                    // suppress it.
+                    isSkippedNextMorning: skippedWeekday.map {
+                        days.contains($0.shifted(by: dayShift))
+                    } ?? false
                 )
             }
 
