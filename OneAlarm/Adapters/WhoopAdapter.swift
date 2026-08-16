@@ -840,8 +840,19 @@ actor WhoopAdapter: DeviceAdapter {
         // report a green write against a disabled alarm, which is the exact failure this guard is
         // here to prevent. Absent stays permissive; present and false is a refusal.
         if let raw = envelope["schedule_enabled"], Self.isFalse(raw) {
+            // **Name which switch, because there are three and he has met all of them tonight.**
+            //
+            // This said "Whoop's alarm schedule is switched off. Turn it on in the Whoop app first."
+            // Accurate and not actionable: his account also has a per schedule alarm that had been
+            // off for hours, and a Sleep Planner toggle, and the sentence fits all three. He went
+            // looking at the wrong one.
+            //
+            // Very likely he did not switch this off on purpose either. Whoop's own one-off flow
+            // shows *"Turn off your schedule to set a new alarm for tomorrow"*, so accepting a one
+            // time alarm in their app appears to switch this master off as a side effect. Saying so
+            // turns a dead end into one tap. `E31`.
             throw AdapterError.unexpectedResponse(
-                "Whoop's alarm schedule is switched off. Turn it on in the Whoop app first."
+                "Whoop's master switch is off, so nothing on your strap can ring. Open the Whoop app, go to MY SCHEDULE, and turn on the toggle at the top right. Setting a one time alarm in the Whoop app switches it off, which is probably what happened. OneAlarm never touches that switch."
             )
         }
     }
