@@ -38,13 +38,15 @@ actor EightSleepAdapter: DeviceAdapter {
     private static let clientSecret = "f0954a3ed5763ba3d06834c73731a32f15f168f47d4f164751275def86db0c76"
 
     private let keychain: KeychainStore
-    /// Six requests, verb included. Nothing else on this API is reachable from here.
+    private var http = HTTPClient(allowedPatterns: EightSleepAdapter.allowedPatterns)
+
+    /// Seven requests, verb included. Nothing else on this API is reachable from here.
     ///
     /// Note what is deliberately absent: `DELETE .../v1/users/{id}/alarms/{alarmId}`. It is
     /// unverified, it is irreversible, and nothing in this app needs it. A routine deleted in
     /// OneAlarm switches its alarm **off** instead, which he can undo in the Eight Sleep app in one
     /// tap. It is not listed, so it cannot be sent, including by a later edit that forgets why.
-    private let http = HTTPClient(allowedPatterns: [
+    static let allowedPatterns = [
         #"^POST https://auth-api\.8slp\.net/v1/tokens$"#,
         #"^GET https://app-api\.8slp\.net/v2/users/[^/]+/alarms$"#,
         #"^PUT https://app-api\.8slp\.net/v1/users/[^/]+/alarms/[^/]+$"#,
@@ -93,7 +95,7 @@ actor EightSleepAdapter: DeviceAdapter {
         #"^PUT https://app-api\.8slp\.net/v2/users/[^/]+/routines/[^/]+$"#,
         #"^GET https://client-api\.8slp\.net/v1/users/me$"#,
         #"^GET https://app-api\.8slp\.net/v1/household/users/[^/]+/summary$"#,
-    ])
+    ]
 
     private(set) var authState: AuthState = .notConfigured
 
@@ -105,8 +107,34 @@ actor EightSleepAdapter: DeviceAdapter {
     private var retryNotBefore: Date?
     private var currentBackoff: TimeInterval = 0
 
-    init(keychain: KeychainStore = KeychainStore()) {
+    /// - Parameter session: a stub session, so the whole write path can be exercised offline.
+    ///
+    /// Added 2026-08-16. Every round that day ended with "build it and tell me what the screen
+    /// says", because nothing between writing the code and Alex's bed could say whether it worked.
+    /// That loop is why a create that succeeded was about to be reported to him as a failure twice.
+    /// This seam moves most of the check to `Cmd+U`: the matching, the create, the routine write and
+    /// the receipt text all become assertable in seconds. Only the API contract itself, whether
+    /// Eight Sleep accepts these bodies, still needs a real account.
+    ///
+    /// Note that the session goes into `HTTPClient` rather than around it, so the allowlist, the
+    /// redirect blocker and the JSON encoding all stay in the path under test. A stub that replaced
+    /// the client would pass while the allowlist silently blocked every request.
+    init(keychain: KeychainStore = KeychainStore(), session: URLSession? = nil) {
         self.keychain = keychain
+        if let session {
+            http = HTTPClient(allowedPatterns: Self.allowedPatterns, session: session)
+        }
+    }
+
+    /// Skip the password grant, for tests only.
+    ///
+    /// `currentToken()` otherwise reaches the Keychain, which no test should touch and which is
+    /// unavailable in a unit test host anyway. Nothing in the app calls this.
+    func seedSessionForTesting(token: String, userID: String) {
+        accessToken = token
+        self.userID = userID
+        tokenExpiry = Date().addingTimeInterval(3600)
+        authState = .connected
     }
 
     // MARK: Auth
