@@ -294,7 +294,7 @@ final class AlarmGroupingTests: XCTestCase {
 
     private func choice(_ id: String, _ group: String?) -> RemoteAlarmChoice {
         RemoteAlarmChoice(id: id, time: WallClockTime(hour: 7, minute: 0), weekdays: [.monday],
-                          isEnabled: true, detail: nil, rawKeys: [], group: group)
+                          isEnabled: true, detail: nil, group: group, rawKeys: [])
     }
 
     func testNamedBedsAreGroupedInFirstSeenOrder() {

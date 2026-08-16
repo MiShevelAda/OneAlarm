@@ -259,8 +259,12 @@ actor EightSleepAdapter: DeviceAdapter {
                 weekdays: Self.weekdays(of: alarm),
                 isEnabled: (alarm["enabled"] as? Bool) ?? true,
                 detail: Self.describeSettings(alarm),
-                rawKeys: Self.describe(alarm),
-                group: Self.groupName(alarm)
+                // `group` before `rawKeys`, because that is the order `RemoteAlarmChoice` declares
+                // them in and a memberwise initialiser has no other order. Swift says "Argument
+                // 'group' must precede argument 'rawKeys'", which is exact and still easy to walk
+                // past when the two lines read fine on their own.
+                group: Self.groupName(alarm),
+                rawKeys: Self.describe(alarm)
             )
         }
     }
