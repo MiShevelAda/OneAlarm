@@ -759,6 +759,26 @@ actor EightSleepAdapter: DeviceAdapter {
         // of an alarm he can neither see nor switch off.
         let live = alarms.filter { ($0["enabled"] as? Bool) != false && isVisibleToHim($0) }
 
+        // **An alarm with no day flags may still ring, so no morning can honestly be called silent
+        // while one is on the account.**
+        //
+        // An alarm created inside a routine through `alarmsToCreate` takes its days from the
+        // **routine**, so its own `repeat.weekDays` comes back with every flag false. That is
+        // documented a few hundred lines above, where it caused a create loop for exactly the same
+        // reason: an empty day set matches no routine.
+        //
+        // Without this, the first alarm OneAlarm creates inside a routine makes the week check
+        // report every morning that routine covers as one he will not be woken on. That warning goes
+        // into `highlights`, which means the Good night screen, which means the loudest false alarm
+        // this app is capable of, on a setup that is working.
+        //
+        // Caught by `testAFullySuccessfulRunIsNotFlaggedAsPartial`, a test written for something else
+        // three days earlier. Its fixture models exactly this alarm.
+        //
+        // Silence rather than a guess, which is this project's rule about absence: not knowing which
+        // mornings an alarm covers is not the same as knowing it covers none.
+        guard !live.contains(where: { weekdays(of: $0).isEmpty }) else { return [] }
+
         var findings: [String] = []
         for day in Locale.Weekday.displayOrder {
             let covering = entries.filter { $0.isOn && $0.weekdays.contains(day) }

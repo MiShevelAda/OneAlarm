@@ -580,6 +580,25 @@ fail loudly, it falls through to the default answers, the last request 404s, and
 would have caught something quietly never runs. The test goes on passing while testing less than it
 says. **Count the requests against the code, never against the intention.**
 
+**A three day old test caught the worst bug of the day, and it was testing something else.**
+`[18 August]` The new week check read an alarm with every day flag false as covering no mornings. An
+alarm created inside a routine through `alarmsToCreate` takes its days from the **routine**, so that
+is exactly what one looks like. The first alarm OneAlarm ever creates that way would therefore have
+produced "Nothing on your bed rings on Sa. You will not be woken" for every morning that routine
+covers, on a bed that was working. And that sentence is a highlight, so it reaches the Good night
+screen: the loudest false alarm this app is capable of, on the last screen he sees before sleeping.
+
+Nothing in the new tests could find it, because they were all written by the same person who had the
+same wrong idea about what an empty day set means. What found it was
+`testAFullySuccessfulRunIsNotFlaggedAsPartial`, written three days earlier for an unrelated reason,
+whose fixture happens to model exactly that alarm.
+
+**Two things worth keeping.** First: **run the old tests against the new idea before trusting the new
+tests.** New tests share the author's blind spot; old ones were written under different assumptions
+and are the closest thing to an outside opinion available offline. Second, the fix is the project's
+oldest rule again: **not knowing which mornings an alarm covers is not the same as knowing it covers
+none.** Where absence is ambiguous, say nothing.
+
 **Five delivery defects, zero logic defects.** `[18 August]` The one day override was written, tested
 and correct, and then five separate things stopped it reaching Alex:
 

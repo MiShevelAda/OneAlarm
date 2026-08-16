@@ -952,6 +952,42 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertEqual(findings.count, 5, "all five mornings are genuinely uncovered")
     }
 
+    /// An alarm with no day flags silences the whole check, rather than reading as covering nothing.
+    ///
+    /// **The false positive that a three day old test caught.** An alarm created inside a routine
+    /// through `alarmsToCreate` takes its days from the routine, so its own `repeat.weekDays` comes
+    /// back with every flag false. Reading that as "covers no mornings" makes the first alarm
+    /// OneAlarm ever creates inside a routine produce "you will not be woken" for every morning that
+    /// routine covers, on a setup that is working.
+    ///
+    /// That warning goes into `highlights`, so it reaches the Good night screen. It is the loudest
+    /// false alarm this app is capable of.
+    ///
+    /// Not knowing which mornings an alarm covers is not the same as knowing it covers none, which is
+    /// this project's oldest rule about absence.
+    func testAnAlarmWithNoDayFlagsSilencesTheCheck() {
+        let findings = EightSleepAdapter.weekFindings(
+            alarms: [
+                // Created inside a routine: real, ringing, and its day set lives on the routine.
+                alarm(id: "routine-made", time: "08:50:00", days: [], routine: nil),
+            ],
+            entries: [entry("weekend", "Weekend", [.saturday, .sunday], hour: 8, minute: 50)]
+        )
+        XCTAssertEqual(findings, [], "say nothing rather than say something wrong")
+    }
+
+    /// And a switched off alarm with no days does not silence it, because it cannot ring.
+    ///
+    /// The guard has to be narrow or it becomes a way to turn the whole check off. Only an alarm that
+    /// could actually be covering a morning earns the benefit of the doubt.
+    func testASwitchedOffAlarmWithNoDaysDoesNotSilenceTheCheck() {
+        let findings = EightSleepAdapter.weekFindings(
+            alarms: [alarm(id: "dead", time: "08:50:00", days: [], routine: nil, enabled: false)],
+            entries: [entry("weekend", "Weekend", [.saturday, .sunday], hour: 8, minute: 50)]
+        )
+        XCTAssertEqual(findings.count, 2, "Saturday and Sunday are genuinely uncovered")
+    }
+
     /// A morning no routine covers is left alone entirely.
     ///
     /// Saturday is his, and an alarm on it is his business. The stranded-alarm line already reports
