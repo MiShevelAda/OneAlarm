@@ -692,6 +692,7 @@ struct BedConfirmScreen: View {
     @Environment(ScheduleStore.self) private var store
 
     @State private var bed: EightSleepAdapter.BedIdentity?
+    @State private var routines: [String] = []
 
     private var matchReport: AlarmMatchReport {
         guard let plan = store.plans[.eightSleep], !plan.entries.isEmpty else {
@@ -738,6 +739,7 @@ struct BedConfirmScreen: View {
                        "Times, days and the on switch come from your routines here and are written to your bed. Temperature, vibration, level and pattern are read from Eight Sleep and handed straight back untouched, so set those in their app. Any alarm OneAlarm has not taken over is never touched at all.")
 
                 serverTruth
+                routineTruth
 
                 // There was no way to sign out of anything. `signOut()` has existed on both
                 // adapters since the first build and no screen ever called it, so the only way off
@@ -764,6 +766,7 @@ struct BedConfirmScreen: View {
             // than throwing, because a bed whose name cannot be fetched must not take an alarm
             // down with it.
             bed = await store.eightSleep.currentBed()
+            routines = await store.eightSleep.routineDump()
         }
     }
 
@@ -798,6 +801,43 @@ struct BedConfirmScreen: View {
             .padding(.top, 8)
         } label: {
             Text("What Eight Sleep returns right now")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.grey)
+        }
+        .tint(Theme.grey)
+        .padding(14)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
+            .strokeBorder(Theme.line, lineWidth: 1))
+    }
+
+    /// His Eight Sleep **routines**, verbatim.
+    ///
+    /// Alex asked to *"write routines inside the 8sleep app"*, and until today this project did not
+    /// know their app had routines as an object at all. It does: a routine carries days, a bedtime,
+    /// an enabled flag and its alarms, and every alarm's `tags` points back at one. That is almost
+    /// certainly why an alarm OneAlarm creates on its own never appears in their app.
+    ///
+    /// Nothing is written to a routine yet. This prints his, so the next step is built against his
+    /// account rather than against somebody else's capture.
+    @ViewBuilder
+    private var routineTruth: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 6) {
+                if routines.isEmpty {
+                    Text("Nothing read yet, or this account does not expose routines at this address.")
+                        .font(.system(size: 12)).foregroundStyle(Theme.greyDim)
+                } else {
+                    Text(routines.joined(separator: "\n"))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Theme.greyDim)
+                        .textSelection(.enabled)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 8)
+        } label: {
+            Text("Your Eight Sleep routines, raw")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.grey)
         }

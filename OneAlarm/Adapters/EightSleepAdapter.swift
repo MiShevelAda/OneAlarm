@@ -72,6 +72,20 @@ actor EightSleepAdapter: DeviceAdapter {
         //
         // Note the third host. `client-api` is not `app-api`, and adding a host to an allowlist is
         // exactly the kind of edit that should be visible rather than incidental.
+        // The routines endpoint, read only, added 2026-08-16.
+        //
+        // This is the object that explains three things at once. Eight Sleep's app models alarms
+        // **inside routines**: a routine carries `id`, `days`, `enabled`, a `bedtime`, an `alarms`
+        // array and an `alarmsToCreate` array. That is what the `routine-<uuid>` in every alarm's
+        // `tags` points at. It is why an alarm created standalone through
+        // `POST /v1/users/{id}/alarms` can exist on the API and never appear in their app, and it is
+        // why the account returns three alarms where the app shows two.
+        //
+        // Alex asked for exactly this by name: *"be able to also write routines inside the 8sleep
+        // app."* Nothing is written here yet, and deliberately: no routine object from his account
+        // has ever been read, and composing a write against a shape taken from somebody else's
+        // capture is the mistake that cost five hours on Whoop. Read first, print it, then write.
+        #"^GET https://app-api\.8slp\.net/v2/users/[^/]+/routines$"#,
         #"^GET https://client-api\.8slp\.net/v1/users/me$"#,
         #"^GET https://app-api\.8slp\.net/v1/household/users/[^/]+/summary$"#,
     ])
@@ -1133,6 +1147,47 @@ actor EightSleepAdapter: DeviceAdapter {
         guard var text = String(data: data, encoding: .utf8), !text.isEmpty else { return "no body" }
         text = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
         return text.count > 200 ? String(text.prefix(200)) + "..." : text
+    }
+
+    /// His routines, as the server returns them, flattened to printable lines.
+    ///
+    /// Read only, and it stays read only until a real routine object off this account has been seen.
+    /// The shape below is from a public capture of somebody else's account, which is evidence about
+    /// what the endpoint is and no evidence at all about what his holds.
+    ///
+    /// Returns an empty array rather than throwing. This is a diagnostic, and a diagnostic that can
+    /// take an alarm write down with it is worse than no diagnostic.
+    func routineDump() async -> [String] {
+        guard let session = try? await currentToken(),
+              let url = URL(string: "\(Self.appHost)/v2/users/\(session.userID)/routines"),
+              let response = try? await http.send("GET", url, headers: Self.baseHeaders(token: session.token))
+        else { return [] }
+
+        guard response.isSuccess else {
+            // A refusal is the answer too: it says this account does not expose routines this way.
+            return ["GET /v2/users/{id}/routines returned HTTP \(response.status): \(Self.serverMessage(response.data))"]
+        }
+        guard let json = try? HTTPClient.dictionary(response.data) else {
+            return ["routines returned something that is not a JSON object: \(Self.serverMessage(response.data))"]
+        }
+
+        // Printed rather than parsed. Parsing it would mean deciding what it means, and the whole
+        // point of this call is to find that out from the account rather than from a write-up.
+        var lines = ["keys: " + json.keys.sorted().joined(separator: ", ")]
+        let routines = (json["routines"] as? [[String: Any]])
+            ?? (json["settings"] as? [String: Any]).flatMap { $0["routines"] as? [[String: Any]] }
+            ?? []
+        if routines.isEmpty {
+            lines.append(Self.serverMessage(response.data))
+            return lines
+        }
+        for routine in routines {
+            lines.append("---")
+            for key in routine.keys.sorted() {
+                lines.append("\(key) = \(Self.raw(routine[key]))")
+            }
+        }
+        return lines
     }
 
     /// The seven named booleans, as a set.

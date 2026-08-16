@@ -251,5 +251,7 @@ See `docs/RESEARCH.md` for the full record. The short version, with evidence mar
 | Eight Sleep's smart alarm has **no window length field anywhere in the API** | `[observed]`. The 30 minutes came from a sentence in their UI |
 | Eight Sleep holds one alarm **per day set**, so a week with two routines is two alarms | `[observed]` 16 Aug, live account |
 | Eight Sleep's alarm API is **version asymmetric**: the list is `/v2/users/{id}/alarms`, the update is `/v1/users/{id}/alarms/{alarmId}` | `[observed]` both confirmed against the account |
-| Which version **creates** an alarm is unknown. Every public Eight Sleep project documents the list and none documents the create | `[observed]` search, 16 Aug. So both are tried and the answer is reported |
+| The create is `POST /v1/users/{id}/alarms` | `[documented]` two independent public sources, 16 Aug. An earlier line here called this unknown, and a prediction that it was `v2` was wrong |
+| Eight Sleep's app models alarms **inside routines**: `PUT /v2/users/{id}/routines/{id}` carries `days`, `bedtime`, `alarms` and `alarmsToCreate` | `[documented]` public capture, 16 Aug. This is what every alarm's `routine-<uuid>` tag points at |
+| An alarm created standalone belongs to no routine, and their app appears not to list it | `[inferred]`, and it fits the observation that the API returned a Mon-Fri alarm his app did not show |
 | Whoop holds **one** schedule per account, so its days genuinely cannot express two routines | `[observed]` its own UI, and the mutually exclusive one-off dialog |

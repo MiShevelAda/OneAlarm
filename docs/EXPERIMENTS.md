@@ -401,7 +401,55 @@ names every attempt with the status and the server's body. Two requests separate
 405. Written before the test. If both refuse the full clone identically, the path is not the problem
 and the ladder's later rungs are the answer.
 
+**Answered, 16 Aug, and the prediction was wrong.** Two independent public sources give the create as
+`POST /v1/users/{id}/alarms`, which is what this app was already sending. So the path was never the
+problem and the `v2` rung is dead weight, kept only until one run confirms it. The real finding came
+out of the same search and is `E17`, below.
+
 **Whose.** Alex, one tap of Set all alarms, then the Eight Sleep row's text.
+
+
+---
+
+## E17 🔴 Eight Sleep has a **routines** object, and alarms live inside it
+
+**The find.** `PUT https://app-api.8slp.net/v2/users/{userId}/routines/{routineId}`, from a public
+capture, carries:
+
+```
+id, enabled, days: ["monday", ...], bedtime: { time, dayOffset },
+alarms: [], alarmsToCreate: [ { enabled, disabledIndividually,
+  timeWithOffset: { time, dayOffset },
+  settings: { vibration: {enabled, powerLevel, pattern}, thermal: {enabled, level} },
+  dismissedUntil, snoozedUntil } ]
+```
+
+**Why this answers three open questions at once.**
+
+1. It is what the `routine-<uuid>` in every alarm's `tags` points at. That tag sat in the diagnostic
+   output for a day with nobody able to say what it referenced.
+2. It explains `E15`. An alarm created through `POST /v1/users/{id}/alarms` belongs to no routine, and
+   their app renders alarms through routines, so it exists on the API and appears nowhere. That is
+   exactly what Alex saw: the API returned a Monday to Friday alarm at 08:55 and his app showed none.
+3. **The days may live on the routine, not on the alarm.** The routine carries `days`. If their app
+   reads days from there, then writing `repeat.weekDays` on the alarm changes a field their UI never
+   displays, and "change Monday to Friday into Monday to Wednesday" cannot work through the alarm
+   object at all.
+
+**Same lesson, fourth time.** Absence in one object is not absence anywhere. The alarm object has no
+routine and no days their app respects because the **routine** carries both, and nobody had called
+that endpoint.
+
+**Test, and it is a read.** `GET /v2/users/{id}/routines` is allowlisted now and its output is printed
+verbatim on the bed screen under "Your Eight Sleep routines, raw". Nothing is written to a routine
+until a real one off Alex's account has been seen: the shape above is somebody else's capture, which
+is evidence about what the endpoint is and none about what his holds.
+
+**Prediction.** His account returns at least one routine, each with a `days` array and an `alarms`
+array containing ids OneAlarm has been writing to, and the weekday routine's `days` will match what
+his app shows rather than what the alarm's `repeat.weekDays` says.
+
+**Whose.** Alex, one screenshot of that panel. Then the build, against his shape.
 
 
 ## Completed
