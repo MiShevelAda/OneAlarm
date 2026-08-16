@@ -145,6 +145,20 @@ genuinely ambiguous. `[2026-08-16]`
 routines match and a third has no alarm with its days. A green tick over that is a week with a hole
 in it, and the hole is a morning nobody is woken on. `[2026-08-16]`
 
+> *"The function is not very user friendly. We need to find a better way how to set up routines. We
+> need to make it easier and make it more clear what is a routine and what is not a routine."*
+
+**Confusion about scope is fixed by place, not by wording.** The home screen carried three controls
+that all looked like "set the time": a wheel that bent tomorrow, a picker inside each routine card
+that changed the routine, and steppers on each device row that moved a lead. Three identical
+affordances, three different lifetimes, one scrolling column. No label survives that. The fix was to
+split them by screen: home is **one morning**, `RoutinesView` is **the week**. `[2026-08-16]`
+
+**Seeing and editing are different asks, and he made both.** He asked for routines to be *"directly
+on my home screen"* and then said routines on the home screen were confusing. Both are right. The
+home screen shows every routine read only, one line each, and one tap goes to the only place they
+can be changed. `[2026-08-16]`
+
 > *"Identify the eight sleep pod by name not only alarm times, group them by name in the setting."*
 
 **Name the device, group by it.** Two alarms at the same time on two pods are indistinguishable, and

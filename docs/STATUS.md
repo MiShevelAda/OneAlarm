@@ -22,6 +22,12 @@ Routines, one per day set, each with its own time. Eight Sleep is written at mas
 at master minus 5, the iPhone at master. Each row reports what happened, and the two remote legs are
 read back rather than trusted.
 
+**The home screen is one morning; routines live on their own screen** as of 16 August. The master
+wheel is gone from home: the big time is tomorrow's, tapping it opens a sheet that bends tomorrow and
+says so, and the three verbs under it sit beneath the words "This morning only". Every routine is
+visible on home as a read only line, and `RoutinesView` is the only place any of them can be edited,
+added or deleted.
+
 **Eight Sleep is driven by day set, not by a chosen alarm** as of 16 August. Each routine finds the
 alarm on the account that already runs on its days and changes **only that alarm's `time`**. Days,
 `enabled`, vibration and thermal are echoed back exactly as the server sent them. Nothing is picked

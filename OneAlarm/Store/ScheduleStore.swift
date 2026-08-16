@@ -231,6 +231,48 @@ final class ScheduleStore {
         persistAndRecompute()
     }
 
+    /// A new routine, on the days nothing covers yet.
+    ///
+    /// It starts with the uncovered days rather than empty, because an empty routine is a card that
+    /// does nothing and has to be filled in before it means anything, and the days nobody has
+    /// claimed are the only ones it could legally take. When the week is already fully covered it
+    /// starts with no days and says so, which is honest: taking a day would silently remove it from
+    /// a routine he did not open.
+    @discardableResult
+    func addRoutine() -> String {
+        let covered = schedule.routines.reduce(into: Set<Locale.Weekday>()) { $0.formUnion($1.weekdays) }
+        let free = Locale.Weekday.displayOrder.filter { !covered.contains($0) }
+        let id = "routine-\(Int(Date().timeIntervalSince1970))"
+
+        schedule.routines.append(
+            Routine(
+                id: id,
+                // Stored and immediately ignored: `displayName` derives from the days. Kept only
+                // because the field exists in the persisted shape.
+                name: "",
+                weekdayIndices: WeekdaySetCoding.encode(Set(free)),
+                time: schedule.routines.last?.time ?? WallClockTime(hour: 8, minute: 0)
+            )
+        )
+        persistAndRecompute()
+        return id
+    }
+
+    /// Remove a routine. Its days become uncovered, which the screen names.
+    ///
+    /// Deliberately does not hand its days to a neighbour. Deleting the weekend routine must not
+    /// silently make Saturday a 06:50 workday, and a day with no alarm is a state this app already
+    /// prints by name.
+    func deleteRoutine(_ routineID: String) {
+        schedule.routines.removeAll { $0.id == routineID }
+        // A bend belonging to the routine that just went has nothing left to bend away from.
+        if let override = schedule.override, let date = override.day.date(in: calendar) {
+            let weekday = Locale.Weekday.from(calendarIndex: calendar.component(.weekday, from: date))
+            if schedule.routine(covering: weekday) == nil { schedule.override = nil }
+        }
+        persistAndRecompute()
+    }
+
     func setMasterTime(_ time: WallClockTime) {
         schedule.masterTime = time
         persistAndRecompute()

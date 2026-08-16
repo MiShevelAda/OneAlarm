@@ -12,6 +12,8 @@ struct CascadeView: View {
     @State private var showingConnections = false
     @State private var previewDevice: DeviceID?
     @State private var showingGoodnight = false
+    @State private var showingRoutines = false
+    @State private var showingTomorrowPicker = false
 
     var body: some View {
         Screen(
@@ -28,8 +30,7 @@ struct CascadeView: View {
         ) {
             VStack(spacing: 26) {
                 nextMorning
-                masterTime
-                routinesBlock
+                weekStrip
                 wakeWindow
                 cascade
                 previewLink
@@ -50,20 +51,46 @@ struct CascadeView: View {
         .sheet(isPresented: $showingConnections) { ConnectionsHubView().environment(store) }
         .sheet(item: $previewDevice) { WritePreviewSheet(device: $0).environment(store) }
         .sheet(isPresented: $showingGoodnight) { GoodnightView().environment(store) }
+        .sheet(isPresented: $showingRoutines) { RoutinesView().environment(store) }
+        .sheet(isPresented: $showingTomorrowPicker) {
+            TomorrowPicker().environment(store).presentationDetents([.medium])
+        }
     }
 
     // MARK: The next morning
 
-    /// The screen's first job is to say which morning it means.
+    /// The whole home screen is **one morning**, and this block is it.
     ///
-    /// A time on its own is what made a correct weekday alarm read as broken when it was tested at
-    /// 01:00 on a Sunday: the screen said 08:00 and nothing else, and the next occurrence was two
-    /// days away. The day is now the first thing on the screen, always, and the second line says
-    /// whether the time came from a routine or from a bend.
+    /// Alex, 2026-08-16: *"it's not very clear what is a routine and what is not a routine."* The
+    /// cause was scope, not wording. This screen used to carry a wheel that bent tomorrow, a picker
+    /// inside each routine card that changed the routine, and steppers on each device row that moved
+    /// that device's lead: three identical looking controls with three different lifetimes, in one
+    /// scrolling column. No label survives that.
+    ///
+    /// So the wheel is gone from here and routines are gone from here. This screen edits tomorrow
+    /// and says so above the controls; `RoutinesView` edits the week and says so too. The one thing
+    /// still shared is the device lead on each row, which is a per device offset rather than a time
+    /// and now reads as one.
+    ///
+    /// The day stays the first thing on the screen. A time on its own is what made a correct weekday
+    /// alarm read as broken when it was tested at 01:00 on a Sunday.
     @ViewBuilder
     private var nextMorning: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             Text(store.nextAlarmHeadline).themeLabel()
+
+            Button { showingTomorrowPicker = true } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(store.next?.time.hhmm ?? "--:--").font(Theme.numeral(54))
+                    Image(systemName: "pencil")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.greyDim)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(store.next == nil)
 
             if let notice = store.overrideNotice {
                 Notice(.warn, title: notice,
@@ -83,14 +110,29 @@ struct CascadeView: View {
                         .foregroundStyle(Theme.State.confirmed)
                         .padding(.horizontal, 14).padding(.vertical, 10)
                 }
-            } else if let next = store.next, let routine = next.routineName {
-                Text("\(routine) · \(next.time.hhmm)")
+            } else if let routine = store.next?.routineName {
+                // Says where the time came from, and that it repeats. Without this the big number
+                // above reads as a one-off that somebody typed.
+                Text("From your \(routine) routine. Repeats every week.")
                     .font(.system(size: 14)).foregroundStyle(Theme.grey)
             } else if store.next == nil {
                 Notice(.warn, title: "No alarm is set.",
                        "No routine covers the next two weeks. Nothing will wake you.")
             }
 
+            thisMorningOnly
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The three verbs that change one morning, under a line that says so.
+    ///
+    /// Extracted for the same reason as everything else in this file that got extracted: the type
+    /// checker gives up on an oversized body and reports it only as "unable to type-check this
+    /// expression in reasonable time", which is a compile error with no location in it.
+    private var thisMorningOnly: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("This morning only").themeLabel()
             HStack(spacing: 8) {
                 nudge("−15", minutes: -15)
                 nudge("+15", minutes: 15)
@@ -108,7 +150,65 @@ struct CascadeView: View {
                 .disabled(store.next == nil)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: My week
+
+    /// Every routine, read only, one line each.
+    ///
+    /// Alex asked twice for opposite sounding things: *"it's still not clear which routines I have
+    /// set up, it should be directly on my home screen"*, and then that routines are confusing here.
+    /// Both are right, and they are not in conflict once **seeing** is separated from **editing**.
+    /// This strip is the answer to the first: the week is visible at a glance and never hidden
+    /// behind a menu. It is not the answer to the second, so nothing in it can be changed. One tap
+    /// goes to the screen where it can.
+    private var weekStrip: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("My week").themeLabel()
+                Spacer()
+                Text("\(store.schedule.routines.count) routine\(store.schedule.routines.count == 1 ? "" : "s")")
+                    .font(.system(size: 11)).foregroundStyle(Theme.greyDim)
+            }
+
+            Button { showingRoutines = true } label: { weekCard }
+                .buttonStyle(.plain)
+
+            if let uncovered = store.uncoveredDays, !uncovered.isEmpty {
+                Notice(.warn, title: "No alarm on \(uncovered).",
+                       "Those days belong to no routine, so nothing will wake you on them.")
+            }
+        }
+    }
+
+    private var weekCard: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(store.schedule.routines.enumerated()), id: \.offset) { index, routine in
+                if index > 0 { Divider().overlay(Theme.line) }
+                WeekStripRow(routine: routine, isNext: store.next?.routineID == routine.id)
+            }
+
+            if store.schedule.routines.isEmpty {
+                Text("No routines yet. Tap to add one.")
+                    .font(.system(size: 14)).foregroundStyle(Theme.grey)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(15)
+            }
+
+            Divider().overlay(Theme.line)
+
+            HStack(spacing: 6) {
+                Text("Edit my week").font(.system(size: 13, weight: .semibold))
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Theme.grey)
+            .padding(.horizontal, 15).padding(.vertical, 13)
+        }
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
+            .strokeBorder(Theme.line, lineWidth: 1))
+        .contentShape(Rectangle())
     }
 
     /// Nudges bend the next morning only. Never the routine.
@@ -133,60 +233,6 @@ struct CascadeView: View {
         }
         .buttonStyle(.plain)
         .disabled(store.next == nil)
-    }
-
-    // MARK: Master time
-
-    private var masterTime: some View {
-        VStack(spacing: 14) {
-            Text(store.overrideNotice == nil ? "Wake at" : "Wake at, this morning only").themeLabel()
-
-            DatePicker(
-                "Wake time",
-                selection: Binding(
-                    get: {
-                        var c = DateComponents()
-                        c.hour = store.schedule.masterTime.hour
-                        c.minute = store.schedule.masterTime.minute
-                        return Calendar.current.date(from: c) ?? Date()
-                    },
-                    set: {
-                        // Bends the next morning, never the routine. Same rule as the nudges: the
-                        // frequent intent is the default, and the rare one is a labelled tap.
-                        let c = Calendar.current.dateComponents([.hour, .minute], from: $0)
-                        store.bendNextMorning(to: WallClockTime(hour: c.hour ?? 7, minute: c.minute ?? 0))
-                    }
-                ),
-                displayedComponents: .hourAndMinute
-            )
-            .datePickerStyle(.wheel)
-            .labelsHidden()
-            .colorScheme(.dark)
-        }
-        .padding(.top, 4)
-    }
-
-    // MARK: My routines
-
-    /// Every routine, always on screen, with its days and its time.
-    ///
-    /// The previous version showed only the routine covering the next morning, so the weekend was
-    /// invisible from Monday to Thursday and there was no way to tell whether one existed. Alex:
-    /// "it's still not clear which routines I have set up, it should be directly on my home screen".
-    /// A schedule you cannot see is one you have to remember, which is the thing this app is for.
-    private var routinesBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("My routines").themeLabel()
-
-            ForEach(store.schedule.routines) { routine in
-                RoutineCard(routine: routine, isNext: store.next?.routineID == routine.id)
-            }
-
-            if let uncovered = store.uncoveredDays, !uncovered.isEmpty {
-                Notice(.warn, title: "No alarm on \(uncovered).",
-                       "Those days belong to no routine, so nothing will wake you on them.")
-            }
-        }
     }
 
     // MARK: Wake window
@@ -533,132 +579,91 @@ private struct StepChip: View {
     }
 }
 
-/// One routine: its name, its days, its time.
+/// One routine on the home screen, as a sentence. Nothing here is tappable on its own: the whole
+/// strip is one button into `RoutinesView`.
 ///
-/// Its own view rather than a block inside `CascadeView` for two reasons. The type checker gave up
-/// on the combined expression, which is the usual sign that a body is doing more than one job. And
-/// each card edits **its own** routine, which is the fix for day chips that used to edit whichever
-/// routine covered the next morning and so moved days between routines unasked.
-@MainActor
-private struct RoutineCard: View {
-    @Environment(ScheduleStore.self) private var store
-
+/// Read only on purpose. This block exists so the week is **visible**, which Alex asked for, and the
+/// editing lives on its own screen, which is what makes the two scopes tellable apart.
+private struct WeekStripRow: View {
     let routine: Routine
     let isNext: Bool
 
-    @State private var editing = false
+    var body: some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isNext ? AnyShapeStyle(Theme.State.confirmed) : AnyShapeStyle(Theme.line))
+                .frame(width: 3, height: 30)
 
-    private var hasDays: Bool { !routine.weekdays.isEmpty }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(routine.displayName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(routine.weekdays.isEmpty ? Theme.greyDim : Color.white)
+                Text(routine.weekdays.isEmpty ? "no days, never fires" : "every \(routine.daysSentence)")
+                    .font(.system(size: 12)).foregroundStyle(Theme.greyDim)
+            }
+
+            Spacer(minLength: 8)
+
+            Text(routine.weekdays.isEmpty ? "--:--" : routine.time.hhmm)
+                .font(Theme.numeral(20))
+                .foregroundStyle(routine.weekdays.isEmpty ? Theme.greyDim : Color.white)
+        }
+        .padding(.horizontal, 15).padding(.vertical, 12)
+    }
+}
+
+/// The wheel for tomorrow, and the only thing it can do is bend tomorrow.
+///
+/// It is a sheet rather than a block on the home screen because a wheel is the most authoritative
+/// "this is the setting" control iOS has, and wiring the most authoritative control to the most
+/// temporary change is what made the whole screen unreadable. In a sheet with that sentence written
+/// across the top, the scope arrives with the control.
+///
+/// The scope is **not** asked as a question first. Alex raised Apple's upfront "this alarm only or
+/// all alarms" prompt and the reasoning against it still holds: at 23:41 the intent is almost always
+/// tomorrow, and a question answered the same way nine times in ten is a tax rather than a
+/// safeguard. So it bends, says so, and offers to promote afterwards on the home screen, where the
+/// consequence is visible rather than hypothetical.
+@MainActor
+private struct TomorrowPicker: View {
+    @Environment(ScheduleStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header
-            chips
-            footer
-            picker
-        }
-        .padding(14)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous)
-                .strokeBorder(isNext ? Theme.State.confirmed.opacity(0.45) : Theme.line, lineWidth: 1)
-        )
-    }
+        Screen {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(store.nextAlarmHeadline)
+                    .font(.system(size: 23, weight: .bold)).tracking(-0.5)
+                    .padding(.top, 8)
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 9) {
-            Text(routine.displayName).font(.system(size: 15, weight: .semibold))
-            if isNext {
-                Text("NEXT")
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(1)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Theme.State.confirmed.opacity(0.16), in: RoundedRectangle(cornerRadius: 5))
-                    .foregroundStyle(Theme.State.confirmed)
-            }
-            Spacer(minLength: 6)
-            Button { editing.toggle() } label: {
-                Text(hasDays ? routine.time.hhmm : "no days")
-                    .font(Theme.numeral(26))
-                    .foregroundStyle(hasDays ? Color.white : Theme.greyDim)
-                    .underline(editing, color: Theme.State.confirmed)
-            }
-            .buttonStyle(.plain)
-            .disabled(!hasDays)
-        }
-    }
+                Text(store.next?.routineName.map { "Changes this morning only. Your \($0) routine stays as it is." }
+                     ?? "Changes this morning only.")
+                    .font(.system(size: 14)).foregroundStyle(Theme.grey)
 
-    private var chips: some View {
-        HStack(spacing: 6) {
-            ForEach(Locale.Weekday.displayOrder, id: \.calendarIndex) { day in
-                dayChip(day)
-            }
-        }
-    }
-
-    private func dayChip(_ day: Locale.Weekday) -> some View {
-        let on = routine.weekdays.contains(day)
-        return Button {
-            store.toggleDay(day, in: routine.id)
-        } label: {
-            Text(day.shortLabel)
-                .font(.system(size: 12, weight: .semibold))
-                .frame(maxWidth: .infinity, minHeight: 34)
-                .background(on ? Color.white.opacity(0.14) : Color.white.opacity(0.04),
-                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(on ? Theme.lineStrong : Theme.line, lineWidth: 1)
+                DatePicker(
+                    "Wake time",
+                    selection: Binding(
+                        get: {
+                            var parts = DateComponents()
+                            parts.hour = store.next?.time.hour ?? 7
+                            parts.minute = store.next?.time.minute ?? 0
+                            return Calendar.current.date(from: parts) ?? Date()
+                        },
+                        set: {
+                            let parts = Calendar.current.dateComponents([.hour, .minute], from: $0)
+                            store.bendNextMorning(to: WallClockTime(hour: parts.hour ?? 7,
+                                                                    minute: parts.minute ?? 0))
+                        }
+                    ),
+                    displayedComponents: .hourAndMinute
                 )
-                .foregroundStyle(on ? Color.white : Theme.greyDim)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var footer: some View {
-        Text(hasDays ? "Every \(routine.daysSentence)" : "No days, so this routine never fires.")
-            .font(.system(size: 11))
-            .foregroundStyle(Theme.greyDim)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Deliberately a picker rather than a pair of steppers.
-    ///
-    /// The main screen already carries minus fifteen and plus fifteen, and there they mean **bend
-    /// tomorrow only**. The same control inside this card would mean **change it permanently**, six
-    /// inches away on the same screen. One affordance with two meanings and nothing to tell them
-    /// apart is exactly what made the day chips wrong, and Alex caught it here before it shipped.
-    @ViewBuilder
-    private var picker: some View {
-        if editing {
-            DatePicker(
-                "Routine time",
-                selection: Binding(
-                    get: {
-                        var c = DateComponents()
-                        c.hour = routine.time.hour
-                        c.minute = routine.time.minute
-                        return Calendar.current.date(from: c) ?? Date()
-                    },
-                    set: {
-                        let c = Calendar.current.dateComponents([.hour, .minute], from: $0)
-                        store.setRoutineTime(
-                            WallClockTime(hour: c.hour ?? 7, minute: c.minute ?? 0),
-                            routineID: routine.id
-                        )
-                    }
-                ),
-                displayedComponents: .hourAndMinute
-            )
-            .datePickerStyle(.wheel)
-            .labelsHidden()
-            .colorScheme(.dark)
-            .frame(height: 120)
-
-            Text("Every \(routine.displayName == "No days" ? "day this covers" : routine.daysSentence), from now on.")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.State.unconfirmed)
+                .datePickerStyle(.wheel)
+                .labelsHidden()
+                .colorScheme(.dark)
+                .frame(maxWidth: .infinity)
+            }
+        } footer: {
+            SolidButton(title: "Done") { dismiss() }
         }
     }
 }
