@@ -1044,11 +1044,29 @@ actor EightSleepAdapter: DeviceAdapter {
         // account, and without this the week check would fall silent on exactly the syncs where a one
         // time change is being tested. We know which morning our own one-off covers, because we
         // asked for it. The doubt only applies to an empty-day alarm we cannot account for.
-        guard !live.contains(where: { alarm in
+        //
+        // **Silence became a hiding place the moment one-shots arrived, so it now names what it
+        // cannot account for.** Returning nothing was right when a day-less alarm meant "created
+        // inside a routine", a rare and benign case. From 18 August a day-less alarm is also what a
+        // failed one-off recovery leaves behind: the create succeeded, the id could not be
+        // determined, so there is no link. Such an alarm is invisible to **everything** else, since
+        // the orphan sweep works from links and `alarmsWithNoRoutine` deliberately skips day-less
+        // alarms. It would ring at the override time and nothing would ever mention it again.
+        //
+        // Before tonight the fallback created a single **day** alarm, which at least appeared in the
+        // stray list. Making the one-shot the first rung removed that safety net, so this replaces
+        // it. Still not a coverage claim, which would be a guess: it reports the alarm and says the
+        // rest of the check is off.
+        let unaccounted = live.filter { alarm in
             guard weekdays(of: alarm).isEmpty else { return false }
             guard let id = alarmID(alarm) else { return true }
             return !knownOneOffIDs.contains(id)
-        }) else { return [] }
+        }
+        if !unaccounted.isEmpty {
+            return unaccounted.map { alarm in
+                "There is a \(shortLabel(alarm)) alarm on your bed with no days set, and OneAlarm cannot tell which mornings it covers. It will ring and nothing here manages it. Check it in the Eight Sleep app. The rest of the week check is switched off while it is there."
+            }
+        }
 
         var findings: [String] = []
         for day in Locale.Weekday.displayOrder {

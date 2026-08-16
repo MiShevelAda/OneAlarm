@@ -1478,10 +1478,18 @@ final class EightSleepWritePathTests: XCTestCase {
                                            knownOneOffIDs: ["oneoff-1"]).count,
             2, "Saturday and Sunday are genuinely uncovered, and our one-shot says nothing about them"
         )
-        XCTAssertEqual(
-            EightSleepAdapter.weekFindings(alarms: [shot], entries: uncovered), [],
-            "the same alarm unaccounted for still buys silence, because then we cannot know"
-        )
+        // **The same alarm unaccounted for is now named rather than silently swallowed.**
+        //
+        // Silence was right when a day-less alarm only ever meant "created inside a routine". It
+        // became a hiding place once one-shots arrived: a create that succeeded without returning an
+        // id leaves a day-less alarm with no link, invisible to the orphan sweep (which works from
+        // links) and to the stray list (which skips day-less alarms). It would ring and nothing
+        // would mention it again.
+        let unaccounted = EightSleepAdapter.weekFindings(alarms: [shot], entries: uncovered)
+        XCTAssertEqual(unaccounted.count, 1, "named once, not silently dropped")
+        XCTAssertTrue(unaccounted[0].contains("no days set"), unaccounted[0])
+        XCTAssertFalse(unaccounted[0].contains("Saturday"),
+                       "and it still refuses to guess coverage, which would be the old bug inverted")
     }
 
     /// The receipt names which rung of the create ladder was accepted.
