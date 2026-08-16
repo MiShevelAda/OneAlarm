@@ -895,6 +895,100 @@ an ordinary **schedule** edit, in a session that never touched the one-off flow,
 one absolute instant regardless of mode. The natural reading is a derived push of whatever is
 currently active. That lowers `E29`'s value considerably.
 
+### 2.3h An outside analysis, checked. One half confirms us, one half is contradicted by his own screen
+
+Alex supplied a third-party write-up on 20 August. Assessed rather than adopted.
+
+**Its Bug 1 is right, and it reached our conclusion independently.** Whoop has two `enabled` states:
+the per schedule field in the PUT body, and the account level `schedule_enabled`. Turning the alarm
+off in Whoop's app flips the **master**, and a schedule PUT with `enabled: true` only flips the
+**per schedule** one. So the write returns 200 and does nothing visible. That is exactly what
+happened on his account, and exactly why `E30` reached the wrong conclusion.
+
+**Its recommended fix is banned by this project**, and the ban is not an oversight:
+`PUT /smart-alarm-service/v1/alarm-schedule/enable`, bodiless, flips the master. `CLAUDE.md` bans the
+whole `smart-alarm-service` prefix by name, `alarm-schedule/enable` and `/disable` included, on the
+stated ground that the master is the switch **Alex sets by hand**. Lifting it is his decision and
+nobody else's. The argument for a narrow carve out is real and worth putting to him: `enable` can only
+make an alarm **more** likely to fire, so unlike almost everything else in this app it cannot cause a
+missed morning. The argument against is also in `CLAUDE.md`, written deliberately: *"a blanket ban on
+a prefix is worth more than a carve out nobody remembers."*
+
+**Its Bug 2 root cause is contradicted by his own screenshot.** The write-up says WHOOP itself has no
+one-time alarm, citing an open feature request. Alex photographed this in Whoop's app the same day:
+
+> **TURN OFF SCHEDULE.** *"Your schedule is currently on. Turn off your schedule to set a new alarm
+> for tomorrow."*
+
+Both are true once stated precisely. **Whoop has a one-off. What it has no way to do is a one-off
+that leaves the recurring schedule running.** The forum thread is asking for the second thing. The
+write-up read a request for the harder version as evidence the easier version does not ship, which is
+the same error a previous sweep made and this project has now written down twice.
+
+**Its Option B is the useful contribution, and it is better than what we do today.**
+
+| | what the strap does on a bent morning | failure if OneAlarm never runs again |
+|---|---|---|
+| today | buzzes at the routine time, **early** on a morning moved later | nothing to restore, so nothing to go wrong |
+| Option A, bend the whole schedule | correct on the bent morning | **every** morning that week stays bent. The founding bug |
+| **Option B, drop the bent day from the day list** | silent that morning | that one weekday has no strap alarm until the next sync |
+
+**Option B is buildable from confirmed primitives only, and this is the part that matters.** It writes
+`day_of_week_list` and nothing else. That write is **confirmed reversible on his own hardware**: on
+20 August his schedule covered Monday to Thursday, OneAlarm wrote Monday to Friday, and Whoop's app
+showed Friday added. So unlike the silencing, which could switch a schedule off and could not switch
+it on, the day list can be taken away and put back.
+
+That difference is the whole reason Option B is acceptable where silencing was not. **Option A stays
+rejected**: its failure mode is a whole week at the wrong time, which is the bug this leg exists
+around. **Option C** needs a create and a delete, both still uncaptured.
+
+### 2.3i The adversarial sweep, 20 August. Partially refuted, and the opening needs no new endpoint
+
+A third sweep was run to **break** the conclusion that a one time change is impossible on Whoop,
+rather than confirm it. It succeeded in part.
+
+**Where our reasoning was wrong.** We had been arguing "a Whoop schedule carries one time for all its
+days, therefore a one day change is impossible". True per schedule, and it quietly assumed one
+schedule per account. **`alarm_schedule_list` is a list**, and every element carries its own days, its
+own time and its own `enabled`. Alex has two. **With enough schedules, moving one day needs only the
+PUT already confirmed working.**
+
+**The opening, and it is worth a look before anything else is built.** If his account carries seven
+**single day** schedules, made by hand in Whoop's app, then a one time change is: PUT tomorrow's
+schedule to the new time, and put it back on the next sync. No create, no delete, no banned prefix,
+no unpublished mechanism. Every call is one this project has already run successfully on his account.
+
+**The one thing that decides it, and only he can look:** does Whoop's app let him add more schedules,
+and how many. Nobody has published a `schedule/all` response containing two, let alone seven, so
+whether the product permits it is genuinely unknown outside his phone.
+
+The costs are real and should be stated to him: seven schedules to look at in Whoop's app instead of
+two, and OneAlarm writing seven rows from two routines. Its matcher pairs by exact day set, so seven
+single day schedules against a Monday to Friday routine is a design change, not a config change.
+
+**A second alarm mechanism nobody here knew about.** `jonaschuba/whoop-alarm-addon`, a Home Assistant
+add-on, drives the wake time **entirely through the preferences object** and never touches a schedule
+at all: `PUT /smart-alarm-service/v1/smartalarm/preferences`, read modify write, with
+`lower_time_bound`, `upper_time_bound`, `goal`, `enabled`, `schedule_enabled`, `time_zone_offset`,
+`weekly_plan_goal`, `default`. Its GET also returns `window_minutes`, which appears in no published
+field list. **It is on the banned `smart-alarm-service` prefix**, so it is recorded and not used.
+
+**The crux the sweep could not settle**, and it is the interesting one: whether that preferences alarm
+is **one shot or recurring**. The add-on sets it and leaves it, which hints recurring. Whoop's own
+modal says *"a new alarm for tomorrow"*, which hints one shot. If it is one shot, it is a complete
+one-off mechanism sitting behind our own ban.
+
+**Two corrections to how this project searches.** The GitHub MCP `search_code` tool returned
+`total_count: 0` for strings the same agent then found by cloning the repository. **Every zero result
+from that tool is void as evidence**, and `git clone --depth 1` is the reliable route. And every
+alternate search engine tried is blocked at this proxy, so `WebSearch` is the only discovery route
+available; that is a fact about the environment worth not re-testing.
+
+**Not pursued, deliberately.** The sweep also returned BLE and firmware level detail for writing
+alarms directly to the strap. OneAlarm is an HTTP client for one account and has no business there,
+so none of it is recorded as actionable and nothing in this project will act on it.
+
 ### 2.4 Whoop hazards
 
 **Never build a retry loop around `USER_PASSWORD_AUTH`.** `429 TooManyRequestsException` is real on
