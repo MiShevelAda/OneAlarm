@@ -83,12 +83,28 @@ finished.
 ## Verify before saying done
 
 ```bash
-python3 tools/validate_project.py     # project structure, referential integrity, secret scan
+npm install                           # once, for the syntax checker
+npm run check                         # structure and secrets, then a real Swift parse
 ```
 
-No Swift toolchain exists in the session environment, verified rather than assumed. Nothing here has
-been compiled by a session; the app is built by Alex in Xcode. **Say "not compiled" rather than
-implying otherwise**, and never call something done that only a compiler could confirm.
+No Swift **compiler** exists in the session environment. `download.swift.org`, `github.com` releases
+and `objects.githubusercontent.com` are all refused by the proxy, checked rather than assumed. But
+`registry.npmjs.org` bypasses the proxy, so `tools/parse_swift.js` runs tree-sitter's Swift grammar
+over every file and catches real syntax errors. Read its header before trusting or doubting it: three
+false positives are documented there, each confirmed rather than guessed, so nobody re-investigates
+them.
+
+**A parse is not a type check.** It cannot see a wrong type, a missing argument label, or the two
+things that actually shipped broken on 16 August: an unannotated heterogeneous dictionary literal,
+and eleven empty collection literals in `Any` position. Both were caught by grep, and the greps that
+find them are worth running by hand on new code:
+
+```bash
+grep -rn ': \[\s*\]\|: \[\s*:\s*\]' --include=*.swift OneAlarm OneAlarmTests   # empty literal in an Any position
+```
+
+Nothing here has been compiled by a session; the app is built by Alex in Xcode. **Say "not compiled"
+rather than implying otherwise**, and never call something done that only a compiler could confirm.
 
 ## Capture as you go
 

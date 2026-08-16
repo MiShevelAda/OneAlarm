@@ -1,0 +1,12 @@
+{
+  "name": "onealarm-tools",
+  "private": true,
+  "description": "Checks that run without Xcode. See tools/parse_swift.js for why a Swift parser lives in an npm file.",
+  "scripts": {
+    "check": "python3 tools/validate_project.py && node tools/parse_swift.js"
+  },
+  "dependencies": {
+    "tree-sitter": "^0.21.0",
+    "tree-sitter-swift": "^0.7.0"
+  }
+}
