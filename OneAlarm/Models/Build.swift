@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "20 Aug, 08:20 · build fix, split week support"
+    static let marker = "20 Aug, 09:00 · every split day gets its routine time"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "You caught OneAlarm putting your split week back together. It wrote your routine days onto every schedule, so seven single days collapsed into two. It now leaves a split alone and only widens a schedule when nothing else covers the missing days. Split the week again and press Set all alarms."
+    static let whatIsNew = "Your split survived but only Monday took the routine time. A routine now drives every schedule it covers, so all five weekdays get 07:50 and both weekend days get theirs. Press Set all alarms and all seven should line up. Then try a one time change: only tomorrow should move."
 }

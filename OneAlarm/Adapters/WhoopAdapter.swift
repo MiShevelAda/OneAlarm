@@ -1313,7 +1313,44 @@ actor WhoopAdapter: DeviceAdapter {
         //
         // On his current two schedules this returns exactly what equality returned, because Monday to
         // Friday is covered by the Weekdays routine and by nothing else.
-        let report = RoutinePlan.matchByCoverage(entries: plan.entries, against: candidates, links: links)
+        var report = RoutinePlan.matchByCoverage(entries: plan.entries, against: candidates, links: links)
+
+        // **A routine drives every schedule it covers, not one of them.**
+        //
+        // Alex split his week on 20 August and reported the result: the split survived, and only
+        // MONDAY got his routine time. Tuesday through Friday kept the times he had typed while
+        // creating them, 07:30, 07:31, 07:32, 07:32. The matcher pairs one routine to one alarm,
+        // which is right for Eight Sleep, where a day set has a single alarm, and wrong here, where
+        // a week can be split into seven schedules that one routine is responsible for.
+        //
+        // So every schedule still unclaimed is offered to the routine that covers **all** of its
+        // days, and only when exactly one live routine does. A schedule straddling two routines is
+        // left alone and reported, because writing one time to it would move a morning whose routine
+        // did not ask, which is the founding bug of this leg.
+        //
+        // Done here rather than inside `matchByCoverage` because the report's shape is one pair per
+        // routine everywhere else in the app, and the rest of this file already handles a list of
+        // pairs correctly. Expanding the list is a smaller change than teaching four screens that a
+        // routine can own several alarms.
+        let alreadyPaired = Set(report.pairs.map(\.alarmID))
+        for candidate in candidates where !alreadyPaired.contains(candidate.id) && !candidate.weekdays.isEmpty {
+            let owners = plan.entries.filter {
+                $0.isOn && !$0.weekdays.isEmpty && candidate.weekdays.isSubset(of: $0.weekdays)
+            }
+            guard owners.count == 1, let owner = owners.first else { continue }
+            report.pairs.append(
+                AlarmMatchReport.Pair(
+                    routineID: owner.routineID,
+                    routineName: owner.routineName,
+                    alarmID: candidate.id,
+                    time: owner.timeToWrite,
+                    weekdays: owner.weekdays,
+                    shouldBeEnabled: owner.shouldBeEnabled,
+                    isAdoption: true
+                )
+            )
+            report.alarmsWithNoRoutine.removeAll { $0 == candidate.label }
+        }
 
         // Recorded before anything is written, so from here on a routine's schedule is identified by
         // the link rather than by its days. That is what lets the days change without the routine
@@ -1400,11 +1437,13 @@ actor WhoopAdapter: DeviceAdapter {
             // Set equality, not `contains`. A Saturday and Sunday schedule contains the bent Saturday
             // and would drag Sunday with it.
             if let entry, entry.isBent, let bent = entry.bentTo, let day = entry.overrideDay?.weekday,
-               pair.weekdays == [day] {
+               Self.days(from: existing["scheduled_days"]) == [day] {
                 let bentRoutine = ResolvedTarget(
                     device: .whoop,
+                    // Its own single day, never the routine's whole week. Writing the routine's days
+                    // here would merge six schedules into one and take the split with it.
                     localTime: bent,
-                    weekdays: pair.weekdays,
+                    weekdays: [day],
                     dayShift: target.dayShift,
                     nextOccurrence: target.nextOccurrence,
                     utcOffsetSeconds: target.utcOffsetSeconds

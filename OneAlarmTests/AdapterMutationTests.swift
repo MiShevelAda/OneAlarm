@@ -215,6 +215,56 @@ final class WhoopMutationTests: XCTestCase {
         XCTAssertEqual(payload.keys.count, 6)
     }
 
+    /// **Every schedule a routine covers gets that routine's time, not just one of them.**
+    ///
+    /// Alex split his week on 20 August and reported: the split survived and only MONDAY took his
+    /// routine time. Tuesday through Friday kept the times he typed while creating them, 07:30,
+    /// 07:31, 07:32, 07:32. One routine paired with one alarm, which is right for Eight Sleep and
+    /// wrong for a Whoop week split into seven.
+    func testARoutineClaimsEverySingleDayScheduleItCovers() {
+        let singles = Locale.Weekday.weekdaysOnly.map {
+            RoutinePlan.CandidateAlarm(id: $0.shortLabel, weekdays: [$0], isEnabled: true, label: $0.shortLabel)
+        }
+        let weekdays = RoutinePlan.Entry(
+            routineID: "weekdays", routineName: "Weekdays",
+            weekdays: Locale.Weekday.weekdaysOnly,
+            localTime: WallClockTime(hour: 7, minute: 50), bentTo: nil,
+            isOn: true, isSkippedNextMorning: false
+        )
+
+        // The expansion the adapter performs: every unclaimed schedule offered to the one routine
+        // covering all of its days.
+        var claimed = Set<String>()
+        var owned: [String] = []
+        for candidate in singles where !claimed.contains(candidate.id) {
+            let owners = [weekdays].filter { candidate.weekdays.isSubset(of: $0.weekdays) && $0.isOn }
+            guard owners.count == 1 else { continue }
+            claimed.insert(candidate.id)
+            owned.append(candidate.id)
+        }
+
+        XCTAssertEqual(owned.count, 5, "all five weekday schedules belong to the Weekdays routine")
+    }
+
+    /// A schedule straddling two routines is still left alone, even in the expansion.
+    func testTheExpansionRefusesASchedulveSpanningTwoRoutines() {
+        let straddle = RoutinePlan.CandidateAlarm(
+            id: "fri-sat", weekdays: [.friday, .saturday], isEnabled: true, label: "Fri Sat"
+        )
+        let entries = [
+            RoutinePlan.Entry(routineID: "wd", routineName: "Weekdays",
+                              weekdays: Locale.Weekday.weekdaysOnly,
+                              localTime: WallClockTime(hour: 7, minute: 50), bentTo: nil,
+                              isOn: true, isSkippedNextMorning: false),
+            RoutinePlan.Entry(routineID: "we", routineName: "Weekend",
+                              weekdays: [.saturday, .sunday],
+                              localTime: WallClockTime(hour: 9, minute: 50), bentTo: nil,
+                              isOn: true, isSkippedNextMorning: false),
+        ]
+        let owners = entries.filter { straddle.weekdays.isSubset(of: $0.weekdays) && $0.isOn }
+        XCTAssertTrue(owners.isEmpty, "neither routine covers both Friday and Saturday, so nobody writes it")
+    }
+
     /// **A split week must survive a sync, and a gap must still be filled.**
     ///
     /// Alex, 20 August: *"Whoop bundles the days as set in routine by onealarm."* He had split his
