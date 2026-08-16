@@ -215,6 +215,33 @@ final class WhoopMutationTests: XCTestCase {
         XCTAssertEqual(payload.keys.count, 6)
     }
 
+    /// A deliberate one-off refusal is not reported as a mismatch.
+    ///
+    /// **From Alex's bed, 19 August.** His Whoop row read "Accepted, but it reads back as Mon 07:50
+    /// instead of Mon 09:36", in yellow, on a run where everything worked. A Whoop schedule carries
+    /// one time for all its days, so his one time change cannot go there without moving every
+    /// weekday morning, and the adapter refuses on purpose and writes the routine time. Verification
+    /// then compared the read-back against the bent target.
+    ///
+    /// Third round lost to the same shape: a write that deliberately differs from the target,
+    /// verified against the target anyway. `wroteInstead` is the general fix.
+    func testARefusedOneOffIsNotAMismatch() {
+        let refused = WriteReceipt(
+            device: .whoop, succeededAt: Date(), remoteID: "s1",
+            note: "Your one-off is not on the strap.",
+            wroteInstead: WallClockTime(hour: 7, minute: 50)
+        )
+        // Bent target: the strap was never meant to carry this.
+        XCTAssertEqual(refused.wroteInstead, WallClockTime(hour: 7, minute: 50))
+
+        // And a normal receipt carries nothing, so the target stays the yardstick.
+        let ordinary = WriteReceipt(
+            device: .whoop, succeededAt: Date(), remoteID: "s1", note: "Moved Weekdays."
+        )
+        XCTAssertNil(ordinary.wroteInstead,
+                     "only a write that intended a different time may redirect its own check")
+    }
+
     /// **His wake strategy is never substituted to get past an error.**
     ///
     /// The write ladder used to append a retry that replaced `alarm_mode` with `IN_THE_GREEN`

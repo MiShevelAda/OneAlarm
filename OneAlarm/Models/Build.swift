@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "19 Aug, 09:30 · you can delete the two invisible alarms"
+    static let marker = "19 Aug, 22:10 · Whoop stops calling a correct refusal a mismatch"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Connections, Eight Sleep: there is now a Delete them from the bed button under the two hidden alarms. They are already switched off, the Eight Sleep app will not list them, so this is the only place they can be removed from. It names both before it does anything."
+    static let whatIsNew = "Your one time change worked on the bed. The Whoop row was wrong to warn you: a Whoop schedule has one time for all its days, so a one-off cannot go there, and leaving the strap on the routine time is correct. It now says that instead of showing a yellow mismatch."
 }

@@ -105,13 +105,29 @@ struct WriteReceipt: Equatable, Sendable {
     /// could not be displayed.
     var highlights: [String] = []
 
+    /// The time the write **actually sent**, when that is deliberately not the target's time.
+    ///
+    /// **From Alex's bed, 19 August.** He set a one time change and his Whoop row read
+    /// *"Accepted, but it reads back as Mon 07:50 instead of Mon 09:36."* Nothing was wrong. A Whoop
+    /// schedule carries one time for all its days, so bending it would move every weekday morning
+    /// rather than one, and the adapter refuses on purpose and writes the routine time. Then `verify`
+    /// compared the read-back against the **bent** target and called the correct outcome a mismatch,
+    /// in yellow, discarding the sentence that explained it.
+    ///
+    /// Third time this exact shape has cost a round: a write that deliberately differs from the
+    /// target, verified against the target anyway. The Eight Sleep skip was the first two. So the
+    /// answer stops being a per-adapter patch: **a write that intends a different time says so here,
+    /// and verification honours it.**
+    var wroteInstead: WallClockTime?
+
     init(
         device: DeviceID,
         succeededAt: Date,
         remoteID: String?,
         note: String?,
         isPartial: Bool = false,
-        highlights: [String] = []
+        highlights: [String] = [],
+        wroteInstead: WallClockTime? = nil
     ) {
         self.device = device
         self.succeededAt = succeededAt
@@ -119,6 +135,7 @@ struct WriteReceipt: Equatable, Sendable {
         self.note = note
         self.isPartial = isPartial
         self.highlights = highlights
+        self.wroteInstead = wroteInstead
     }
 }
 

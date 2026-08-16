@@ -1390,8 +1390,19 @@ actor WhoopAdapter: DeviceAdapter {
         if !stillMissing.isEmpty, createProblems.isEmpty {
             note += " No Whoop schedule runs on \(stillMissing.joined(separator: " or ")). Make one in the Whoop app, any time, and OneAlarm keeps it from then on."
         }
+        // **What was actually written, when it deliberately is not the target's time.**
+        //
+        // From Alex's bed on 19 August: the refusal below worked perfectly and his row still read
+        // "Accepted, but it reads back as Mon 07:50 instead of Mon 09:36", in yellow, with this
+        // sentence thrown away. Verification was comparing the read-back against the bent target
+        // while the write had deliberately sent the routine time.
+        var wroteInstead: WallClockTime?
         if !oneOffSkipped.isEmpty {
             note += " Your one-off is not on the strap: a Whoop schedule has one time for all its days, so writing it would move every \(oneOffSkipped.joined(separator: " and ")) morning, not just the one. Your phone and your bed have it."
+            // The routine time for the schedule covering the next morning, which is what went out.
+            wroteInstead = plan.entries.first {
+                $0.isBent && !$0.weekdays.isDisjoint(with: target.weekdays)
+            }?.localTime
         }
         if !createProblems.isEmpty { note += " " + createProblems.joined(separator: " ") }
         if !failures.isEmpty { note += " " + failures.joined(separator: " ") }
@@ -1403,7 +1414,8 @@ actor WhoopAdapter: DeviceAdapter {
             // receipt naming any other would compare the wrong row against the wrong instant.
             remoteID: report.pairs.first { !$0.weekdays.isDisjoint(with: target.weekdays) }?.alarmID
                 ?? report.pairs[0].alarmID,
-            note: note
+            note: note,
+            wroteInstead: wroteInstead
         )
     }
 
@@ -1494,6 +1506,19 @@ actor WhoopAdapter: DeviceAdapter {
         guard let id = receipt.remoteID else {
             return .unavailable(reason: "Nothing was written, on purpose. See the note above.")
         }
+
+        // **A write that deliberately sent a different time is checked against that time.**
+        //
+        // Alex's row on 19 August read "Accepted, but it reads back as Mon 07:50 instead of Mon
+        // 09:36". Both numbers were right and the conclusion was wrong. His one time change cannot go
+        // on a Whoop schedule, because one schedule carries one time for all its days and bending it
+        // would move every weekday morning. So the adapter refuses on purpose and writes the routine
+        // time, and then this compared the result against the bent target and painted the correct
+        // outcome yellow, discarding the sentence explaining it.
+        //
+        // Third round lost to this exact shape. The fix is not another special case here: the write
+        // now records what it meant to send, and this honours it.
+        let expected = receipt.wroteInstead ?? target.localTime
         let schedules = try await fetchSchedules()
         guard let updated = schedules.first(where: { Self.scheduleID($0) == id }) else {
             return .unavailable(reason: "Whoop did not return the updated schedule.")
@@ -1508,9 +1533,15 @@ actor WhoopAdapter: DeviceAdapter {
         // here rather than half of it.
         let echoedOffset = target.utcOffsetString
 
-        guard echoed == target.localTime else {
+        guard echoed == expected else {
             let actual = Self.instant(matching: echoed, offset: echoedOffset, near: target.nextOccurrence)
             return .mismatch(expected: target.nextOccurrence, actual: actual ?? target.nextOccurrence)
+        }
+        // A refusal that landed exactly as intended is `unavailable`, not `confirmed`. Green next to
+        // a time he did not ask for would be its own small lie, and the note above says why the
+        // strap is where it is.
+        if receipt.wroteInstead != nil {
+            return .unavailable(reason: "Your strap is on the routine time, on purpose. See the note above.")
         }
         return .confirmed(at: target.nextOccurrence)
     }
