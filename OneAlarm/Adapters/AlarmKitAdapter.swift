@@ -144,15 +144,26 @@ actor AlarmKitAdapter: DeviceAdapter {
         // one never arrives, so the backstop that exists to always ring has been removed by our own
         // code. AlarmKit holds more than one alarm happily, so a moment of overlap costs nothing,
         // and a duplicate ring is a far better failure than silence.
+        // Whatever lands is recorded, **including when a later one fails**.
+        //
+        // The first version of this loop threw the moment `schedule` refused, before the map was
+        // persisted. AlarmKit documents `maximumLimitReached`, so refusing the third of four is a
+        // real outcome, and the first two would already be on his phone with nothing tracking them.
+        // Nothing could ever cancel them, every later write would add more, and duplicate alarms
+        // would pile up. That is the exact failure the legacy id migration a few lines above exists
+        // to prevent, reintroduced in the same commit that wrote it.
         var replaced: [UUID] = []
+        var refusal: String?
         for wanted in outcome.schedule {
             let id = UUID()
             do {
                 _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration(for: wanted))
             } catch let error as AlarmManager.AlarmError {
-                throw AdapterError.unexpectedResponse("AlarmKit refused the alarm: \(error).")
+                refusal = "AlarmKit refused an alarm: \(error)."
+                break
             } catch {
-                throw AdapterError.unexpectedResponse(error.localizedDescription)
+                refusal = error.localizedDescription
+                break
             }
             if let previous = held[wanted.key] { replaced.append(previous) }
             held[wanted.key] = id
@@ -165,7 +176,16 @@ actor AlarmKitAdapter: DeviceAdapter {
             if let id = held.removeValue(forKey: key) { try? AlarmManager.shared.cancel(id: id) }
         }
 
+        // Persisted before the refusal is raised, never after.
         alarmIDs = held
+
+        if let refusal {
+            // Named as partial rather than total. Some mornings may well be armed, and telling him
+            // nothing was set when something was is its own kind of wrong.
+            throw AdapterError.unexpectedResponse(
+                "\(refusal) \(held.count) of \(outcome.schedule.count) alarms are set."
+            )
+        }
         authState = .connected
 
         // The id `verify` reads back is the one covering the morning the target is for, so the
