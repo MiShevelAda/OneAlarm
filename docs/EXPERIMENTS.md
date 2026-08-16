@@ -1139,6 +1139,45 @@ no raw block at all.
 
 
 
+## E28 🟢 The cleanup can be tested without waiting for the morning
+
+**Found 19 August while writing Alex a test plan, and it removes a day from every one-off
+experiment on this project.**
+
+`E20` (does the DELETE work) and the cleanup half of `E25` were both written as "needs the next
+morning", because the override alarm is swept once its morning is behind. Alex asked to test
+everything the same day, which forced the question of whether the wait is actually load bearing.
+
+It is not. The sweep works from `living`:
+
+```swift
+let living = Set(entries.map(\.routineID)).union(oneOffKeys)
+```
+
+and `oneOffKeys` is populated **only** from the overrides in the current plan. So the key stops being
+live in exactly two situations, and the sweep cannot tell them apart:
+
+1. the morning passes and `RulesEngine` stops emitting the override
+2. **he presses Undo**, and `ScheduleStore.clearOverride()` sets `schedule.override = nil`
+
+Same key absent, same orphan, same provenance check, same DELETE. **Cancelling an override tests the
+entire cleanup path in one minute**, including the unconfirmed DELETE endpoint.
+
+**What waiting still buys, and it is exactly one thing.** Whether *Eight Sleep* clears a fired
+one-shot by itself. That needs a real firing and nothing else answers it. It is now reported rather
+than swallowed, so the run after a firing says which happened.
+
+| Question | Needs a morning |
+|---|---|
+| Does the create land, and is the week untouched | no |
+| Does `DELETE /v1/users/{id}/alarms/{id}` work, `E20` | **no**, press Undo |
+| Does OneAlarm remove its own override | **no**, press Undo |
+| Does Eight Sleep clear a fired one-shot itself | yes, or a one-off set 20 minutes ahead |
+
+**The rule underneath.** A test was described as needing a wait because the *feature* involves time,
+not because the *code path* does. Before writing "needs the next morning" into an experiment, check
+which input actually gates it. Two experiments carried that wait for a day and neither needed it.
+
 ## E27 🔴 Does the Autopilot resource carry the one time change?
 
 **The first candidate endpoint this project has had, rather than another guess at a field name.**
