@@ -212,10 +212,10 @@ struct OnboardingView: View {
                 }
                 .padding(.top, 4)
 
-                Notice(title: "OneAlarm moves alarms you already have.",
+                Notice(title: "OneAlarm owns when you wake. Your devices own how.",
                        device == .whoop
                        ? "It changes the time on your smart alarm schedule and leaves the wake mode you chose alone. It never creates one and never deletes one."
-                       : "It matches each of your routines to the alarm that already runs on the same days, and changes only that alarm's time. Days, vibration and thermal stay exactly as you set them. It never creates one and never deletes one.")
+                       : "Each of your routines drives one alarm on your bed. OneAlarm sets its time, its days and whether it is on, and makes one if a routine has none. Temperature, vibration and level stay exactly as you set them in the Eight Sleep app, and nothing is ever deleted.")
 
                 if device == .eightSleep {
                     Notice(.warn, title: "Set your alarms up in the Eight Sleep app first.",

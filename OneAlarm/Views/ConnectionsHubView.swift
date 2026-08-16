@@ -155,9 +155,9 @@ struct EightSleepLinkView: View {
 
                 VStack(alignment: .leading, spacing: 7) {
                     Text("Before you start").themeLabel(.white)
-                    Text("Set up your alarms in the Eight Sleep app first")
+                    Text("You need at least one alarm in the Eight Sleep app")
                         .font(.system(size: 21, weight: .semibold)).tracking(-0.4)
-                    Text("One per routine, on the days you want. Any time will do, OneAlarm sets the times.")
+                    Text("Any time, any days. OneAlarm copies its vibration and thermal settings when it makes the others.")
                         .font(.system(size: 15)).foregroundStyle(.white.opacity(0.82))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -166,10 +166,10 @@ struct EightSleepLinkView: View {
                             in: RoundedRectangle(cornerRadius: Theme.radiusCard, style: .continuous))
 
                 Text("Why it works this way").font(.system(size: 19, weight: .semibold))
-                Text("OneAlarm matches each of your routines to the alarm that already runs on the same days, and changes only that alarm's time. Days, vibration, thermal and the on switch stay exactly as you set them, because it never has to guess what they should be.")
+                Text("Each of your routines drives one alarm on your bed. OneAlarm sets its time, its days and whether it is on, and makes one if a routine has none. Temperature, vibration, level and pattern are read from Eight Sleep and handed straight back untouched, because it never has to guess what they should be. Nothing is ever deleted.")
                     .font(.system(size: 15)).foregroundStyle(Theme.grey)
 
-                Notice("If you wake at one time Monday to Friday and another at the weekend, you want two alarms there with those days. OneAlarm will drive both.")
+                Notice("One is enough. OneAlarm creates the rest from it, one per routine, rather than asking you to build them by hand.")
             }
         } footer: {
             SolidButton(title: "I have an alarm set") { stage = .credentials }
