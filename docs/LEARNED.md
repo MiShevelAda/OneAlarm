@@ -45,6 +45,14 @@ where the work was.
 **Test at the layer the user sees.** `[observed]` A written file is not a scheduled alarm. A 200 is
 not a moved alarm. A moved alarm on a server is not a buzzing strap. Each of those gaps was real.
 
+**Ask what the object is, not just what is in it.** `[16 Aug]` Three separate conclusions were
+drawn from missing fields: Whoop's names did not exist, Eight Sleep did not name beds, alarms could
+not be attributed to a Pod. All three were wrong, and all three were the same error: **absence in
+one object is not absence anywhere.** The fix each time was to find the object that does carry the
+fact, and twice it existed in an endpoint nobody had called. The third time the honest answer was
+better still: the field was missing because the **relationship does not exist**, and the question
+had to be rephrased rather than answered.
+
 ## 2. Method: what did not work
 
 **Trusting a write-up that claimed to be a capture.** `[observed, twice]` The reference project
@@ -176,3 +184,8 @@ See `docs/RESEARCH.md` for the full record. The short version, with evidence mar
 | AlarmKit offers only `.never` and `.weekly`, no start date | `[documented]` and relied on |
 | AlarmKit alarms belong to the app; iOS Clock and Health sleep alarms are unreachable | `[observed]` two alarms ring on one phone |
 | The iPhone alarm rings through Silent and Focus, locked | `[observed]` 16 Aug, 01:00 |
+| Eight Sleep alarms are **user scoped**, not bed scoped. One list per account, firing on the Pod the account is currently assigned to | `[observed]` + `[code]`, 16 Aug |
+| The Pod's name and the user's side come from `client-api/v1/users/me` and `app-api/v1/household/users/{id}/summary` | `[observed]` 16 Aug: returned "Züri, left side" on a live account |
+| `/v1/devices/{id}` carries a model, a serial and a firmware version, and **no name** | `[observed]` in two public captures |
+| An alarm's `tags` holds a `routine-<uuid>`, linking it to a bedtime pairing, **not to a Pod** | `[observed]` 16 Aug |
+| Eight Sleep's smart alarm has **no window length field anywhere in the API** | `[observed]`. The 30 minutes came from a sentence in their UI |
