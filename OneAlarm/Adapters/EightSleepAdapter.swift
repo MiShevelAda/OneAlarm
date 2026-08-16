@@ -904,7 +904,10 @@ actor EightSleepAdapter: DeviceAdapter {
                     } else {
                         attempts.append("routine \(hostID.prefix(8)): accepted")
                         created.append(entry.routineName)
-                        createNotes.append("Added the \(entry.routineName) alarm to a routine that already runs on those days, so it shows up in the Eight Sleep app.")
+                        // No id comes back from this path, so there is no link to record and nothing
+                        // to verify this run. The next sync finds it by its days, adopts it, and
+                        // records the link then. Saying that out loud beats a silent gap.
+                        createNotes.append("Added the \(entry.routineName) alarm inside a routine that already runs on those days, so the Eight Sleep app shows it. OneAlarm picks it up as its own on the next sync.")
                         continue
                     }
                 }
@@ -966,7 +969,11 @@ actor EightSleepAdapter: DeviceAdapter {
             report.routinesWithNoAlarm.removeAll { created.contains($0) }
         }
 
-        guard !report.pairs.isEmpty else {
+        // `created` counts too. An alarm added inside a routine through `alarmsToCreate` comes back
+        // with no id of its own, so it produces no pair this run, and without this clause a create
+        // that worked would be thrown as "no alarm on your bed covers Weekend" one line after
+        // succeeding. It is picked up by day set adoption on the next sync and linked then.
+        guard !report.pairs.isEmpty || !created.isEmpty else {
             throw AdapterError.noMatchingDays(
                 routines: report.routinesWithNoAlarm,
                 alarms: described.filter { !$0.weekdays.isEmpty }.map(\.label)
@@ -1096,7 +1103,7 @@ actor EightSleepAdapter: DeviceAdapter {
             }
         }
 
-        guard failures.count < report.pairs.count else {
+        guard failures.isEmpty || failures.count < report.pairs.count else {
             throw AdapterError.unexpectedResponse("Every routine failed to write: \(failures.joined(separator: ", ")).")
         }
 
