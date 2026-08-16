@@ -72,6 +72,52 @@ intent: no alarm tomorrow, routine intact, back to normal the day after. It is w
 like, and it needs to be one gesture from the main screen, because the alternative is disabling the
 routine and forgetting to re-enable it, which is the oversleep this whole document keeps circling.
 
+## Adopt Apple's model, which is the same idea with one concept instead of three
+
+> *"What about doing it like Apple is doing? So we just have their routine. And then if we change the
+> alarm, it will prompt, show we changed the entire routine or just for the next day. And this way we
+> can keep the screen clean and still have it in the background working. And of course displayed in
+> the main screen that this routine was not changed, only the one day alarm."*
+
+Alex, 2026-08-16, after sending screenshots of iOS Health, Sleep, Change Wake Up. Apple's own prompt:
+
+> **Would you like to apply this change to all weekdays in this schedule?**
+> **Change Next Alarm Only** · **Change This Schedule**
+
+**Adopt it.** It is the same design the team arrived at, with one concept instead of three, from the
+most tested alarm interface in existence. He already knows the gesture. There is no screen to teach.
+
+Three amendments, each small:
+
+**Name the date.** Apple's weak spot is "Next Alarm Only", which does not say which morning. That
+exact ambiguity cost a ring test at 01:00 on a Sunday, when a weekday alarm correctly did not fire
+and read as a broken app. Ours says `Just tomorrow, Saturday 16 August` and `Every weekend, from now
+on`.
+
+**Put the same prompt on the off switch.** Apple has none, so skipping a day means turning the alarm
+off and remembering to turn it back on, which is the oversleep this project keeps designing against.
+The same question on the toggle covers the third verb and removes a button from the main screen.
+
+**The standing line, which is his and is load bearing.** While an override is live the main screen
+says what it did and **when it ends**: `Tomorrow only, 10:00. Your weekend routine is still 10:30 and
+returns on Sunday.` Without it a bent day and a changed routine look identical, and the difference is
+discovered on Sunday.
+
+### What this costs, stated rather than glossed
+
+**The surface simplifies; the machinery does not.** Apple can offer "next alarm only" cheaply because
+it owns the alarm. One night on the bed means change it, then put it back after it fires, so the
+restore tasks survive intact behind a cleaner screen.
+
+**Whoop cannot do it at all.** Its one-off requires disabling the recurring schedule, and a failed
+re-enable leaves the real alarm silently off. So the override moves the phone and the bed and leaves
+the strap on its routine, saying so on that line. One missed early wrist buzz is the cheapest failure
+available here.
+
+**The shape is borrowed, not the data.** OneAlarm cannot read the iOS sleep schedule, so he keeps two:
+Apple's with its alarm switched off, and this one. Matching the model at least stops them being two
+different ideas.
+
 ## The phone is the one leg OneAlarm does not move, and the app claims otherwise
 
 > *"Right now, what rings whenever I set an iPhone is an additional alarm and not the actual
