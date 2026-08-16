@@ -1,0 +1,819 @@
+<title>Tonight, Stated</title>
+<style>
+  /* ---------------------------------------------------------------- tokens
+     The phone screen is a device screen: it is dark in every theme, because it
+     is a picture of a thing rather than a surface the reader is standing on.
+     Only the page around it responds to the viewer's theme. */
+  :root {
+    --page: #F2F1EE;
+    --page-2: #E7E5E0;
+    --ink: #16181C;
+    --ink-soft: #5C6068;
+    --rule: rgba(20, 22, 28, 0.12);
+
+    /* Device screen. Fixed, from OneAlarm/Design/Theme.swift. */
+    --scr: #05070D;
+    --card: #0D1119;
+    --card-2: #141A25;
+    --line: rgba(255, 255, 255, 0.09);
+    --dim: #B8C0C3;
+    --white: #F5F7F8;
+
+    --ok: #00F19F;      /* Whoop teal. Confirmed. */
+    --warn: #FFDE00;    /* Saved, unverified. */
+    --bad: #FF0026;     /* Refused, nothing armed. */
+
+    --cool: #2E7FD4;    /* dawn ramp: Eight Sleep */
+    --mid: #6E74D8;     /*            Whoop */
+    --warm: #F4643C;    /*            iPhone */
+
+    --num: 'DIN Alternate', 'DIN Alternate Bold', 'Avenir Next Condensed',
+           'Arial Narrow', system-ui, sans-serif;
+    --ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page: #0B0C10;
+      --page-2: #131519;
+      --ink: #ECEEF1;
+      --ink-soft: #9AA0A8;
+      --rule: rgba(255, 255, 255, 0.14);
+    }
+  }
+  :root[data-theme="dark"] {
+    --page: #0B0C10;
+    --page-2: #131519;
+    --ink: #ECEEF1;
+    --ink-soft: #9AA0A8;
+    --rule: rgba(255, 255, 255, 0.14);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--ui);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 24px 72px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 390px;
+    gap: 48px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+    .phone-col { order: -1; }
+  }
+
+  /* ---------------------------------------------------------------- page side */
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0 0 10px;
+  }
+  h1 {
+    font-family: var(--num);
+    font-size: clamp(34px, 5vw, 52px);
+    line-height: 1.02; margin: 0 0 14px; text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+  .lede { font-size: 17px; color: var(--ink-soft); max-width: 60ch; margin: 0 0 30px; }
+  h2 {
+    font-size: 13px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-soft); margin: 34px 0 12px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--rule);
+  }
+  p { max-width: 62ch; }
+  .note { font-size: 13.5px; color: var(--ink-soft); }
+  code {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.88em;
+    background: var(--page-2); padding: 1px 5px; border-radius: 4px;
+  }
+
+  .scenarios { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+  .scen {
+    font: inherit; font-size: 13px; font-weight: 600;
+    background: var(--page-2); color: var(--ink); border: 1px solid var(--rule);
+    padding: 8px 13px; border-radius: 999px; cursor: pointer;
+  }
+  .scen:hover { border-color: var(--ink-soft); }
+  .scen[aria-pressed="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+  .scen:focus-visible { outline: 2px solid var(--mid); outline-offset: 2px; }
+
+  .legend { display: grid; gap: 10px; margin-top: 6px; }
+  .legend div { display: grid; grid-template-columns: 92px 1fr; gap: 12px; font-size: 13.5px; }
+  .legend dt, .legend b {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft); padding-top: 3px;
+  }
+
+  /* ---------------------------------------------------------------- phone */
+  .phone-col { position: sticky; top: 32px; }
+  @media (max-width: 900px) { .phone-col { position: static; } }
+
+  .phone {
+    width: 100%; max-width: 390px; margin: 0 auto;
+    background: var(--scr); color: var(--white);
+    border-radius: 42px; padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.42);
+  }
+  .screen {
+    background: var(--scr); border-radius: 31px; overflow: hidden;
+    height: 748px; position: relative; display: flex; flex-direction: column;
+  }
+  .statusbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 22px 6px; font-size: 13px; font-weight: 600; color: var(--white);
+    flex: none;
+  }
+  .appbar {
+    text-align: center; font-size: 12px; font-weight: 700; letter-spacing: 0.2em;
+    color: var(--dim); padding: 4px 0 12px; flex: none;
+  }
+  .body {
+    flex: 1; overflow-y: auto; padding: 0 18px 12px;
+    scrollbar-width: none;
+  }
+  .body::-webkit-scrollbar { display: none; }
+
+  /* header block */
+  .datehead {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.16em; color: var(--dim);
+    text-transform: uppercase;
+  }
+  .bigtime {
+    font-family: var(--num); font-size: 76px; line-height: 0.95;
+    letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+    background: none; border: 0; color: var(--white); padding: 4px 0 0;
+    cursor: pointer; display: block; text-align: left; font-weight: 700;
+  }
+  .bigtime:focus-visible { outline: 2px solid var(--mid); outline-offset: 4px; border-radius: 8px; }
+  .subhead { font-size: 14px; color: var(--dim); margin-top: 2px; }
+  .zoneline { font-size: 13px; color: var(--warn); margin-top: 6px; }
+  .negative {
+    font-family: var(--num); font-size: 26px; line-height: 1.15; margin: 8px 0 4px;
+    font-weight: 700;
+  }
+
+  /* device rail */
+  .railhead {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--dim); margin: 22px 0 10px;
+  }
+  .row {
+    display: grid; grid-template-columns: 4px 1fr; gap: 13px;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 13px 15px 14px; margin-bottom: 9px;
+  }
+  .rail { border-radius: 2px; }
+  .r-es .rail { background: var(--cool); }
+  .r-wh .rail { background: var(--mid); }
+  .r-ip .rail { background: var(--warm); }
+  .r-top { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+  .r-time {
+    font-family: var(--num); font-size: 25px; font-weight: 700;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .r-name { font-size: 14px; font-weight: 700; }
+  .loud {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; padding: 2px 6px;
+    border-radius: 4px; background: rgba(244, 100, 60, 0.18); color: var(--warm);
+  }
+  .r-say { font-size: 12.5px; line-height: 1.45; color: var(--dim); margin-top: 5px; }
+  .r-say b { color: var(--ok); font-weight: 600; }
+  .r-say .w { color: var(--warn); font-weight: 600; }
+  .r-say .b { color: var(--bad); font-weight: 600; }
+  .r-extra { font-size: 11.5px; color: #6E767E; margin-top: 4px; }
+
+  /* different about tomorrow */
+  .diff {
+    border: 1px solid rgba(255, 222, 0, 0.35); background: rgba(255, 222, 0, 0.07);
+    border-radius: 14px; padding: 12px 14px; margin: 4px 0 10px;
+  }
+  .diff h4 {
+    margin: 0 0 6px; font-size: 10.5px; letter-spacing: 0.13em; text-transform: uppercase;
+    color: var(--warn);
+  }
+  .diff p { margin: 0; font-size: 12.5px; color: var(--dim); }
+
+  /* thumb targets */
+  .thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0 10px; }
+  .thumb {
+    height: 64px; border-radius: 16px; border: 1px solid var(--line);
+    background: var(--card-2); color: var(--white);
+    font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  }
+  .thumb span { font-family: var(--num); font-size: 20px; font-weight: 700; }
+  .thumb:hover { border-color: rgba(255, 255, 255, 0.3); }
+  .thumb:focus-visible { outline: 2px solid var(--mid); outline-offset: 2px; }
+
+  .actions { display: flex; gap: 8px; margin-bottom: 12px; }
+  .btn {
+    flex: 1; padding: 12px; border-radius: 13px; font: inherit; font-size: 13px; font-weight: 700;
+    cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--white);
+  }
+  .btn.solid { background: var(--white); color: #06070B; border-color: var(--white); }
+  .btn:focus-visible { outline: 2px solid var(--mid); outline-offset: 2px; }
+  .btn[disabled] { opacity: 0.38; cursor: default; }
+
+  /* closing statement */
+  .close {
+    border-radius: 16px; padding: 13px 15px; font-size: 13px; font-weight: 600;
+    display: flex; gap: 10px; align-items: flex-start; margin-bottom: 6px;
+  }
+  .close .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; margin-top: 5px; }
+  .close.green { background: rgba(0, 241, 159, 0.1); color: var(--ok); }
+  .close.green .dot { background: var(--ok); }
+  .close.amber { background: rgba(255, 222, 0, 0.1); color: var(--warn); }
+  .close.amber .dot { background: var(--warn); }
+  .close.red { background: rgba(255, 0, 38, 0.14); color: #FF5C77; }
+  .close.red .dot { background: var(--bad); }
+
+  /* sheets */
+  .sheet {
+    position: absolute; inset: 0; background: rgba(3, 5, 10, 0.72);
+    display: flex; align-items: flex-end; z-index: 5;
+  }
+  .sheet[hidden] { display: none; }
+  .sheet-in {
+    background: #10141D; width: 100%; border-radius: 26px 26px 31px 31px;
+    padding: 20px 18px 18px; border-top: 1px solid var(--line); max-height: 92%; overflow-y: auto;
+  }
+  .sheet-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--dim); text-align: center; margin-bottom: 14px;
+  }
+  .wheel {
+    font-family: var(--num); font-size: 54px; font-weight: 700; text-align: center;
+    font-variant-numeric: tabular-nums; margin: 6px 0 4px;
+  }
+  .nudge { display: flex; gap: 8px; justify-content: center; margin-bottom: 16px; }
+  .nudge button {
+    width: 74px; height: 44px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--card-2); color: var(--white); font: inherit; font-weight: 700;
+    font-family: var(--num); font-size: 19px; cursor: pointer;
+  }
+  .choice {
+    width: 100%; text-align: left; padding: 14px 16px; border-radius: 14px;
+    font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; margin-bottom: 8px;
+    border: 1px solid var(--line); background: var(--card-2); color: var(--white);
+  }
+  .choice.primary { background: var(--white); color: #06070B; border-color: var(--white); }
+  .choice small { display: block; font-weight: 500; font-size: 12px; opacity: 0.72; margin-top: 3px; }
+  .choice:focus-visible { outline: 2px solid var(--mid); outline-offset: 2px; }
+  .honesty {
+    font-size: 12px; color: var(--dim); border-top: 1px solid var(--line);
+    padding-top: 11px; margin-top: 4px;
+  }
+
+  /* red takeover */
+  .takeover {
+    position: absolute; inset: 0; background: #16040A; z-index: 6;
+    display: flex; flex-direction: column; justify-content: center; padding: 30px 24px;
+  }
+  .takeover[hidden] { display: none; }
+  .takeover h3 {
+    font-family: var(--num); font-size: 34px; line-height: 1.05; margin: 0 0 14px; color: #FF5C77;
+    font-weight: 700;
+  }
+  .takeover p { font-size: 14px; color: var(--dim); margin: 0 0 24px; }
+
+  /* toast */
+  .toast {
+    position: absolute; left: 16px; right: 16px; bottom: 18px; z-index: 7;
+    background: #1B2130; border: 1px solid var(--line); border-radius: 14px;
+    padding: 12px 14px; display: flex; align-items: center; gap: 12px;
+    font-size: 12.5px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  }
+  .toast[hidden] { display: none; }
+  .toast span { flex: 1; color: var(--dim); }
+  .toast button {
+    font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ok);
+    background: none; border: 0; cursor: pointer; padding: 2px 4px;
+  }
+
+  .tabs { display: flex; gap: 6px; padding: 0 18px 14px; flex: none; }
+  .tab {
+    flex: 1; font: inherit; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; padding: 9px 4px; border-radius: 10px;
+    border: 1px solid var(--line); background: transparent; color: var(--dim); cursor: pointer;
+  }
+  .tab[aria-selected="true"] { background: var(--card-2); color: var(--white); }
+
+  /* week + devices views */
+  .rcard {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 14px 15px; margin-bottom: 10px;
+  }
+  .rcard h5 { margin: 0 0 3px; font-size: 13px; font-weight: 700; }
+  .rcard .t { font-family: var(--num); font-size: 30px; font-weight: 700; }
+  .days { display: flex; gap: 5px; margin-top: 9px; }
+  .day {
+    width: 33px; height: 33px; border-radius: 9px; font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line); background: transparent; color: #5D666F;
+  }
+  .day.on { background: var(--white); color: #06070B; border-color: var(--white); }
+  .kv { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; padding: 7px 0; }
+  .kv + .kv { border-top: 1px solid var(--line); }
+  .kv span:first-child { color: var(--dim); }
+</style>
+
+<div class="wrap">
+  <main>
+    <p class="eyebrow">OneAlarm · interactive prototype · 16 August 2026</p>
+    <h1>Tonight, Stated</h1>
+    <p class="lede">
+      The old screen made you author a schedule every time you opened it: seven day chips, a time,
+      a Set button. This one states what will happen tomorrow morning and lets you bend it. Tap the
+      big time. Try the scenarios. Everything on the phone is live.
+    </p>
+
+    <h2>Scenarios</h2>
+    <div class="scenarios" id="scenarios"></div>
+    <p class="note" id="scen-note"></p>
+
+    <h2>What changed, and why</h2>
+    <div class="legend">
+      <div><b>The day</b><span>
+        Every screen names the date. A weekday alarm tested at 01:00 on a Sunday did not ring, was
+        correct, and read as a broken app, because the screen said 08:00 and nothing else.
+      </span></div>
+      <div><b>Three verbs</b><span>
+        Change the routine, bend one date, skip one date. Tapping the time asks which. An override is
+        keyed to <em>a date</em>, so moving Saturday leaves Sunday and next Saturday alone.
+      </span></div>
+      <div><b>Skip is one tap</b><span>
+        Because the alternative is switching a routine off and forgetting, which is the oversleep
+        every other rule here exists to prevent. It expires by itself.
+      </span></div>
+      <div><b>Sentences</b><span>
+        Not green ticks. A tick meant "the server returned 200", and it took most of a night to learn
+        how little that is worth. Only the phone may say <em>will ring</em>. Only an absolute instant
+        from a server may say <em>confirmed</em>. Whoop says <em>saved</em>, permanently.
+      </span></div>
+      <div><b>Ranges</b><span>
+        Eight Sleep's smart alarm fires in the 30 minutes before; Whoop's in the 60 minutes before.
+        Drawing either as a single time is a lie about the one thing this app exists to tell you.
+      </span></div>
+      <div><b>Refusals</b><span>
+        A leg that cannot be written says what it <em>still holds</em>, so the failure is a known
+        time rather than an unknown one.
+      </span></div>
+    </div>
+
+    <h2>Status</h2>
+    <p class="note">
+      This is run one of the design team: 39 agents, 7 personas, 59 scenarios, 60 uncovered cases,
+      3 rounds. It did <strong>not</strong> reach consensus. 19 of 21 persona votes were no, and 8
+      disagreements stand unresolved in <code>docs/SETTINGS.md</code>. A second run is attacking it
+      now, including one adversary arguing the whole thing is too complex. Expect this to move.
+    </p>
+  </main>
+
+  <div class="phone-col">
+    <div class="phone">
+      <div class="screen">
+        <div class="statusbar"><span id="clock">23:41</span><span>􀙇 􀛨 100</span></div>
+        <div class="appbar">ONEALARM</div>
+
+        <div class="tabs">
+          <button class="tab" data-view="tonight" aria-selected="true">Tonight</button>
+          <button class="tab" data-view="week" aria-selected="false">My week</button>
+          <button class="tab" data-view="devices" aria-selected="false">Devices</button>
+        </div>
+
+        <div class="body" id="view"></div>
+
+        <div class="sheet" id="sheet" hidden></div>
+        <div class="takeover" id="takeover" hidden></div>
+        <div class="toast" id="toast" hidden></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  // Saturday 16 August 2026. Fixed, because a prototype that drifts with the
+  // reader's clock cannot be talked about.
+  var state = {
+    scenario: 'normal',
+    dateLabel: 'SATURDAY 16 AUGUST',
+    routine: 'Weekend routine',
+    minutes: 630,        // 10:30
+    baseMinutes: 630,
+    overridden: false,
+    skipped: false,
+    nap: null,
+    view: 'tonight'
+  };
+
+  var SCEN = [
+    ['normal', 'Everything works',
+     'Three legs, all reporting. The bed is confirmed against an absolute instant, the strap is only saved, the phone is armed locally.'],
+    ['foreign', 'Changed in the Whoop app',
+     'She set 05:00 on Whoop for an early flight. OneAlarm noticed rather than overwriting it. This case already destroyed a real schedule once.'],
+    ['refused', 'Whoop sign-in lapsed',
+     'The write was refused. The row says what the strap still holds, so the failure is a known time rather than an unknown one. No password field at night.'],
+    ['zones', 'Phone changed country',
+     'The bed stayed in Zurich, the phone and strap travelled. Every clock carries its zone and its date, and nothing is rewritten without a tap.'],
+    ['nothing', 'Nothing will wake you',
+     'Alarm permission was revoked in Settings after being granted. This is the only full screen takeover in the app, and dismissing it is written down.']
+  ];
+
+  function hhmm(m) {
+    m = ((m % 1440) + 1440) % 1440;
+    var h = Math.floor(m / 60), mm = m % 60;
+    return (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm;
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* -------------------------------------------------------------- scenarios */
+  var bar = $('scenarios');
+  SCEN.forEach(function (s) {
+    var b = document.createElement('button');
+    b.className = 'scen';
+    b.type = 'button';
+    b.textContent = s[1];
+    b.setAttribute('aria-pressed', s[0] === state.scenario ? 'true' : 'false');
+    b.addEventListener('click', function () {
+      state.scenario = s[0];
+      state.skipped = false;
+      state.overridden = false;
+      state.nap = null;
+      state.minutes = state.baseMinutes;
+      state.view = 'tonight';
+      if (s[0] === 'nothing') { showTakeover(); } else { $('takeover').hidden = true; }
+      if (s[0] === 'foreign') { showDiff(); } else { $('sheet').hidden = true; }
+      render();
+    });
+    bar.appendChild(b);
+  });
+
+  function syncScenarios() {
+    var kids = bar.querySelectorAll('.scen');
+    SCEN.forEach(function (s, i) {
+      kids[i].setAttribute('aria-pressed', s[0] === state.scenario ? 'true' : 'false');
+    });
+    for (var i = 0; i < SCEN.length; i++) {
+      if (SCEN[i][0] === state.scenario) { $('scen-note').textContent = SCEN[i][2]; }
+    }
+  }
+
+  /* -------------------------------------------------------------- tabs */
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
+    t.addEventListener('click', function () {
+      state.view = t.dataset.view;
+      render();
+    });
+  });
+
+  /* -------------------------------------------------------------- rows */
+  function deviceRows() {
+    var m = state.minutes;
+    var rows = [];
+
+    var esFrom = hhmm(m - 40), esTo = hhmm(m - 10);
+    rows.push({
+      cls: 'r-es', time: esFrom + ' to ' + esTo, name: 'Eight Sleep',
+      say: state.scenario === 'zones'
+        ? '<b>confirmed</b> for Sat ' + esTo + ' <em>Zurich</em>, read back 23:41. Your bed stayed home.'
+        : '<b>confirmed</b> for Sat ' + esTo + ' Zurich, read back 23:41.',
+      extra: 'Vibration level 3, thermal rise on. Change these in the Eight Sleep app.'
+    });
+
+    var whSay;
+    if (state.scenario === 'refused') {
+      whSay = '<span class="b">Refused: sign in again.</span> Still holds 10:25, so your wrist buzzes at 10:25 anyway.';
+    } else if (state.scenario === 'foreign') {
+      whSay = '<span class="w">Holds 05:00, which OneAlarm did not write.</span> Nothing sent. Decide below.';
+    } else {
+      whSay = '<span class="w">saved</span> 23:41. Holds Zurich time. Your strap takes it at its next sync.';
+    }
+    rows.push({
+      cls: 'r-wh', time: 'by ' + hhmm(m - 5), name: 'Whoop', say: whSay,
+      extra: 'Smart alarm, so it may buzz any time in the hour before.'
+    });
+
+    rows.push({
+      cls: 'r-ip', time: hhmm(m), name: 'iPhone', loud: true,
+      say: '<b>armed on this phone.</b> Rings through Silent and Focus.',
+      extra: state.scenario === 'zones'
+        ? 'Armed for 10:30 here, which is 10:30 Zurich. Both are Saturday.' : ''
+    });
+
+    return rows;
+  }
+
+  function closing() {
+    if (state.skipped) {
+      return ['amber', 'No alarm tomorrow, and that was on purpose. Your phone is not armed. ' +
+        'Your bed and strap still hold their routine times.'];
+    }
+    if (state.scenario === 'refused') {
+      return ['amber', 'Your phone will ring at ' + hhmm(state.minutes) +
+        '. Whoop was not reached, and still holds 10:25.'];
+    }
+    if (state.scenario === 'foreign') {
+      return ['amber', 'Your phone will ring at ' + hhmm(state.minutes) +
+        '. Whoop holds a time OneAlarm did not write.'];
+    }
+    return ['green', 'Your phone will ring at ' + hhmm(state.minutes) +
+      ' on Saturday 16 August. Both other devices agree.'];
+  }
+
+  /* -------------------------------------------------------------- render */
+  function render() {
+    syncScenarios();
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
+      t.setAttribute('aria-selected', t.dataset.view === state.view ? 'true' : 'false');
+    });
+
+    if (state.view === 'week') { return renderWeek(); }
+    if (state.view === 'devices') { return renderDevices(); }
+    renderTonight();
+  }
+
+  function renderTonight() {
+    var h = '';
+    h += '<p class="datehead">' + state.dateLabel + '</p>';
+
+    if (state.skipped) {
+      h += '<p class="negative">No alarm tomorrow,<br>Saturday 16 August.</p>';
+      h += '<p class="subhead">You skipped it at 23:41. Next alarm Sunday 17 August, 10:30.</p>';
+    } else if (state.nap) {
+      h += '<button class="bigtime" id="tap">' + state.nap + '</button>';
+      h += '<p class="subhead">Nap, phone only, ends in 90 minutes. Your morning alarm is untouched.</p>';
+    } else {
+      h += '<button class="bigtime" id="tap">' + hhmm(state.minutes) + '</button>';
+      h += '<p class="subhead">in 10h 48m · ' + state.routine +
+           (state.overridden ? ' · moved for this date only' : '') + '</p>';
+      if (state.scenario === 'zones') {
+        h += '<p class="zoneline">10:30 Zurich, Sat &nbsp;·&nbsp; 04:30 here, Sat</p>';
+      }
+    }
+
+    if (!state.skipped) {
+      h += '<p class="railhead">Who wakes you, in order</p>';
+      deviceRows().forEach(function (r) {
+        h += '<div class="row ' + r.cls + '"><div class="rail"></div><div>';
+        h += '<div class="r-top"><span class="r-time">' + r.time + '</span>';
+        h += '<span class="r-name">' + r.name + '</span>';
+        if (r.loud) { h += '<span class="loud">LOUD</span>'; }
+        h += '</div><p class="r-say">' + r.say + '</p>';
+        if (r.extra) { h += '<p class="r-extra">' + r.extra + '</p>'; }
+        h += '</div></div>';
+      });
+    }
+
+    if (state.overridden) {
+      h += '<div class="diff"><h4>Different about tomorrow</h4>' +
+           '<p>Saturday only is at ' + hhmm(state.minutes) + ' instead of ' +
+           hhmm(state.baseMinutes) + '. Sunday is untouched, and next Saturday is back to ' +
+           hhmm(state.baseMinutes) + '.</p></div>';
+    }
+
+    h += '<div class="thumbs">';
+    h += '<button class="thumb" data-act="skip">' + (state.skipped ? 'Un-skip' : 'Skip') +
+         '<span>' + (state.skipped ? '↩' : '16') + '</span></button>';
+    h += '<button class="thumb" data-act="minus"><span>−15</span></button>';
+    h += '<button class="thumb" data-act="plus"><span>+15</span></button>';
+    h += '<button class="thumb" data-act="nap">Nap<span>90</span></button>';
+    h += '</div>';
+
+    h += '<div class="actions">';
+    h += '<button class="btn" data-act="check">Check devices</button>';
+    h += '<button class="btn solid" data-act="send"' +
+         (state.overridden || state.scenario === 'foreign' ? '' : ' disabled') + '>Send changes' +
+         (state.overridden ? ' (2)' : '') + '</button>';
+    h += '</div>';
+
+    var c = closing();
+    h += '<div class="close ' + c[0] + '"><div class="dot"></div><div>' + c[1] + '</div></div>';
+
+    $('view').innerHTML = h;
+
+    var tap = $('tap');
+    if (tap) { tap.addEventListener('click', showChange); }
+    Array.prototype.forEach.call($('view').querySelectorAll('[data-act]'), function (b) {
+      b.addEventListener('click', function () { act(b.dataset.act); });
+    });
+  }
+
+  function renderWeek() {
+    var h = '<p class="datehead">MY WEEK</p>';
+    h += '<p class="subhead" style="margin-bottom:16px">Two routines. A day belongs to one of them, ' +
+         'or to neither, which means no alarm and is printed by name.</p>';
+
+    h += '<div class="rcard"><h5>Weekdays</h5><p class="t">07:45</p>' +
+         '<div class="days">' + ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(function (d, i) {
+           return '<div class="day' + (i < 5 ? ' on' : '') + '">' + d + '</div>';
+         }).join('') + '</div></div>';
+
+    h += '<div class="rcard"><h5>Weekend</h5><p class="t">10:30</p>' +
+         '<div class="days">' + ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(function (d, i) {
+           return '<div class="day' + (i >= 5 ? ' on' : '') + '">' + d + '</div>';
+         }).join('') + '</div></div>';
+
+    h += '<div class="diff"><h4>Not every week is the same</h4><p>Switch to Diary and there are no ' +
+         'routines at all: just tomorrow, decided tonight. Shift workers and people who never repeat ' +
+         'a week live here, and never see the word routine.</p></div>';
+
+    $('view').innerHTML = h;
+  }
+
+  function renderDevices() {
+    var h = '<p class="datehead">DEVICES</p>';
+    h += '<p class="subhead" style="margin-bottom:16px">What each one holds right now, read from the ' +
+         'service, with the time it was read.</p>';
+
+    h += '<div class="rcard"><h5>Eight Sleep</h5>' +
+         '<div class="kv"><span>Holds now</span><span>Sat 10:00 Zurich</span></div>' +
+         '<div class="kv"><span>Read at</span><span>23:41 tonight</span></div>' +
+         '<div class="kv"><span>Fires</span><span>10:00 to 10:30, light sleep</span></div>' +
+         '<div class="kv"><span>Lead</span><span>30 min before you</span></div>' +
+         '<div class="kv"><span>Clock</span><span>Stays in Zurich</span></div></div>';
+
+    h += '<div class="rcard"><h5>Whoop</h5>' +
+         '<div class="kv"><span>Holds now</span><span>10:25, saved not confirmed</span></div>' +
+         '<div class="kv"><span>Fires</span><span>any time in the hour before 10:25</span></div>' +
+         '<div class="kv"><span>Mode</span><span>Exact time · yours to change in Whoop</span></div>' +
+         '<div class="kv"><span>Reaches the strap</span><span>at its next sync with the Whoop app</span></div></div>';
+
+    h += '<div class="rcard"><h5>iPhone</h5>' +
+         '<div class="kv"><span>Holds now</span><span>Armed on this phone for 10:30</span></div>' +
+         '<div class="kv"><span>Needs</span><span>nothing. No account, no network.</span></div>' +
+         '<div class="kv"><span>Role</span><span>The one that has to ring</span></div></div>';
+
+    h += '<div class="diff"><h4>What OneAlarm can never do</h4><p>It moves alarms you already have. ' +
+         'It cannot create one, delete one, change your bed temperature, or run the pump. Those ' +
+         'addresses are refused before a request leaves the phone.</p></div>';
+
+    $('view').innerHTML = h;
+  }
+
+  /* -------------------------------------------------------------- actions */
+  function act(a) {
+    if (a === 'skip') {
+      state.skipped = !state.skipped;
+      toast(state.skipped
+        ? 'Skipped Saturday 16 August. Sunday is untouched.'
+        : 'Saturday 16 August is back on, 10:30.');
+    } else if (a === 'minus' || a === 'plus') {
+      state.minutes += (a === 'plus' ? 15 : -15);
+      state.overridden = state.minutes !== state.baseMinutes;
+      toast('Saturday 16 August only, now ' + hhmm(state.minutes) + '. Sunday untouched.');
+    } else if (a === 'nap') {
+      state.nap = '90 min';
+      toast('Nap set, phone only. Your morning alarm is untouched.');
+    } else if (a === 'check') {
+      toast('Read all three. Nothing was written.');
+    } else if (a === 'send') {
+      toast('Sent to bed and strap. Confirming against what they report back.');
+    }
+    render();
+  }
+
+  var toastTimer = null;
+  function toast(msg) {
+    var t = $('toast');
+    t.innerHTML = '<span>' + msg + '</span>';
+    var u = document.createElement('button');
+    u.type = 'button';
+    u.textContent = 'Undo';
+    u.addEventListener('click', function () {
+      state.skipped = false; state.nap = null;
+      state.minutes = state.baseMinutes; state.overridden = false;
+      t.hidden = true; render();
+    });
+    t.appendChild(u);
+    t.hidden = false;
+    if (toastTimer) { clearTimeout(toastTimer); }
+    toastTimer = setTimeout(function () { t.hidden = true; }, 4200);
+  }
+
+  /* -------------------------------------------------------------- sheets */
+  function showChange() {
+    var s = $('sheet');
+    var h = '<div class="sheet-in">';
+    h += '<p class="sheet-title">Saturday 16 August</p>';
+    h += '<p class="wheel" id="wheel">' + hhmm(state.minutes) + '</p>';
+    h += '<div class="nudge"><button type="button" data-n="-15">−15</button>' +
+         '<button type="button" data-n="15">+15</button></div>';
+    h += '<button class="choice primary" data-pick="date">Just Saturday 16 August' +
+         '<small>Sunday stays 10:30. Next Saturday stays 10:30.</small></button>';
+    h += '<button class="choice" data-pick="routine">Every weekend, from now on' +
+         '<small>Overwrites Saturday and Sunday in the Weekend routine.</small></button>';
+    h += '<button class="choice" data-pick="skip">No alarm on Saturday 16 August' +
+         '<small>The routine is untouched and comes back on Sunday.</small></button>';
+    h += '<p class="honesty">Your phone rings at the time above. Your bed starts 30 minutes earlier. ' +
+         'Your wrist may buzz any time in the hour before, because Whoop chooses the moment, not us.</p>';
+    h += '<button class="btn" data-pick="cancel" style="width:100%;margin-top:10px">Cancel</button>';
+    h += '</div>';
+    s.innerHTML = h;
+    s.hidden = false;
+
+    var pending = state.minutes;
+    Array.prototype.forEach.call(s.querySelectorAll('[data-n]'), function (b) {
+      b.addEventListener('click', function () {
+        pending += parseInt(b.dataset.n, 10);
+        $('wheel').textContent = hhmm(pending);
+      });
+    });
+    Array.prototype.forEach.call(s.querySelectorAll('[data-pick]'), function (b) {
+      b.addEventListener('click', function () {
+        var p = b.dataset.pick;
+        if (p === 'date') {
+          state.minutes = pending;
+          state.overridden = pending !== state.baseMinutes;
+          toast('Saturday 16 August only, ' + hhmm(pending) + '. Sunday untouched.');
+        } else if (p === 'routine') {
+          state.minutes = pending; state.baseMinutes = pending; state.overridden = false;
+          toast('Weekend routine is now ' + hhmm(pending) + ', Saturday and Sunday.');
+        } else if (p === 'skip') {
+          state.skipped = true;
+          toast('Skipped Saturday 16 August. Sunday is untouched.');
+        }
+        s.hidden = true;
+        render();
+      });
+    });
+  }
+
+  function showDiff() {
+    var s = $('sheet');
+    var h = '<div class="sheet-in">';
+    h += '<p class="sheet-title">Whoop was changed somewhere else</p>';
+    h += '<p style="font-size:13.5px;color:var(--dim);margin:0 0 14px">' +
+         'Your strap holds <strong style="color:#F5F7F8">05:00</strong>. OneAlarm last wrote 10:25, ' +
+         'so somebody set this in the Whoop app. Nothing has been sent.</p>';
+    h += '<button class="choice primary" data-d="adopt">Follow the strap' +
+         '<small>Your wrist runs 5 minutes early, so this sets Saturday to 05:05 and your phone ' +
+         'rings at 05:05. Your bed starts 04:35.</small></button>';
+    h += '<button class="choice" data-d="replace">Put 10:25 back on the strap' +
+         '<small>Overwrites what was set in the Whoop app.</small></button>';
+    h += '<button class="choice" data-d="leave">Leave the strap alone' +
+         '<small>Your phone still rings at 10:30. Your wrist buzzes at 05:00.</small></button>';
+    h += '<p class="honesty">There is no default button here on purpose. This one already cost a ' +
+         'real schedule: a test rewrote a Monday-to-Friday alarm into every day, silently.</p>';
+    h += '</div>';
+    s.innerHTML = h;
+    s.hidden = false;
+
+    Array.prototype.forEach.call(s.querySelectorAll('[data-d]'), function (b) {
+      b.addEventListener('click', function () {
+        var d = b.dataset.d;
+        if (d === 'adopt') {
+          state.minutes = 305; state.baseMinutes = 305; state.scenario = 'normal';
+          toast('Saturday is now 05:05. Bed and phone moved to match your strap.');
+        } else if (d === 'replace') {
+          state.scenario = 'normal';
+          toast('Sent 10:25 to the strap. Confirming.');
+        } else {
+          state.scenario = 'normal';
+          toast('Strap left at 05:00. Your phone still rings at 10:30.');
+        }
+        s.hidden = true;
+        render();
+      });
+    });
+  }
+
+  function showTakeover() {
+    var t = $('takeover');
+    t.innerHTML =
+      '<h3>Nothing will wake you on Saturday 16 August.</h3>' +
+      '<p>Alarm permission was turned off in Settings, so this phone cannot ring. Your bed and ' +
+      'strap still hold their times, but neither is loud enough to rely on.</p>' +
+      '<button class="btn solid" data-t="fix" style="margin-bottom:9px">Show me how to fix it</button>' +
+      '<button class="btn" data-t="past">I know, let me past</button>';
+    t.hidden = false;
+    Array.prototype.forEach.call(t.querySelectorAll('[data-t]'), function (b) {
+      b.addEventListener('click', function () {
+        t.hidden = true;
+        state.scenario = 'normal';
+        if (b.dataset.t === 'past') { toast('Written down: you were told, at 23:41, and went past.'); }
+        render();
+      });
+    });
+  }
+
+  render();
+})();
+</script>
