@@ -565,7 +565,11 @@ final class EightSleepWritePathTests: XCTestCase {
     /// exactly right. The failure it guards against has no symptom until a morning nobody is woken
     /// on, and by then the cause is a week old.
     ///
-    /// Off, never deleted: there is no DELETE on either service and there is not going to be one.
+    /// **Off rather than deleted, and after 17 August that is a sharper claim than when it was
+    /// written.** Deleting now exists, so this passing is no longer a statement about the app having
+    /// no DELETE at all. It is a statement about provenance: neither alarm here is on
+    /// `RemoteAlarmLink.created`, so neither was made by OneAlarm, so neither may be destroyed however
+    /// abandoned it is. This is the adopted case, and it is the one that must never change.
     func testDeletingARoutineSwitchesOffOnlyItsOwnAlarm() async throws {
         StubServer.responses = [
             StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
@@ -581,7 +585,9 @@ final class EightSleepWritePathTests: XCTestCase {
             StubServer.key("PUT", "/v1/users/\(userID)/alarms/keep"): accepted,
             StubServer.key("PUT", "/v1/users/\(userID)/alarms/abandoned"): accepted,
         ]
-        // Both were OneAlarm's. The weekend routine has since been deleted in the app.
+        // Both were OneAlarm's to **manage**, and neither was OneAlarm's to **destroy**: they are
+        // linked but not marked created, which is what an adopted alarm looks like. The weekend
+        // routine has since been deleted in the app.
         RemoteAlarmLink.link(routine: "weekdays", to: "keep", on: .eightSleep)
         RemoteAlarmLink.link(routine: "weekend", to: "abandoned", on: .eightSleep)
 

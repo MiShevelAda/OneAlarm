@@ -380,10 +380,23 @@ final class AlarmCloneTests: XCTestCase {
         XCTAssertEqual((clone()["repeat"] as? [String: Any])?["enabled"] as? Bool, true)
     }
 
-    /// `tags` survives, and that is a decision rather than an accident. Filed as E14 with a
-    /// prediction, because it is reasoning about a field name and that has been wrong three times.
-    func testTheRoutineTagIsCarried() {
-        XCTAssertEqual(clone()["tags"] as? [String], ["routine-94b49169"])
+    /// `tags` is **stripped**, and this test used to assert the exact opposite.
+    ///
+    /// **It was `testTheRoutineTagIsCarried` until 17 August**, asserting that `tags` survives a
+    /// clone, filed as `E14` with a prediction because it was reasoning about a field name. The
+    /// prediction was wrong and Alex's own bed proved it: their app lists the alarm he made by hand,
+    /// which carries no tags, and hides the two OneAlarm created, which carry `temporary-mode` and
+    /// `oneOff-napMode`. Copying `tags` stamped "nap timer" onto a real alarm and their app filtered
+    /// it out, and each clone then inherited the stamp from the clone before it.
+    ///
+    /// Inverted rather than deleted, and kept in the same place, because the old assertion is the
+    /// most direct statement of what was wrong for a fortnight. A test that flips is a better record
+    /// than one that quietly disappears.
+    func testTheRoutineTagIsStripped() {
+        XCTAssertNil(clone()["tags"], "the tag that hides an alarm from his own app is never copied")
+        // The settings that are genuinely his still travel. Stripping tags is not licence to strip.
+        XCTAssertNotNil(clone()["vibration"])
+        XCTAssertNotNil(clone()["thermal"])
     }
 
     /// An inert alarm, no days and switched off, is the one Eight Sleep's own app hides. Copying it
