@@ -200,6 +200,65 @@ separate stop endpoint: stop is dismiss.
 **This is the single highest-value thing to test first**, because it is a write-path mismatch on the
 exact operation the product depends on.
 
+### 1.5a What the public clients actually do, checked 18 August 2026
+
+**First real outside research on this question, rather than reasoning.** Two maintained public
+clients were read at source, not through a summary.
+
+**`lukas-clarke/pyEight`**, the library this project ported from, has been updated since our port:
+
+> *"Eight Sleep removed the Routines feature from their app, which broke alarm functionality. This
+> library has been updated with working alarm management using the new direct API endpoints."*
+
+That is an independent confirmation of something we had only inferred from one empty response.
+**Routines are gone from Eight Sleep's app.** `GET /v2/users/{id}/routines` returning an empty list
+on Alex's account is not an account quirk. Everything in section 1.5b below is therefore **dead
+code for the current app**, correct for an account that predates the removal and driving nothing.
+
+Three concrete differences between their working write and ours:
+
+| | pyEight, current | OneAlarm |
+|---|---|---|
+| Payload | **Constructed**, a fixed nine key set: `id`, `enabled`, `time`, `repeat`, `vibration`, `thermal`, `smart`, `audio`, `snoozing` | Read-modify-write, echoes every field including unknown ones |
+| `repeat.enabled` | Hardcoded `True`, always | Set from whether the day set is empty |
+| Disabling | **Adds** `startTimestamp` and `endTimestamp`, commented "observed behavior from app" | Strips both, always, as computed fields |
+
+Their fixed key set proves the API does not require the unknown fields we echo. Ours is the more
+conservative of the two and there is no reason to change it. The disable case is worth knowing about
+and has never been tested here.
+
+**`steipete/eightctl`** exposes `alarm list|create|update|delete` and `alarm snooze|dismiss`. Its
+snooze and dismiss are **`POST`**, where section 1.5 below records `PUT`. One of the two is wrong and
+it has never mattered, because this app does neither.
+
+**The finding that matters most, and it is a negative one.** Neither client supports a **one-off
+alarm, a skip, or an override of any kind**. `skipNext` is never referenced in either. `repeat` is
+never omitted. There is no delete implementation to copy. **Nobody has solved this publicly**, so
+there is no expert answer to look up, and `E23`, `E25` and `E26` are genuinely open questions rather
+than research failures.
+
+### 1.5c The Autopilot lead, and the best candidate endpoint we have never called
+
+Eight Sleep's own description of the feature, from their app announcement:
+
+> *"Anytime you make a change, you'll be able to train **Autopilot** on whether it's a one-time
+> preference or you'd prefer it on all future nights."*
+
+So a one time change is, in their words, an **Autopilot preference**. And `eightctl` reads the
+Autopilot schedule from an endpoint this project has never called:
+
+```http
+GET https://app-api.8slp.net/v1/users/{userId}/temperature
+    -> { "smart": { ...the Autopilot schedule... } }
+```
+
+Same host, same auth, already available. **This is the strongest candidate for where
+`UPCOMING ALARM ONLY` lives**, and it is exactly the "separate endpoint" branch of `E23`'s own
+prediction table, which four dumps of the alarm object had already pointed at by elimination.
+
+It is a read, so it costs nothing and risks nothing. **Call it while an override is live and diff it
+against the same call with none set.** That is `E27`.
+
 ### 1.5b Routines, the object their app actually renders alarms through
 
 **Added 17 August, and it is the reason two weeks of "the write returns 200 and nothing appears"

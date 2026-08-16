@@ -536,6 +536,68 @@ actor EightSleepAdapter: DeviceAdapter {
         return (json["alarms"] as? [[String: Any]]) ?? []
     }
 
+    /// The Autopilot resource, read only, printed for `E27`.
+    ///
+    /// **The first candidate address this project has had for the one time change**, and it came from
+    /// outside research rather than from another guess at a field name. Eight Sleep's own description
+    /// of the feature: *"you'll be able to train **Autopilot** on whether it's a one-time preference
+    /// or you'd prefer it on all future nights."* A one time change is an Autopilot preference in
+    /// their words, not an alarm property. And `steipete/eightctl` reads the Autopilot schedule from
+    /// this endpoint, which OneAlarm has never called.
+    ///
+    /// Four dumps of the **alarm** object have now come back with no override field, which by
+    /// elimination points at a separate resource. This is that resource, with an address.
+    ///
+    /// **A read, and only ever a read.** It cannot change anything, needs no capture and no ladder,
+    /// and either contains the override or does not. Both other open theories require writing to a
+    /// live bed. A failure returns a sentence rather than throwing, because a diagnostic that takes
+    /// the screen down with it is worse than one that says it could not run.
+    func autopilotDump() async -> String {
+        guard let (token, user) = try? await currentToken() else {
+            return "Could not read Autopilot: not signed in."
+        }
+        guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/temperature") else {
+            return "Could not read Autopilot: bad URL."
+        }
+        guard let response = try? await http.send("GET", url, headers: Self.baseHeaders(token: token))
+        else {
+            return "Could not read Autopilot: the request failed."
+        }
+        guard response.isSuccess else {
+            return "Autopilot read returned HTTP \(response.status). That is an answer too: this account may have none."
+        }
+        guard let json = try? HTTPClient.dictionary(response.data) else {
+            return "Autopilot returned something that is not a JSON object."
+        }
+        guard let smart = json["smart"] as? [String: Any] else {
+            // Named rather than treated as empty. `eightctl` carries a dedicated error for exactly
+            // this, so an account with no Autopilot schedule is expected rather than surprising.
+            return "No `smart` field on the Autopilot resource. Top level keys: \(json.keys.sorted().joined(separator: ", "))"
+        }
+        return Self.render(smart, indent: 0)
+    }
+
+    /// A nested dictionary as readable lines. Sorted, so two dumps can be compared by eye.
+    ///
+    /// **Sorted is the whole point.** The question this answers is "what changed between an override
+    /// being set and not", and two dumps in server order cannot be diffed by a person.
+    static func render(_ value: Any, indent: Int) -> String {
+        let pad = String(repeating: "    ", count: indent)
+        if let dict = value as? [String: Any] {
+            return dict.keys.sorted().map { key in
+                let inner = dict[key] ?? ""
+                if inner is [String: Any] || inner is [Any] {
+                    return "\(pad)\(key) =\n\(render(inner, indent: indent + 1))"
+                }
+                return "\(pad)\(key) = \(raw(inner))"
+            }.joined(separator: "\n")
+        }
+        if let list = value as? [Any] {
+            return list.map { "\(pad)- \(raw($0))" }.joined(separator: "\n")
+        }
+        return "\(pad)\(raw(value))"
+    }
+
     /// Server computed fields. Sending them back is rejected or ignored depending on the field, so
     /// they come off before every write.
     private static let computedFields = [

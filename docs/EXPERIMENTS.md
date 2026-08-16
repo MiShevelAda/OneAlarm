@@ -1081,6 +1081,46 @@ no raw block at all.
 
 
 
+## E27 🔴 Does the Autopilot resource carry the one time change?
+
+**The first candidate endpoint this project has had, rather than another guess at a field name.**
+Two things found by outside research on 18 August point at the same place.
+
+Eight Sleep's own words for the feature: *"you'll be able to train **Autopilot** on whether it's a
+one-time preference or you'd prefer it on all future nights."* A one time change is an Autopilot
+preference, not an alarm property.
+
+And `steipete/eightctl` reads the Autopilot schedule from an endpoint we have never called:
+
+```http
+GET https://app-api.8slp.net/v1/users/{userId}/temperature
+    -> { "smart": { ... } }
+```
+
+Same host, same bearer token, already authenticated. This is the **separate endpoint** branch of
+`E23`'s prediction table, which four dumps of the alarm object had already pointed at by elimination,
+and now it has an address.
+
+**Why this outranks `E25` and `E26`.** It is a **read**. It cannot change anything, it needs no
+capture, no ladder and no permission, and it either contains the override or it does not. Both of the
+other open experiments require writing to a live bed.
+
+| What the diff shows | Reading | What follows |
+|---|---|---|
+| a field naming tomorrow's time or date, present only while the override is set | found it | one read and one write replace the whole one-day-alarm mechanism, and it becomes self-clearing because Eight Sleep owns the expiry |
+| `smart` differs but not legibly | it is in there and encoded | worth a second diff with a different override time to see which bytes move |
+| identical with and without an override | not the Autopilot resource either | `E26`'s tagged-alarm theory becomes the leading explanation, and the current design is the answer |
+| the endpoint 404s or returns no `smart` | the account has no Autopilot schedule | `ErrNoSmartSchedule` is a real case in `eightctl`, so this is expected for some accounts and settles nothing |
+
+**Prediction, written before it runs.** The middle two outcomes are likelier than the first. Their
+app has had this feature for years and it does not appear in any public client, which suggests it is
+not sitting in an obviously named field somewhere easy.
+
+**Whose.** Needs a call from the phone, which means a button in OneAlarm. Nothing in a session can
+reach the host.
+
+
+
 ## Completed
 
 | | Question | Answer | Date |

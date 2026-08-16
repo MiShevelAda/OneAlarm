@@ -874,6 +874,9 @@ struct BedConfirmScreen: View {
     /// Reads the line `EightSleepAdapter.describe` already computes, rather than recomputing it, so
     /// the summary and the detail can never disagree about the same alarm. Two readers of one fact is
     /// how a screen and a write ended up describing different accounts earlier today.
+    /// The Autopilot resource, once it has been asked for. `nil` until then. `E27`.
+    @State private var autopilot: String?
+
     /// Tagged alarms Eight Sleep's own app hides, for correlating against an override. `E26`.
     private var hiddenLabels: [String] {
         choices.filter(\.isHidden).map(\.summary)
@@ -923,6 +926,36 @@ struct BedConfirmScreen: View {
                 // rather than as a field, then one of these will be sitting at exactly the time the
                 // line above says the bed is firing, and the question is answered by reading two
                 // lines instead of hunting a field that may not exist.
+                // **The Autopilot probe. `E27`.**
+                //
+                // Read only, and the first candidate address this project has had for the one time
+                // change. Eight Sleep call the feature an Autopilot preference in their own words,
+                // and this is the resource that holds the Autopilot schedule. Four dumps of the alarm
+                // object have shown no override field, which by elimination points here.
+                //
+                // Behind a button rather than loaded with the panel, because it is a request to a
+                // live account and nobody should pay for it just by opening a screen.
+                VStack(alignment: .leading, spacing: 6) {
+                    Button {
+                        Task {
+                            autopilot = "Reading..."
+                            autopilot = await store.eightSleep.autopilotDump()
+                        }
+                    } label: {
+                        Text("Read Autopilot (E27)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.State.unconfirmed)
+                    }
+                    if let autopilot {
+                        Text(autopilot)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Theme.grey)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(.top, 2)
+
                 if !hiddenLabels.isEmpty {
                     Text("HIDDEN (tagged) ALARMS: \(hiddenLabels.joined(separator: ", "))")
                         .font(.system(size: 12, weight: .semibold))
