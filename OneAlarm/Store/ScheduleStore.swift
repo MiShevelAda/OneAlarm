@@ -509,6 +509,91 @@ final class ScheduleStore {
         return "\(abs(minutes)) \(unit) \(minutes < 0 ? "before" : "after") \(schedule.anchorDevice.displayName)"
     }
 
+    /// The routine time a bend is standing in for, so the screen can strike it through.
+    ///
+    /// **Modelled on Eight Sleep's own screen**, which Alex pointed at on 17 August:
+    /// `UPCOMING ALARM ONLY  09:10  0̶9̶:̶3̶0̶`. The new time large, the routine time struck through
+    /// beside it, and nothing else. He said he liked it, and it is better than the paragraph it
+    /// replaces for a reason worth naming: a struck-through number cannot be misread, while a
+    /// sentence saying "Weekdays is still 06:01 and returns after" has to be parsed, and was wrong
+    /// for an hour on 17 August without anybody noticing.
+    ///
+    /// Reads the **live** routine, not `DayOverride.routineTime`, for the same reason `overrideNotice`
+    /// does: the snapshot exists so `restoreAfterOverride` can put the right value back, and it goes
+    /// stale the moment he edits the routine while a bend is armed. Displaying a stale number is
+    /// exactly the bug this pair of properties was written to remove.
+    var overriddenRoutineTime: WallClockTime? {
+        guard let override = schedule.override, let next, next.isOverridden, !override.isSkip else {
+            return nil
+        }
+        return Self.struckThrough(
+            override: override, routines: schedule.routines, showing: next.time, calendar: calendar
+        )
+    }
+
+    /// Which time to strike through, as a pure function of the three inputs that decide it.
+    ///
+    /// **Pulled out of the property so it can be tested.** `ScheduleStore` reads the wall clock
+    /// through a private `calendar` and has no seam for it, so anything depending on `next` cannot be
+    /// asserted deterministically. This part does not depend on `next` at all beyond the time already
+    /// on screen, which the caller passes in, so it is testable exactly as written.
+    ///
+    /// That matters because **this is the logic that was wrong on 17 August**: the screen read the
+    /// snapshot in the override rather than the live routine, and told him a routine was "still
+    /// 06:01" directly above a list showing 07:01.
+    static func struckThrough(
+        override: DayOverride,
+        routines: [Routine],
+        showing: WallClockTime,
+        calendar: Calendar
+    ) -> WallClockTime? {
+        guard !override.isSkip else { return nil }
+
+        // Found by the day it bends, not by name. `Routine.displayName` is derived from its days, so
+        // a name lookup would stop matching the moment he changes them and fall silently back to the
+        // snapshot, which is the stale number this exists to avoid.
+        let live: WallClockTime?
+        if let date = override.day.date(in: calendar) {
+            let weekday = Locale.Weekday.from(calendarIndex: calendar.component(.weekday, from: date))
+            live = routines.first { $0.isOn && $0.weekdays.contains(weekday) }?.time
+        } else {
+            live = nil
+        }
+
+        // The snapshot is the fallback, never the first answer. It exists so `restoreAfterOverride`
+        // can put the right value back and it goes stale the moment he edits the routine.
+        guard let was = live ?? override.routineTime else { return nil }
+        // Only worth striking through if it actually differs. Equal numbers side by side, one with a
+        // line through it, reads as a bug rather than as information.
+        return was == showing ? nil : was
+    }
+
+    /// "Tomorrow only", "Saturday only". The label above the big number while a **bend** is armed.
+    ///
+    /// **Deliberately nil for a skip**, and the difference matters. A bend replaces the next morning,
+    /// so the big number IS that morning and "Tomorrow only" describes it exactly. A skip removes it,
+    /// so `next` has already moved on to the morning after, and putting "Tomorrow only" above a time
+    /// that is not tomorrow would be a worse lie than the paragraph this replaced. The skip says its
+    /// piece in `overrideFooter`, where it can name the day it removed.
+    var overrideHeadline: String? {
+        guard let override = schedule.override, let next, next.isOverridden, !override.isSkip else {
+            return nil
+        }
+        return dayLabel(override.day) + " only"
+    }
+
+    /// What happens after the one-off, in one short line rather than a paragraph.
+    var overrideFooter: String? {
+        guard let override = schedule.override, let next, next.isOverridden || override.isSkip else {
+            return nil
+        }
+        let routine = override.routineName ?? "Your routine"
+        if override.isSkip {
+            return "No alarm on \(dayLabel(override.day)). \(routine) is back after that, unchanged."
+        }
+        return "\(routine) is back the next day. Nothing about it changed."
+    }
+
     func dayLabel(_ day: CalendarDay) -> String {
         guard let date = day.date(in: calendar) else { return "that day" }
         if calendar.isDateInToday(date) { return "Today" }

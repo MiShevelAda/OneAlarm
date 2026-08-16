@@ -77,11 +77,32 @@ struct CascadeView: View {
     @ViewBuilder
     private var nextMorning: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(store.nextAlarmHeadline).themeLabel()
+            // The label carries the one-off, so the big number never has to be explained.
+            //
+            // **Alex asked for Eight Sleep's shape on 17 August**, pointing at their own screen:
+            // `UPCOMING ALARM ONLY  09:10  0̶9̶:̶3̶0̶`. Label, new time, struck-through routine time.
+            // He said he liked it, and it beats the paragraph it replaces for a reason worth writing
+            // down: **a struck-through number cannot be misread.** The sentence it replaces had to be
+            // parsed, and on 17 August it was quietly wrong for an hour, saying a routine was "still
+            // 06:01" directly above a list showing 07:01.
+            Text(store.overrideHeadline ?? store.nextAlarmHeadline)
+                .themeLabel(store.overrideHeadline == nil ? Theme.grey : Theme.State.unconfirmed)
 
             Button { showingTomorrowPicker = true } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text(store.next?.time.hhmm ?? "--:--").font(Theme.numeral(54))
+
+                    // The routine time this is standing in for. Nil unless a bend is armed and the
+                    // two actually differ, because two equal numbers with a line through one reads
+                    // as a bug rather than as information.
+                    if let was = store.overriddenRoutineTime {
+                        Text(was.hhmm)
+                            .font(Theme.numeral(30))
+                            .foregroundStyle(Theme.greyDim)
+                            .strikethrough(true, color: Theme.greyDim)
+                            .accessibilityLabel("Instead of \(was.hhmm), which is what your routine says")
+                    }
+
                     Image(systemName: "pencil")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Theme.greyDim)
@@ -92,9 +113,9 @@ struct CascadeView: View {
             .buttonStyle(.plain)
             .disabled(store.next == nil)
 
-            if let notice = store.overrideNotice {
-                Notice(.warn, title: notice,
-                       "Nothing about your routine changed. It comes back on its own.")
+            if let footer = store.overrideFooter {
+                Text(footer)
+                    .font(.system(size: 14)).foregroundStyle(Theme.grey)
 
                 HStack(spacing: 8) {
                     Button("Make this the routine") { store.makeOverridePermanent() }

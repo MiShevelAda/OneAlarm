@@ -50,8 +50,13 @@ actor WhoopAdapter: DeviceAdapter {
         // Ordered most to least likely, and every one is a POST. A create cannot destroy anything,
         // which is why this is an acceptable thing to probe at all and why no DELETE appears here.
         // The account is capped in `scheduleCeiling` so a misread success cannot fill his account.
+        //
+        // **`POST .../schedule/all` was a rung here and was removed on 17 August**, after an expert
+        // review pointed out it is the one candidate where "a create cannot destroy anything" is
+        // false. A POST to a collection endpoint literally named `all` is as plausibly a bulk replace
+        // as a create, and the whole justification for probing rests on the downside being bounded.
+        // It was not bounded. Do not put it back.
         #"^POST https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule\?apiVersion=7$"#,
-        #"^POST https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/all\?apiVersion=7$"#,
         #"^POST https://api\.prod\.whoop\.com/smart-alarm-bff/v1/schedule/create\?apiVersion=7$"#,
     ]
 
@@ -1027,7 +1032,20 @@ actor WhoopAdapter: DeviceAdapter {
             nextOccurrence: target.nextOccurrence,
             utcOffsetSeconds: target.utcOffsetSeconds
         )
-        let body = Self.domainBody(template, to: forRoutine)
+        // **`SLEEP_GOAL` is not inherited, and this is the one field the create must not copy blindly.**
+        //
+        // Everywhere else this adapter copies his settings rather than choosing them, and that is
+        // right. But `SLEEP_GOAL` means Whoop **derives** the wake time from sleep need, so a
+        // schedule created in that mode ignores the routine's time entirely: it would look written,
+        // report as written, and wake him whenever Whoop felt like it. Flagged in an expert review
+        // on 17 August.
+        //
+        // `EXACT_TIME` is the honest substitute for a schedule whose whole purpose is a time OneAlarm
+        // was given. It is a choice rather than a copy, so it is named in the receipt. Nothing is
+        // changed on a schedule he already has: this only ever applies to one being made.
+        let inherited = (template["alarm_mode"] as? String) ?? Self.observedMode
+        let mode = inherited == "SLEEP_GOAL" ? "EXACT_TIME" : inherited
+        let body = Self.domainBody(template, to: forRoutine, mode: mode)
 
         // **The rungs, reordered on 17 August after research rather than before it.**
         //
@@ -1048,11 +1066,38 @@ actor WhoopAdapter: DeviceAdapter {
         // confirmed with it, and the only new thing is an id that does not exist yet. The POST paths
         // stay below it as inference, clearly labelled, tried only after the evidence-backed one.
         var attempts: [String] = []
+        // Lowercased deliberately, and it is a coin toss worth recording. `totem`'s path glossary
+        // says server-assigned ids are lowercase and client-generated ones uppercase, on other
+        // resources, and names schedules among the **server-assigned**. Which is evidence against
+        // this whole rung. Lowercase matches the shape of every schedule id his account has actually
+        // returned, so a rejection is more likely to mean "you cannot mint ids" than "wrong case".
         let minted = UUID().uuidString.lowercased()
+
+        // **A free GET that asks the same question before any write.** Suggested by the expert review
+        // on 17 August and it is strictly better than leading with a PUT: this endpoint is already
+        // confirmed working and already allowlisted, and it asks exactly what the upsert depends on,
+        // which is whether this BFF resolves an unknown schedule id or rejects it.
+        //
+        // A 200 rendering the edit screen for an id that does not exist is strong support for client
+        // minted ids and lazy creation on save. A 404 says the PUT rung will almost certainly 404
+        // too, and one write is saved. Either way the answer is recorded rather than reasoned about.
+        //
+        // Written as two nested binds rather than one condition list on purpose: `try? await` as a
+        // **second or later** clause is a documented gap in the Swift grammar `npm run check` uses,
+        // confirmed by isolating it earlier today. Same code, no false alarm.
+        let probeURL = URL(string: "\(Self.host)/smart-alarm-bff/v1/schedule/components/populated/\(minted)?apiVersion=7")
+        if let probeURL {
+            let probe = try? await http.send(
+                "GET", probeURL,
+                headers: Self.dataHeaders(token: token, timeZone: TimeZone.current.identifier)
+            )
+            if let probe {
+                attempts.append("GET components/populated/{new-id}: \(probe.status)")
+            }
+        }
         let rungs: [(String, String)] = [
             ("PUT", "/smart-alarm-bff/v1/schedule/\(minted)"),
             ("POST", "/smart-alarm-bff/v1/schedule"),
-            ("POST", "/smart-alarm-bff/v1/schedule/all"),
             ("POST", "/smart-alarm-bff/v1/schedule/create"),
         ]
         for (method, path) in rungs {
@@ -1201,14 +1246,29 @@ actor WhoopAdapter: DeviceAdapter {
                     target: target, token: token
                 ) {
                 case .created:
-                    created.append(entry.routineName)
-                    // Re-read and link, so the next sync recognises it instead of making a second.
-                    // Exactly the loop the Eight Sleep create had to fix on 16 August.
+                    // **Success is claimed only once a new row actually appeared.** The first version
+                    // appended to `created` here, before the re-read, so a run where nothing was made
+                    // said "Made a new Whoop schedule for Weekend" and then contradicted itself two
+                    // sentences later. Found in an expert review on 17 August.
+                    //
+                    // It matters more on this leg than anywhere else, because the create address is a
+                    // candidate rather than a capture: a BFF that writes through to a service which
+                    // no-ops on an unknown key returns that service's 200. **A 200 is not a created
+                    // schedule.** Only a re-read showing a new row is, which is the same rule
+                    // `CLAUDE.md` already states about a moved alarm.
                     let after = (try? await fetchSchedules()) ?? []
                     let known = Set(schedules.compactMap(Self.scheduleID))
                     let fresh = after.compactMap(Self.scheduleID).filter { !known.contains($0) }
                     if fresh.count == 1, let newID = fresh.first {
+                        created.append(entry.routineName)
                         RemoteAlarmLink.link(routine: entry.routineID, to: newID, on: .whoop)
+                        // Provenance, and it was missing entirely on this leg until 17 August: only
+                        // the Eight Sleep adapter recorded it, so the documented delete safety rule
+                        // could never have been applied to a Whoop schedule OneAlarm made. Recorded
+                        // now, before a delete on this leg exists, rather than after.
+                        RemoteAlarmLink.markCreated(newID, on: .whoop)
+                    } else if fresh.isEmpty {
+                        createProblems.append("Whoop accepted the request for \(entry.routineName) but no new schedule appeared, so nothing was made. The address is a guess and this is what a wrong one looks like when it answers politely.")
                     } else {
                         createProblems.append("Made a schedule for \(entry.routineName) but could not tell which it is (\(fresh.count) appeared). Check the Whoop app before the next sync.")
                     }

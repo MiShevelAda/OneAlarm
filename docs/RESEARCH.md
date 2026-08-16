@@ -477,8 +477,14 @@ PUT https://api.prod.whoop.com/smart-alarm-bff/v1/schedule/{schedule_id}?apiVers
 > POST 204 /smart-alarm-service/v1/smartalarm/wbl
 > ```
 >
-> **No POST and no DELETE for a schedule**, and that is evidence of absence rather than thin coverage:
-> the author states the capture phase deliberately exercised "Smart Alarm CRUD".
+> **No POST and no DELETE for a schedule.**
+>
+> ⚠️ **An earlier version of this entry called that "evidence of absence rather than thin coverage",
+> on the grounds that the author states the capture phase exercised "Smart Alarm CRUD". That is
+> heavier than the source supports and the overstatement is corrected here rather than edited away.**
+> The phrase appears once, in a session log listing about a dozen surfaces covered in roughly 35
+> minutes. "CRUD" there is a category label, not a checklist, and "he never actually deleted one"
+> deserves more weight than "delete is not a DELETE". The absence is a **lead**, not a proof.
 >
 > **So the update is probably an upsert.** If the app never POSTs, and its UI plainly creates, then
 > `PUT /smart-alarm-bff/v1/schedule/{id}` with a client minted id is the standard shape for what is
@@ -495,6 +501,28 @@ PUT https://api.prod.whoop.com/smart-alarm-bff/v1/schedule/{schedule_id}?apiVers
 > of the reference: the string "alarm" appears zero times, and every operation is a read except
 > `revokeUserOAuthAccess`. The `GET /alarms` and `POST /alarms` shapes circulating on the Whoop
 > community forum are **user feature requests, not endpoints**.
+>
+> **Evidence against the upsert, found on the second pass and worth more than the hypothesis.** The
+> same source's templated path glossary says of `{uuid}`: *"Server-assigned for activities, journal
+> entries, schedules. Client-generated (uppercase) for workout set IDs + custom exercise IDs."* It
+> names **schedules among the server-assigned**, and the discriminator it uses is case. That is the
+> only direct statement anywhere about who mints a schedule id, and it points away from a client
+> minted PUT. It is still inference, since no create was ever captured, but it belongs next to the
+> hypothesis rather than under it.
+>
+> **A better first move than any write**, and it costs one GET on an endpoint already confirmed:
+> `GET /smart-alarm-bff/v1/schedule/components/populated/{a-fresh-uuid}`. It asks precisely what the
+> upsert depends on, whether this BFF resolves an unknown schedule id or rejects it, without touching
+> anything. 200 supports client minted ids and hands back the create screen's defaults; 404 says the
+> PUT would have 404'd and saves a write. Built into the create ladder as a first step.
+>
+> **`POST /schedule/all` was a create candidate and was removed.** It is the one path where "a create
+> cannot destroy anything" is false: a POST to a collection endpoint named `all` is as plausibly a
+> bulk replace as a create, and the whole justification for probing rests on a bounded downside.
+>
+> **A delete hypothesis that must NOT be tested:** `PUT` with `day_of_week_list: []`, on the theory
+> that the server reaps a dayless schedule. It would explain the absence of both verbs. It is also
+> exactly the shape of a silently lost morning, so it stays written down and unrun.
 >
 > **`schedule_button_component` probably names a screen, not an endpoint.** No public source shows its
 > contents. Elsewhere in Whoop's BFF tree a button component carries
