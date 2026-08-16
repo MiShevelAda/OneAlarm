@@ -1093,9 +1093,11 @@ preference, not an alarm property.
 And `steipete/eightctl` reads the Autopilot schedule from an endpoint we have never called:
 
 ```http
-GET https://app-api.8slp.net/v1/users/{userId}/temperature
-    -> { "smart": { ... } }
+GET https://app-api.8slp.net/v1/users/{userId}/temperature       -> { "smart": {...} }
+GET https://app-api.8slp.net/v1/users/{userId}/autopilotDetails  -> ?
 ```
+
+Both are probed. The second is the better candidate and is named after the feature itself.
 
 Same host, same bearer token, already authenticated. This is the **separate endpoint** branch of
 `E23`'s prediction table, which four dumps of the alarm object had already pointed at by elimination,

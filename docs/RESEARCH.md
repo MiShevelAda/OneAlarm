@@ -227,9 +227,29 @@ Their fixed key set proves the API does not require the unknown fields we echo. 
 conservative of the two and there is no reason to change it. The disable case is worth knowing about
 and has never been tested here.
 
-**`steipete/eightctl`** exposes `alarm list|create|update|delete` and `alarm snooze|dismiss`. Its
-snooze and dismiss are **`POST`**, where section 1.5 below records `PUT`. One of the two is wrong and
-it has never mattered, because this app does neither.
+**`steipete/eightctl`** exposes `alarm list|create|update|delete`, and reading it at source is a
+lesson in why this project has a rule about second sources. Its alarm module **contradicts Alex's own
+bed on three counts**:
+
+| | eightctl | Alex's account, observed |
+|---|---|---|
+| Host | `client-api.8slp.net/v1/users/{id}/alarms` | `app-api.8slp.net`, and the list is `v2` |
+| Days | `daysOfWeek: []int`, an array of integers | `repeat.weekDays`, seven lowercase named booleans |
+| Update | `PATCH` with a partial body | `PUT` with the whole object, confirmed working |
+| Snooze, dismiss | `POST` | `PUT` per section 1.5 |
+
+Its shape does not match what the server actually returns to us, so **it is not a second source and
+must not be treated as one**. This is exactly the trap in `LEARNED.md`: *trusting a write-up that
+claimed to be a capture*, which has already cost this project five hours once. Its `Alarm` struct
+carries six fields where the real object has thirteen, which is the signature of a model written from
+a spec rather than from a response.
+
+**What it is still worth**: a source of **candidate addresses** to probe, nothing more. A GET either
+returns something or it 404s, and that costs one request to find out.
+
+The one contradiction that would matter if it were true is the `PATCH`. If a partial patch works,
+the read-modify-write in this app is unnecessary, and a one time change might be a two field patch.
+Worth one probe, and worth nothing until probed.
 
 **The finding that matters most, and it is a negative one.** Neither client supports a **one-off
 alarm, a skip, or an override of any kind**. `skipNext` is never referenced in either. `repeat` is
@@ -248,11 +268,13 @@ So a one time change is, in their words, an **Autopilot preference**. And `eight
 Autopilot schedule from an endpoint this project has never called:
 
 ```http
-GET https://app-api.8slp.net/v1/users/{userId}/temperature
-    -> { "smart": { ...the Autopilot schedule... } }
+GET https://app-api.8slp.net/v1/users/{userId}/temperature      -> { "smart": {...} }
+GET https://app-api.8slp.net/v1/users/{userId}/autopilotDetails -> ?
 ```
 
-Same host, same auth, already available. **This is the strongest candidate for where
+The second is the better candidate and came from `eightctl/internal/client/autopilot.go`. It is a
+read, so the caveat above about that client being unreliable barely applies: an address is either
+live or it is not. Same host, same auth, already available. **This is the strongest candidate for where
 `UPCOMING ALARM ONLY` lives**, and it is exactly the "separate endpoint" branch of `E23`'s own
 prediction table, which four dumps of the alarm object had already pointed at by elimination.
 

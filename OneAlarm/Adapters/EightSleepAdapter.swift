@@ -556,25 +556,38 @@ actor EightSleepAdapter: DeviceAdapter {
         guard let (token, user) = try? await currentToken() else {
             return "Could not read Autopilot: not signed in."
         }
-        guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/temperature") else {
-            return "Could not read Autopilot: bad URL."
+        // **Two addresses, both read only, because neither is confirmed.**
+        //
+        // `autopilotDetails` is named after the feature and is the better candidate. `temperature`
+        // carries a `smart` block that a public client calls the Autopilot schedule. Both come from
+        // `steipete/eightctl`, whose alarm module contradicts this account on three counts and is
+        // therefore not a source to trust, only a source of addresses to try. A GET settles that in
+        // one request each.
+        var report: [String] = []
+        for path in ["autopilotDetails", "temperature"] {
+            guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/\(path)") else { continue }
+            guard let response = try? await http.send("GET", url, headers: Self.baseHeaders(token: token))
+            else {
+                report.append("\(path): the request failed.")
+                continue
+            }
+            guard response.isSuccess else {
+                // A 404 is an answer, not a failure: it removes an address from the list.
+                report.append("\(path): HTTP \(response.status).")
+                continue
+            }
+            guard let json = try? HTTPClient.dictionary(response.data) else {
+                report.append("\(path): 200, but the body is not a JSON object.")
+                continue
+            }
+            // The whole object when it is small, the shape when it is not. A dump nobody can read is
+            // the failure this panel already exists to fix.
+            let body = json.count > 40
+                ? "top level keys only: " + json.keys.sorted().joined(separator: ", ")
+                : Self.render(json, indent: 1)
+            report.append("\(path): 200\n\(body)")
         }
-        guard let response = try? await http.send("GET", url, headers: Self.baseHeaders(token: token))
-        else {
-            return "Could not read Autopilot: the request failed."
-        }
-        guard response.isSuccess else {
-            return "Autopilot read returned HTTP \(response.status). That is an answer too: this account may have none."
-        }
-        guard let json = try? HTTPClient.dictionary(response.data) else {
-            return "Autopilot returned something that is not a JSON object."
-        }
-        guard let smart = json["smart"] as? [String: Any] else {
-            // Named rather than treated as empty. `eightctl` carries a dedicated error for exactly
-            // this, so an account with no Autopilot schedule is expected rather than surprising.
-            return "No `smart` field on the Autopilot resource. Top level keys: \(json.keys.sorted().joined(separator: ", "))"
-        }
-        return Self.render(smart, indent: 0)
+        return report.joined(separator: "\n\n")
     }
 
     /// A nested dictionary as readable lines. Sorted, so two dumps can be compared by eye.
