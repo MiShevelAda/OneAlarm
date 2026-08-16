@@ -877,6 +877,78 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertEqual(choices.first { $0.id == "his" }?.isHidden, false)
     }
 
+    // MARK: Clearing up after ourselves
+
+    /// Only the hidden, recurring, still-on alarms are offered for switching off.
+    ///
+    /// The nap filter is the one that matters. A nap Alex starts from the Nap tool in the Eight Sleep
+    /// app would carry the same tags, and switching off something he just set going is exactly the
+    /// "never silently change a setting Alex chose" failure this project has a rule about. A real nap
+    /// is a one-off with no day set; both of the alarms this exists for carry days.
+    func testOnlyHiddenRecurringAlarmsAreOfferedForSwitchingOff() async throws {
+        var oneOffNap = hiddenAlarm(id: "nap", time: "14:00:00", days: [])
+        oneOffNap["repeat"] = ["enabled": false, "weekDays": [String: Bool]()] as [String: Any]
+        var alreadyOff = hiddenAlarm(id: "done", time: "09:56:00", days: ["saturday", "sunday"])
+        alreadyOff["enabled"] = false
+
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [
+                    alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil),
+                    hiddenAlarm(id: "ghost", time: "05:55:00", days: weekdayNames),
+                    oneOffNap,
+                    alreadyOff,
+                ],
+            ]),
+        ]
+
+        let retired = try await adapter().retiredAlarms()
+
+        XCTAssertEqual(retired.map(\.id), ["ghost"])
+        XCTAssertFalse(retired.contains { $0.id == "his" }, "never an alarm he can see")
+        XCTAssertFalse(retired.contains { $0.id == "nap" }, "never a nap he started himself")
+        XCTAssertFalse(retired.contains { $0.id == "done" }, "and running it twice is not a second write")
+    }
+
+    /// Switching off writes `enabled: false` and changes nothing else about the alarm.
+    func testSwitchingOffKeepsEverythingButTheSwitch() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [hiddenAlarm(id: "ghost", time: "05:55:00", days: weekdayNames)],
+            ]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/ghost"): accepted,
+        ]
+
+        let report = try await adapter().silenceAlarms(["ghost"])
+
+        let body = try XCTUnwrap(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/ghost")])
+        XCTAssertEqual(body["enabled"] as? Bool, false)
+        XCTAssertEqual(body["time"] as? String, "05:55:00", "off, not deleted, and not moved")
+        XCTAssertNotNil(body["vibration"])
+        XCTAssertNotNil(body["thermal"])
+        XCTAssertEqual(report, ["05:55 weekdays is off"])
+    }
+
+    /// An id that names a visible alarm is refused, even though the caller asked for it.
+    ///
+    /// The ids come from a confirmation dialog, and a dialog is not evidence about what is on the
+    /// account by the time the write runs. This is the assertion that stands between a bug in that
+    /// screen and Alex's real alarm being switched off in the night.
+    func testSwitchingOffRefusesAnAlarmHeCanSee() async throws {
+        StubServer.responses = [
+            StubServer.key("GET", "/v2/users/\(userID)/alarms"): (200, [
+                "alarms": [alarm(id: "his", time: "05:51:00", days: weekdayNames, routine: nil)],
+            ]),
+            StubServer.key("PUT", "/v1/users/\(userID)/alarms/his"): accepted,
+        ]
+
+        let report = try await adapter().silenceAlarms(["his"])
+
+        XCTAssertNil(StubServer.bodies[StubServer.key("PUT", "/v1/users/\(userID)/alarms/his")],
+                     "his own alarm is never switched off, whatever the caller passed")
+        XCTAssertEqual(report, ["05:51 weekdays was left alone, it is not one of these"])
+    }
+
     /// The template for a create is an alarm he can see, so the settings copied are ones he chose.
     ///
     /// Stripping `tags` breaks the inheritance loop on its own. This closes the other half: copying

@@ -693,6 +693,10 @@ struct BedConfirmScreen: View {
 
     @State private var bed: EightSleepAdapter.BedIdentity?
     @State private var routines: [String] = []
+    /// Alarms OneAlarm made before 17 August that his own app will not show him.
+    @State private var confirmingSilence = false
+    @State private var silenceResult: [String] = []
+    @State private var isSilencing = false
 
     private var matchReport: AlarmMatchReport {
         guard let plan = store.plans[.eightSleep], !plan.entries.isEmpty else {
@@ -748,6 +752,8 @@ struct BedConfirmScreen: View {
 
                 Notice(title: "OneAlarm owns the when. Eight Sleep owns the how.",
                        "Times, days and the on switch come from your routines here and are written to your bed. Temperature, vibration, level and pattern are read from Eight Sleep and handed straight back untouched, so set those in their app. Any alarm OneAlarm has not taken over is never touched at all.")
+
+                silenceRetired
 
                 serverTruth
                 routineTruth
@@ -831,6 +837,71 @@ struct BedConfirmScreen: View {
     ///
     /// Nothing is written to a routine yet. This prints his, so the next step is built against his
     /// account rather than against somebody else's capture.
+    /// Switch off the alarms OneAlarm made that his own app will not show him.
+    ///
+    /// **The only destructive-ish thing in this app, and it exists because this app caused the
+    /// problem.** Before 17 August every alarm OneAlarm created carried a copied `oneOff-napMode`
+    /// tag, so the Eight Sleep app filtered it out. Two of them are on his account, both enabled,
+    /// both ringing minutes after his real alarm at full vibration. He cannot switch them off in the
+    /// Eight Sleep app because it does not list them, and OneAlarm has no delete on any service by
+    /// design and is not getting one.
+    ///
+    /// Off, not deleted: time, days, temperature and vibration all survive. Alex asked for it on
+    /// 17 August, in one word: *"yes"*.
+    ///
+    /// The button appears only when there is something to switch off, and disappears once there is
+    /// not, so a solved problem stops taking up space on the screen.
+    @ViewBuilder
+    private var silenceRetired: some View {
+        let retired = choices.filter { $0.isHidden && !$0.weekdays.isEmpty && $0.isEnabled }
+        if !retired.isEmpty || !silenceResult.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                if !silenceResult.isEmpty {
+                    Text(silenceResult.joined(separator: "\n"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.State.confirmed)
+                } else {
+                    Notice(.warn, title: "\(retired.count) alarm\(retired.count == 1 ? "" : "s") here will ring and you cannot see \(retired.count == 1 ? "it" : "them").",
+                           "OneAlarm made \(retired.count == 1 ? "it" : "them") before 17 August and left a nap tag on \(retired.count == 1 ? "it" : "them"), which is why the Eight Sleep app does not list \(retired.count == 1 ? "it" : "them"). Switching \(retired.count == 1 ? "it" : "them") off is the only fix, because there is nothing to tap in their app and OneAlarm never deletes anything.")
+
+                    Button {
+                        confirmingSilence = true
+                    } label: {
+                        Text(isSilencing ? "Switching off..." : "Switch \(retired.count == 1 ? "it" : "them") off")
+                            .font(.system(size: 15, weight: .bold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(Theme.card, in: Capsule())
+                            .overlay(Capsule().strokeBorder(Theme.lineStrong, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSilencing)
+                }
+            }
+            // Names every alarm it will touch, because the whole problem with these is that he
+            // cannot go and look at them anywhere else.
+            .confirmationDialog(
+                "Switch off \(retired.map(\.summary).joined(separator: " and "))?",
+                isPresented: $confirmingSilence,
+                titleVisibility: .visible
+            ) {
+                Button("Switch off", role: .destructive) {
+                    isSilencing = true
+                    let ids = retired.map(\.id)
+                    Task {
+                        silenceResult = (try? await store.eightSleep.silenceAlarms(ids))
+                            ?? ["That did not work. Nothing was changed."]
+                        choices = (try? await store.eightSleep.availableAlarms()) ?? choices
+                        isSilencing = false
+                    }
+                }
+                Button("Leave them", role: .cancel) {}
+            } message: {
+                Text("They keep their time, their days and their temperature. Nothing is deleted, and your \(retired.count == 1 ? "other alarm is" : "other alarms are") untouched.")
+            }
+        }
+    }
+
     @ViewBuilder
     private var routineTruth: some View {
         DisclosureGroup {

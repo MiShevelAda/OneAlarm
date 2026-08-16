@@ -731,6 +731,81 @@ actor EightSleepAdapter: DeviceAdapter {
         return !tags.contains { hiddenTags.contains(($0 as? String) ?? "") }
     }
 
+    // MARK: Clearing up after ourselves
+
+    /// The mess OneAlarm made before 17 August, ready to be shown to Alex before anything happens.
+    ///
+    /// Pure read. Two alarms on his account carry `oneOff-napMode`, ring, and are invisible in the
+    /// Eight Sleep app, so there is nothing there for him to switch off and OneAlarm has no delete on
+    /// any service by design. Switching them off is the only remedy that exists, and he asked for it
+    /// on 17 August: *"yes"*.
+    ///
+    /// **Two filters, and the second one is the one that matters.**
+    ///
+    /// Hidden, obviously. And **recurring**: it must have days. A nap timer Alex starts himself from
+    /// the Nap tool in the Eight Sleep app would carry the same tags, and switching off something he
+    /// just set going would be exactly the "never silently change a setting Alex chose" failure this
+    /// project already has a rule about. A real nap is a one-off and carries no day set; both of the
+    /// alarms this is for carry weekdays and Sa Su respectively.
+    ///
+    /// Already-off ones are excluded too, so running it twice is not a second write.
+    func retiredAlarms() async throws -> [RemoteAlarmChoice] {
+        try await availableAlarms().filter {
+            $0.isHidden && !$0.weekdays.isEmpty && $0.isEnabled
+        }
+    }
+
+    /// Switch off specific alarms by id, and report each one by name.
+    ///
+    /// **Off, never deleted.** There is no DELETE on this adapter and there is not going to be one.
+    /// An alarm switched off keeps its time, its days, its temperature and its vibration, so this is
+    /// reversible by anybody who can see it, which for these particular alarms means the API rather
+    /// than his app. That asymmetry is why he is asked first rather than told after.
+    ///
+    /// Takes ids rather than re-deriving the list, so what he confirmed on screen is exactly what is
+    /// written. Re-reading here would let the account change between the dialog and the write, and
+    /// "it switched off something I did not see" is the one outcome worth engineering against.
+    func silenceAlarms(_ ids: [String]) async throws -> [String] {
+        guard !ids.isEmpty else { return [] }
+        let (token, user) = try await currentToken()
+        let alarms = try await fetchAlarms()
+
+        var done: [String] = []
+        for id in ids {
+            guard let existing = alarms.first(where: { Self.alarmID($0) == id }) else {
+                // Gone since he looked. Not an error: the outcome he wanted is the outcome he has.
+                done.append("\(id) was already gone")
+                continue
+            }
+            // Re-checked against the object rather than trusted from the screen. The id came from a
+            // dialog and a dialog is not evidence about what is on the account now.
+            guard Self.isVisibleToHim(existing) == false, !Self.weekdays(of: existing).isEmpty else {
+                done.append("\(Self.shortLabel(existing)) was left alone, it is not one of these")
+                continue
+            }
+            guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms/\(id)") else { continue }
+
+            let body = try HTTPClient.json(Self.silence(existing))
+            let response = try await http.send("PUT", url, headers: Self.baseHeaders(token: token), body: body)
+
+            if response.status == 403 { throw AdapterError.subscriptionRequired }
+            if response.status == 429 {
+                backOff()
+                throw AdapterError.rateLimited
+            }
+            if response.status == 401 {
+                accessToken = nil
+                throw AdapterError.authenticationFailed("Token was rejected.")
+            }
+            guard response.isSuccess else {
+                done.append("\(Self.shortLabel(existing)) could not be switched off (HTTP \(response.status))")
+                continue
+            }
+            done.append("\(Self.shortLabel(existing)) is off")
+        }
+        return done
+    }
+
     /// Which existing alarm to copy settings from.
     ///
     /// Prefers one he can actually see, then one that can actually fire. An inert alarm, no days and
