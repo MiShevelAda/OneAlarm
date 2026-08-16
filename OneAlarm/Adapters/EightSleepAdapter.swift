@@ -87,7 +87,18 @@ actor EightSleepAdapter: DeviceAdapter {
         // app."* Nothing is written here yet, and deliberately: no routine object from his account
         // has ever been read, and composing a write against a shape taken from somebody else's
         // capture is the mistake that cost five hours on Whoop. Read first, print it, then write.
+        // Both versions, and this one is not paranoia. The routine **write** is `/v2/.../routines/{id}`
+        // in two independent captures, and an OpenAPI description of this API documents the routine
+        // **read** as `GET /v1/users/{userId}/routines`. That is the third version asymmetry on this
+        // service: the alarm list is v2 while the alarm update is v1, and here it may run the other
+        // way. Nothing public resolves it.
+        //
+        // Guessing one and being wrong is the worst outcome available, because a 404 on the read
+        // makes `fetchRoutines` return empty, and empty means the routine write silently does
+        // nothing and reports nothing. That is the exact failure shape this whole evening has been
+        // spent removing. So both are read, in order, and whichever answers is used.
         #"^GET https://app-api\.8slp\.net/v2/users/[^/]+/routines$"#,
+        #"^GET https://app-api\.8slp\.net/v1/users/[^/]+/routines$"#,
         // The routine write. Read modify write, exactly like the alarm write, and for exactly the
         // same reason: the shape is only partly understood, so the object the server sent comes back
         // untouched apart from the two fields OneAlarm owns. `bedtime` in particular is his and is
@@ -106,6 +117,17 @@ actor EightSleepAdapter: DeviceAdapter {
     /// hammered. pyEight has no 429 handling at all, so this is ours rather than ported.
     private var retryNotBefore: Date?
     private var currentBackoff: TimeInterval = 0
+    /// Which API version answered the routines read, once one has.
+    ///
+    /// Recorded rather than assumed because this service is version asymmetric in a way nothing
+    /// public resolves, and because knowing the answer means the next version of this adapter can
+    /// stop sending two requests.
+    private(set) var routinesVersion: String?
+    /// Why the routines read came back empty, when it did.
+    ///
+    /// An empty routine list and a refused routine read look identical from the outside, and the
+    /// first means "you have none" while the second means "OneAlarm is calling the wrong address".
+    private(set) var lastRoutineReadFailure: String?
 
     /// - Parameter session: a stub session, so the whole write path can be exercised offline.
     ///
@@ -1078,6 +1100,12 @@ actor EightSleepAdapter: DeviceAdapter {
         var routineNotes: [String] = []
         if !plan.entries.isEmpty, !report.pairs.isEmpty {
             let routines = (try? await fetchRoutines()) ?? []
+            // An empty list and a refused read look identical from here, and they mean opposite
+            // things: "you have no routines" against "OneAlarm is calling the wrong address". The
+            // second is the one that makes this whole leg do nothing while reporting success.
+            if routines.isEmpty, let failure = lastRoutineReadFailure {
+                routineNotes.append("Could not read your Eight Sleep routines (\(failure)), so their days were not updated. Times still were.")
+            }
             for pair in report.pairs {
                 guard let alarm = alarms.first(where: { Self.alarmID($0) == pair.alarmID }),
                       let routineID = Self.routineID(of: alarm),
@@ -1272,29 +1300,18 @@ actor EightSleepAdapter: DeviceAdapter {
     /// Returns an empty array rather than throwing. This is a diagnostic, and a diagnostic that can
     /// take an alarm write down with it is worse than no diagnostic.
     func routineDump() async -> [String] {
-        guard let session = try? await currentToken(),
-              let url = URL(string: "\(Self.appHost)/v2/users/\(session.userID)/routines"),
-              let response = try? await http.send("GET", url, headers: Self.baseHeaders(token: session.token))
-        else { return [] }
-
-        guard response.isSuccess else {
-            // A refusal is the answer too: it says this account does not expose routines this way.
-            return ["GET /v2/users/{id}/routines returned HTTP \(response.status): \(Self.serverMessage(response.data))"]
-        }
-        guard let json = try? HTTPClient.dictionary(response.data) else {
-            return ["routines returned something that is not a JSON object: \(Self.serverMessage(response.data))"]
+        let routines = (try? await fetchRoutines()) ?? []
+        guard !routines.isEmpty else {
+            if let failure = lastRoutineReadFailure {
+                return ["The routines read was refused. \(failure).",
+                        "This is the object Eight Sleep's app renders alarms through, so if it cannot be read, OneAlarm cannot make a new alarm appear in their app."]
+            }
+            return ["This account returned no routines, and the read itself succeeded."]
         }
 
-        // Printed rather than parsed. Parsing it would mean deciding what it means, and the whole
-        // point of this call is to find that out from the account rather than from a write-up.
-        var lines = ["keys: " + json.keys.sorted().joined(separator: ", ")]
-        let routines = (json["routines"] as? [[String: Any]])
-            ?? (json["settings"] as? [String: Any]).flatMap { $0["routines"] as? [[String: Any]] }
-            ?? []
-        if routines.isEmpty {
-            lines.append(Self.serverMessage(response.data))
-            return lines
-        }
+        // Printed rather than parsed. Parsing it would mean deciding what it means, and the point of
+        // this panel is to find that out from the account rather than from a write-up.
+        var lines = ["read from /\(routinesVersion ?? "?")/users/{id}/routines"]
         for routine in routines {
             lines.append("---")
             for key in routine.keys.sorted() {
@@ -1313,15 +1330,27 @@ actor EightSleepAdapter: DeviceAdapter {
     /// writes back what it does not understand rather than dropping it.
     func fetchRoutines() async throws -> [[String: Any]] {
         let (token, user) = try await currentToken()
-        guard let url = URL(string: "\(Self.appHost)/v2/users/\(user)/routines") else { return [] }
 
-        let response = try await http.send("GET", url, headers: Self.baseHeaders(token: token))
-        if response.status == 403 { throw AdapterError.subscriptionRequired }
-        if response.status == 401 {
-            accessToken = nil
-            throw AdapterError.authenticationFailed("Token was rejected.")
+        // v2 first, because that is where the write lives in both captures, then v1, because that is
+        // where an OpenAPI description puts the read. One of them answers.
+        var response: HTTPClient.Response?
+        for version in ["v2", "v1"] {
+            guard let url = URL(string: "\(Self.appHost)/\(version)/users/\(user)/routines") else { continue }
+            let attempt = try await http.send("GET", url, headers: Self.baseHeaders(token: token))
+            if attempt.status == 403 { throw AdapterError.subscriptionRequired }
+            if attempt.status == 401 {
+                accessToken = nil
+                throw AdapterError.authenticationFailed("Token was rejected.")
+            }
+            if attempt.isSuccess {
+                response = attempt
+                routinesVersion = version
+                break
+            }
+            lastRoutineReadFailure = "\(version): HTTP \(attempt.status)"
         }
-        guard response.isSuccess, let json = try? HTTPClient.dictionary(response.data) else { return [] }
+
+        guard let response, let json = try? HTTPClient.dictionary(response.data) else { return [] }
 
         // Two envelope shapes, because nobody has seen this account's yet and guessing one would
         // return empty and read as "you have no routines".

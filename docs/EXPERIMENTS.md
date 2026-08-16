@@ -482,6 +482,31 @@ each time was hours, and the fix each time was ten minutes of looking for a seco
 Still needs one real run to confirm the server agrees with both sources.
 
 
+---
+
+## E19 🔴 Which API version **reads** an Eight Sleep routine?
+
+**Why.** The routine **write** is `PUT /v2/users/{id}/routines/{routineId}` in two independent
+captures. An OpenAPI description of this API documents the routine **read** as
+`GET /v1/users/{userId}/routines`. Both cannot be assumed, and this service is already asymmetric in
+exactly this way: the alarm list is `/v2` while the alarm update is `/v1`, confirmed on Alex's
+account. Here it may run the other way round.
+
+**Why guessing is the worst option.** A 404 on the read makes `fetchRoutines` return empty. Empty is
+indistinguishable from "this account has no routines", so the routine write would silently do nothing
+and the receipt would report success on the alarm times. That is the precise failure shape this whole
+evening has been spent removing, and it would have been the fourth "it still doesn't work".
+
+**Test.** Both are allowlisted and read in order, `v2` then `v1`. Whichever answers is used and
+recorded in `routinesVersion`, which the diagnostic panel prints. A read that fails on both is named
+in the receipt with its status, rather than passing as "no routines".
+
+**Prediction.** `v1` answers and `v2` returns 404 or 405, matching the OpenAPI description and
+inverting the alarm asymmetry. Written before the test.
+
+**Whose.** Alex, one Set and one look at the routines panel, which now prints which version answered.
+
+
 ## Completed
 
 | | Question | Answer | Date |
