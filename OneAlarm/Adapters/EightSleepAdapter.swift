@@ -945,10 +945,20 @@ actor EightSleepAdapter: DeviceAdapter {
         let routineAlarm = alarms.first { alarmID($0) == routineAlarmID }
         let weeklyIntact = routineAlarm.map { clock($0) == routineTime.hhmm } ?? false
         let weeklyMoved = routineAlarm.map { clock($0) == overrideTime.hhmm } ?? false
-        let overrideLanded = alarms.contains {
-            alarmID($0) != routineAlarmID
-                && clock($0) == overrideTime.hhmm
-                && weekdays(of: $0) == [weekday]
+        // **A one-shot has no days at all, and that is what success looks like now.**
+        //
+        // This asked for `weekdays(of:) == [weekday]`, which was right while the override was a
+        // single day repeating alarm. Eight Sleep's own one-off carries no `repeat` block, so
+        // `weekdays(of:)` is empty, and the check would have called a perfect write "did not land"
+        // the moment the one-shot rung started being tried first.
+        //
+        // Empty is accepted only for an alarm at exactly the override time, so an unrelated alarm
+        // with no days cannot satisfy it.
+        let overrideLanded = alarms.contains { candidate in
+            guard alarmID(candidate) != routineAlarmID, clock(candidate) == overrideTime.hhmm
+            else { return false }
+            let days = weekdays(of: candidate)
+            return days == [weekday] || days.isEmpty
         }
 
         let day = weekday.shortLabel
@@ -1002,7 +1012,8 @@ actor EightSleepAdapter: DeviceAdapter {
     static func weekFindings(
         alarms: [[String: Any]],
         entries: [RoutinePlan.Entry],
-        overrides: [RoutinePlan.Entry] = []
+        overrides: [RoutinePlan.Entry] = [],
+        knownOneOffIDs: Set<String> = []
     ) -> [String] {
         // Hidden alarms are not coverage. Two are on his real account, both enabled and both
         // ringing, and counting one would report a genuinely silent morning as fine on the strength
@@ -1027,7 +1038,17 @@ actor EightSleepAdapter: DeviceAdapter {
         //
         // Silence rather than a guess, which is this project's rule about absence: not knowing which
         // mornings an alarm covers is not the same as knowing it covers none.
-        guard !live.contains(where: { weekdays(of: $0).isEmpty }) else { return [] }
+        //
+        // **An override we made ourselves is excluded from that guard.** Eight Sleep's own one-off
+        // carries no `repeat`, so from 18 August every armed override puts an empty-day alarm on the
+        // account, and without this the week check would fall silent on exactly the syncs where a one
+        // time change is being tested. We know which morning our own one-off covers, because we
+        // asked for it. The doubt only applies to an empty-day alarm we cannot account for.
+        guard !live.contains(where: { alarm in
+            guard weekdays(of: alarm).isEmpty else { return false }
+            guard let id = alarmID(alarm) else { return true }
+            return !knownOneOffIDs.contains(id)
+        }) else { return [] }
 
         var findings: [String] = []
         for day in Locale.Weekday.displayOrder {
@@ -1150,6 +1171,46 @@ actor EightSleepAdapter: DeviceAdapter {
         return payload
     }
 
+    /// A genuine single occurrence alarm: **no `repeat` block at all**.
+    ///
+    /// **This is Eight Sleep's own one-off mechanism, and it is now confirmed by two independent
+    /// sources**, which is this project's bar for treating something as a capture rather than a
+    /// guess:
+    ///
+    /// 1. `docs/RESEARCH.md` 1.5, from the older reference library: *"Omitting `repeat` entirely is
+    ///    what makes it one-off."* That sat in this repo unused since the first day.
+    /// 2. `lukas-clarke/eight_sleep`, the maintained Home Assistant integration, read at source on
+    ///    18 August. It has a function called `set_one_off_alarm` which POSTs to
+    ///    `v1/users/{id}/alarms` with exactly `time`, `enabled`, `vibration` and `thermal`, and
+    ///    **no `repeat`**. The same file's alarm reader carries the comment *"not just
+    ///    recommendedAlarm, which may skip one-off alarms"*, so one-offs are first class entries in
+    ///    the alarm list.
+    ///
+    /// **What this replaces.** Until 18 August the override was a single day **repeating** alarm,
+    /// which is why it needed a synthetic ownership key, a link, and an explicit delete the morning
+    /// after. A true one-shot fires once. Most of that machinery becomes unnecessary if this rung is
+    /// accepted, which is why it goes first.
+    ///
+    /// **His settings still ride along.** `vibration` and `thermal` are copied from a template alarm
+    /// rather than composed, because the reference documentation contradicts itself about those field
+    /// names thirty lines apart and a guess there ends up in the bed's temperature. Only `time` and
+    /// `enabled` are authored.
+    ///
+    /// `tags` is deliberately absent. It is absent from the integration's payload too, and copying it
+    /// is what made a fortnight of alarms invisible.
+    static func oneShot(like template: [String: Any], at time: WallClockTime) -> [String: Any] {
+        var payload: [String: Any] = [
+            "time": time.hhmmss,
+            "enabled": true,
+        ]
+        // Echoed, never authored. Absent from the template means absent here: sending a composed
+        // default would be choosing a vibration strength on his behalf.
+        for field in ["vibration", "thermal", "audio"] {
+            if let value = template[field] { payload[field] = value }
+        }
+        return payload
+    }
+
     /// The create payload, in the order worth trying, each one differing from the last by **one**
     /// thing.
     ///
@@ -1186,6 +1247,25 @@ actor EightSleepAdapter: DeviceAdapter {
         let minimal = untagged.filter { keep.contains($0.key) }
 
         return [("full", full), ("no tags", untagged), ("schedule only", minimal)]
+    }
+
+    /// The create ladder for a **one day override**, one-shot first.
+    ///
+    /// Separate from `cloneVariants`, which builds a recurring alarm for a routine. The two have
+    /// different best-first answers and folding them together would put the wrong rung first for one
+    /// of them.
+    ///
+    /// Rung 1 is the evidence-backed one: a genuine single occurrence with no `repeat`, matching what
+    /// Eight Sleep's own client does. Rungs 2 and 3 are the single day repeating alarm this app
+    /// shipped on 18 August, kept as a fallback because it is built from a create that is confirmed
+    /// working on this account, where the one-shot is confirmed only in someone else's code.
+    static func oneOffVariants(
+        _ template: [String: Any],
+        day: Locale.Weekday,
+        time: WallClockTime
+    ) -> [(name: String, payload: [String: Any])] {
+        [("one-shot, no repeat", oneShot(like: template, at: time))]
+            + cloneVariants(template, days: [day], time: time)
     }
 
     /// Tags Eight Sleep's own app uses to mean "this is not one of your alarms".
@@ -1998,7 +2078,7 @@ actor EightSleepAdapter: DeviceAdapter {
                     }
                     var outcome: CreateOutcome = .refused("not attempted")
                     var attempts: [String] = []
-                    outer: for variant in Self.cloneVariants(template, days: [bend.weekday], time: bentTime) {
+                    outer: for variant in Self.oneOffVariants(template, day: bend.weekday, time: bentTime) {
                         for version in Self.createPaths {
                             outcome = try await postAlarm(variant.payload, version: version,
                                                           token: token, user: user)
@@ -2266,7 +2346,12 @@ actor EightSleepAdapter: DeviceAdapter {
                     weekday: bend.weekday
                 ))
             }
-            weekProblems = Self.weekFindings(alarms: settled, entries: entries, overrides: bends)
+            weekProblems = Self.weekFindings(
+                alarms: settled, entries: entries, overrides: bends,
+                // Our own override alarms. Their day set is empty by design now, and we know exactly
+                // which morning each one covers.
+                knownOneOffIDs: Set(oneOffKeys.compactMap { RemoteAlarmLink.alarmID(for: $0, on: .eightSleep) })
+            )
         }
 
         var note = report.note

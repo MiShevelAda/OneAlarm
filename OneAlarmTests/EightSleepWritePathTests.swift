@@ -1371,6 +1371,119 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertTrue(detail.contains("07:45"), detail)
     }
 
+    // MARK: The one-shot, which is Eight Sleep's own one-off mechanism
+
+    /// A one-shot carries no `repeat` block at all. That is the whole mechanism.
+    ///
+    /// Confirmed by two independent sources, which is this project's bar: `docs/RESEARCH.md` 1.5
+    /// from the older reference library, and `set_one_off_alarm` in the maintained Home Assistant
+    /// integration, which POSTs `time`, `enabled`, `vibration` and `thermal` and nothing else.
+    func testAOneShotHasNoRepeatBlock() {
+        let template = alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: "r1")
+        let shot = EightSleepAdapter.oneShot(like: template, at: WallClockTime(hour: 8, minute: 5))
+
+        XCTAssertNil(shot["repeat"], "a repeat block is exactly what makes it recurring")
+        XCTAssertEqual(shot["time"] as? String, "08:05:00")
+        XCTAssertEqual(shot["enabled"] as? Bool, true)
+        XCTAssertNil(shot["id"], "the server issues the id")
+        XCTAssertNil(shot["tags"], "copying tags is what made a fortnight of alarms invisible")
+    }
+
+    /// His comfort settings ride along, because they are copied rather than composed.
+    ///
+    /// The reference documentation contradicts itself about these field names thirty lines apart,
+    /// so a composed default would end up choosing a vibration strength on his behalf.
+    func testAOneShotCarriesHisSettingsAndComposesNothing() {
+        let template = alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)
+        let shot = EightSleepAdapter.oneShot(like: template, at: WallClockTime(hour: 8, minute: 5))
+
+        XCTAssertNotNil(shot["vibration"])
+        XCTAssertNotNil(shot["thermal"])
+
+        // And a template without them produces a payload without them, rather than defaults.
+        var bare = template
+        bare.removeValue(forKey: "vibration")
+        bare.removeValue(forKey: "thermal")
+        let fromBare = EightSleepAdapter.oneShot(like: bare, at: WallClockTime(hour: 8, minute: 5))
+        XCTAssertNil(fromBare["vibration"], "absent means absent, not defaulted")
+    }
+
+    /// The one-shot is tried first, and the single-day clone remains as the fallback.
+    ///
+    /// One-shot first because it is what Eight Sleep's own client does. The clone kept behind it
+    /// because it is built from a create confirmed working on this account, where the one-shot is
+    /// confirmed only in someone else's code.
+    func testTheOneOffLadderTriesTheOneShotFirst() {
+        let template = alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil)
+        let ladder = EightSleepAdapter.oneOffVariants(
+            template, day: .tuesday, time: WallClockTime(hour: 8, minute: 5)
+        )
+
+        XCTAssertEqual(ladder.first?.name, "one-shot, no repeat")
+        XCTAssertNil(ladder.first?.payload["repeat"])
+        XCTAssertTrue(ladder.count > 1, "and there is still a fallback behind it")
+        XCTAssertNotNil(ladder[1].payload["repeat"], "which is the single day repeating alarm")
+    }
+
+    /// The verdict accepts a day-less alarm at the override time as success.
+    ///
+    /// **This would have called a perfect one-shot a failure.** The check asked for exactly one
+    /// weekday, which was right while the override was a single day repeating alarm. A one-shot has
+    /// no days at all.
+    func testTheVerdictAcceptsADaylessOneShot() {
+        var shot = alarm(id: "oneoff-1", time: "06:20:00", days: [], routine: nil)
+        // No repeat block at all, which is what the server returns for a one-shot.
+        shot.removeValue(forKey: "repeat")
+
+        let verdict = EightSleepAdapter.oneOffVerdict(
+            alarms: [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil), shot],
+            routineAlarmID: "his",
+            routineTime: WallClockTime(hour: 6, minute: 5),
+            overrideTime: WallClockTime(hour: 6, minute: 20),
+            weekday: .tuesday
+        )
+        XCTAssertTrue(verdict.contains("This worked"), verdict)
+    }
+
+    /// But a day-less alarm at some other time is still not the override.
+    ///
+    /// The control. Accepting any day-less alarm would let an unrelated one satisfy the check, which
+    /// is the failure mode of every test that matches on one field.
+    func testTheVerdictDoesNotAcceptADaylessAlarmAtTheWrongTime() {
+        var unrelated = alarm(id: "other", time: "11:00:00", days: [], routine: nil)
+        unrelated.removeValue(forKey: "repeat")
+
+        let verdict = EightSleepAdapter.oneOffVerdict(
+            alarms: [alarm(id: "his", time: "06:05:00", days: weekdayNames, routine: nil), unrelated],
+            routineAlarmID: "his",
+            routineTime: WallClockTime(hour: 6, minute: 5),
+            overrideTime: WallClockTime(hour: 6, minute: 20),
+            weekday: .tuesday
+        )
+        XCTAssertTrue(verdict.contains("did not land"), verdict)
+    }
+
+    /// Our own one-shot does not silence the week check, but a stranger's day-less alarm still does.
+    ///
+    /// From 18 August every armed override puts a day-less alarm on the account, so without this the
+    /// week check would fall silent on exactly the syncs where a one time change is being tested. We
+    /// know which morning our own covers, because we asked for it.
+    func testOurOwnOneShotDoesNotSilenceTheWeekCheck() {
+        var shot = alarm(id: "oneoff-1", time: "06:20:00", days: [], routine: nil)
+        shot.removeValue(forKey: "repeat")
+        let uncovered = [entry("weekend", "Weekend", [.saturday, .sunday], hour: 9)]
+
+        XCTAssertEqual(
+            EightSleepAdapter.weekFindings(alarms: [shot], entries: uncovered,
+                                           knownOneOffIDs: ["oneoff-1"]).count,
+            2, "Saturday and Sunday are genuinely uncovered, and our one-shot says nothing about them"
+        )
+        XCTAssertEqual(
+            EightSleepAdapter.weekFindings(alarms: [shot], entries: uncovered), [],
+            "the same alarm unaccounted for still buys silence, because then we cannot know"
+        )
+    }
+
     // MARK: The baseline diff, which answers E23 without anybody reading a dump
 
     /// A field that appears between two reads is named, which is the whole point.

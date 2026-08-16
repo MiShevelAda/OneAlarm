@@ -961,7 +961,40 @@ say which. If both are green, it was 3, and this entry closes as a side effect o
 
 
 
-## E25 🔴 Does a one day override work as its own single day alarm?
+## E25 🟠 Does a one day override work as its own alarm? **Mechanism confirmed in two sources.**
+
+> **18 August, from outside research rather than from the bed.** How Eight Sleep expresses a one-off
+> is answered, and this project already had half the answer sitting unused.
+>
+> `lukas-clarke/eight_sleep`, the maintained Home Assistant integration, read at source:
+>
+> ```python
+> async def set_one_off_alarm(self, time, enabled=True, vibration_..., thermal_...):
+>     """Create a new alarm via the new alarms API."""
+>     url = APP_API_URL + f"v1/users/{self.user_id}/alarms"
+>     data = {"time": time, "enabled": enabled,
+>             "vibration": {...}, "thermal": {...}}
+>     await self.device.api_request("POST", url, data=data)
+> ```
+>
+> **A one-off is a POST with no `repeat` block.** No tag, no id, no days. And the same file's alarm
+> reader carries the comment *"not just recommendedAlarm, which may skip one-off alarms"*, so
+> one-offs are first class entries in `alarms[]` rather than a flag on a recurring alarm.
+>
+> That is a **second source** for what `docs/RESEARCH.md` 1.5 has said since day one: *"Omitting
+> `repeat` entirely is what makes it one-off."* Two sources is this project's bar for a capture, so
+> this stops being a guess.
+>
+> **The design shipped on 18 August was the right shape and the wrong payload.** It created a single
+> day **repeating** alarm, which is the only reason it needed a synthetic ownership key, a link and
+> an explicit delete the morning after. The one-shot is now rung 1 of `oneOffVariants`, with the
+> single day clone kept behind it, because the clone is built from a create confirmed on this
+> account while the one-shot is confirmed only in someone else's code.
+>
+> **Still open, and only the bed can answer:** whether the one-shot self-clears after it fires. If it
+> does, the key, the link and the delete all go.
+
+## E25-old 🔴 Does a one day override work as its own single day alarm?
 
 **Shipped 18 August, untested on hardware.** `E23` asked which field carries Eight Sleep's native
 `UPCOMING ALARM ONLY`. Three raw dumps have now come back with the same sixteen keys and nothing
