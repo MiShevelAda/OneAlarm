@@ -379,6 +379,31 @@ visible ones do not share, the tag is the link and an orphaned tag is the cause.
 **Whose.** Alex, one screenshot of each.
 
 
+---
+
+## E16 🔴 Which API version creates an Eight Sleep alarm?
+
+**Why.** The create has been refused twice with no reason surfaced, and the path it was sent to is the
+least evidenced thing in the adapter. This API is asymmetric where it has been observed: the list is
+`GET /v2/users/{id}/alarms` and the update is `PUT /v1/users/{id}/alarms/{alarmId}`, both confirmed
+against Alex's account. The create path was taken from a write-up, never a capture. A search of every
+public Eight Sleep project on 16 August found the list documented and the create documented nowhere,
+including in the two CLIs that expose an `alarm create` command.
+
+**Why it matters more than the payload.** A wrong path refuses every payload shape identically. Three
+rounds of dropping fields off the body would all fail the same way and would look exactly like a
+payload problem, and the fix would be to discard settings of his chasing a phantom.
+
+**Test.** The ladder now tries the full clone on `v1` and then on `v2` before dropping any field, and
+names every attempt with the status and the server's body. Two requests separate path from payload.
+
+**Prediction.** `v2` is the create, matching the list rather than the update, and `v1` returns 404 or
+405. Written before the test. If both refuse the full clone identically, the path is not the problem
+and the ladder's later rungs are the answer.
+
+**Whose.** Alex, one tap of Set all alarms, then the Eight Sleep row's text.
+
+
 ## Completed
 
 | | Question | Answer | Date |

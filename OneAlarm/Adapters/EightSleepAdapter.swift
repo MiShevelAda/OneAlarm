@@ -59,6 +59,15 @@ actor EightSleepAdapter: DeviceAdapter {
         // payload. It copies an alarm the account already has, so no field is guessed, and it is
         // hard capped at `alarmCeiling`. Read those two before touching this line.
         #"^POST https://app-api\.8slp\.net/v1/users/[^/]+/alarms$"#,
+        // Both versions, because which one creates an alarm is **not known**. This API is already
+        // asymmetric where it has been observed: the list is `/v2/users/{id}/alarms` and the update
+        // is `/v1/users/{id}/alarms/{alarmId}`, both confirmed against Alex's account. The create
+        // path came from a write-up rather than a capture, and a search of every public Eight Sleep
+        // project on 2026-08-16 found the list endpoint documented and the create endpoint
+        // documented nowhere. A wrong path refuses every payload shape identically, which is
+        // indistinguishable from a wrong payload. So both are allowlisted and both are tried, once,
+        // and the answer is reported rather than assumed.
+        #"^POST https://app-api\.8slp\.net/v2/users/[^/]+/alarms$"#,
         // Two reads, added to answer "which bed am I on". Neither can change anything.
         //
         // Note the third host. `client-api` is not `app-api`, and adding a host to an allowlist is
@@ -848,14 +857,22 @@ actor EightSleepAdapter: DeviceAdapter {
                 // problem instead of producing another "it still does not create them".
                 var outcome: CreateOutcome = .refused("not attempted")
                 var attempts: [String] = []
-                for variant in Self.cloneVariants(template, days: entry.weekdays, time: entry.timeToWrite) {
-                    outcome = try await postAlarm(variant.payload, token: token, user: user)
-                    if case .refused(let why) = outcome {
-                        attempts.append("\(variant.name): \(why)")
-                        continue
+
+                // Shape outer, path inner, so the **full** clone is tried on both paths before any
+                // field is dropped. If the path is the problem, that shows up in two requests and no
+                // setting of his is discarded chasing a phantom payload error. Change one thing per
+                // step, which is the rule that took six rounds to learn on the Whoop write.
+                outer: for variant in Self.cloneVariants(template, days: entry.weekdays, time: entry.timeToWrite) {
+                    for version in Self.createPaths {
+                        outcome = try await postAlarm(variant.payload, version: version,
+                                                      token: token, user: user)
+                        if case .refused(let why) = outcome {
+                            attempts.append("\(version) \(variant.name): \(why)")
+                            continue
+                        }
+                        attempts.append("\(version) \(variant.name): accepted")
+                        break outer
                     }
-                    attempts.append("\(variant.name): accepted")
-                    break
                 }
 
                 switch outcome {
@@ -1062,12 +1079,20 @@ actor EightSleepAdapter: DeviceAdapter {
         case refused(String)
     }
 
+    /// The two paths a create might live at.
+    ///
+    /// `v1` first because that is where the working update lives, so it is the likelier neighbour.
+    /// `v2` second because that is where the working list lives. One of these two is right and
+    /// nothing public says which.
+    static let createPaths = ["v1", "v2"]
+
     private func postAlarm(
         _ payload: [String: Any],
+        version: String,
         token: String,
         user: String
     ) async throws -> CreateOutcome {
-        guard let url = URL(string: "\(Self.appHost)/v1/users/\(user)/alarms") else {
+        guard let url = URL(string: "\(Self.appHost)/\(version)/users/\(user)/alarms") else {
             return .refused("bad URL")
         }
 
