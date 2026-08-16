@@ -371,6 +371,22 @@ struct CascadeView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.greyDim)
             }
+
+            // Which build this is, on the first screen rather than three taps in.
+            //
+            // It was added to Connections on 16 August to answer "is the code you are running the
+            // code I pushed", which had opened three rounds in a row. It answers that question only
+            // if it is where the question gets asked, and the question gets asked on the home screen
+            // before he does anything. On 18 August an instruction told him to check "the footer"
+            // and the stamp was not in any footer.
+            //
+            // Same mistake as the receipt line that could not be displayed, found the same way: the
+            // value was correct and nobody had followed it to the pixel.
+            Text(Build.marker)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.greyDim)
+                .textSelection(.enabled)
+                .padding(.top, 2)
         }
     }
 

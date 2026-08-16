@@ -1050,18 +1050,35 @@ actor EightSleepAdapter: DeviceAdapter {
             "repeat": ["enabled": true, "weekDays": weekDays] as [String: Any],
         ]
 
+        // **`localTime`, not `timeToWrite`.**
+        //
+        // `timeToWrite` returns the bent time when an override is armed, and this leg stopped writing
+        // that to the routine's alarm on 18 August. So the preview said "Weekdays to 08:05" while the
+        // write sent 06:05, which is a gate lying about the one thing it exists to show.
+        //
+        // This project has paid for that once already: the preview claimed to be built by the same
+        // code as the real request, was a reconstruction, and omitted the field most likely to be
+        // causing a refusal. Alex found it by opening the screen. **A gate that lies is worse than no
+        // gate, because it is where you go to rule the thing out.**
         let lines: String
         if plan.entries.isEmpty {
             lines = "one PUT, setting time to \(target.localTime.hhmm)"
         } else {
             lines = plan.entries
-                .map { "\($0.routineName) (\($0.weekdays.count) days) to \($0.timeToWrite.hhmm)\($0.shouldBeEnabled ? "" : ", switched off")" }
+                .map { "\($0.routineName) (\($0.weekdays.count) days) to \($0.localTime.hhmm)\($0.shouldBeEnabled ? "" : ", switched off")" }
                 .joined(separator: ", ")
         }
 
+        // The one day override is a second request and a third, and neither was mentioned here.
+        let bends = plan.entries.compactMap { entry -> String? in
+            guard let day = entry.overrideDay, let time = entry.bentTo else { return nil }
+            return "\(day.weekday.shortLabel) \(time.hhmm)"
+        }
+        let overrideLine = bends.isEmpty ? "" : " Plus your one time change: a POST creating a separate single day alarm for \(bends.joined(separator: " and ")), copied from an alarm you already have, and a PUT setting `skipNext` on the routine's own alarm so it does not also ring that morning. The routine's alarm keeps its own time and all of its days. The extra alarm is deleted on the first sync after that morning."
+
         return WritePreview(
             device: .eightSleep,
-            summary: "One PUT per routine, carrying three changed fields: `time`, `repeat.weekDays` and `enabled`. \(lines). Vibration, thermal, level, pattern and every field with no known meaning are echoed back exactly as the server gave them. A routine with no alarm on the bed gets one created, as a copy of an alarm you already have, capped at \(Self.alarmCeiling) alarms. An alarm whose routine you deleted is removed if OneAlarm made it, and switched off rather than removed if you made it. An alarm OneAlarm has never owned is not touched at all.",
+            summary: "One PUT per routine, carrying three changed fields: `time`, `repeat.weekDays` and `enabled`. \(lines). Vibration, thermal, level, pattern and every field with no known meaning are echoed back exactly as the server gave them. A routine with no alarm on the bed gets one created, as a copy of an alarm you already have, capped at \(Self.alarmCeiling) alarms. An alarm whose routine you deleted is removed if OneAlarm made it, and switched off rather than removed if you made it. An alarm OneAlarm has never owned is not touched at all.\(overrideLine)",
             method: "PUT",
             url: "\(Self.appHost)/v1/users/{userId}/alarms/{alarmId}",
             body: HTTPClient.redactedPreview(sketch, showing: Self.previewKeys),

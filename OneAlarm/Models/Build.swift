@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "18 Aug, 11:00 · the one time check actually reaches the screen"
+    static let marker = "18 Aug, 11:45 · the build stamp and the gate both tell the truth"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "After Set all alarms, the Eight Sleep row now tells you in one sentence whether your one time change landed and whether your routine survived it. It says this whether the sync went perfectly or not, which it did not do before: a one time change that worked said nothing at all."
+    static let whatIsNew = "After Set all alarms, the Eight Sleep row tells you in one sentence whether your one time change landed and whether your routine survived it, however the sync went. This build number is now on the home screen, at the bottom, so you never have to go looking for it."
 }

@@ -546,6 +546,25 @@ published on LinkedIn; a receipt field populated is not a sentence on a screen. 
 is meant to read, follow it all the way to the screen before writing the instruction that asks them
 to read it.**
 
+**Then the same trace, run deliberately, found two more in one pass.** `[18 August]` Having been
+caught once, the whole one-off feature was walked from value to pixel rather than to return
+statement. Two more:
+
+- **The preview gate had started lying.** It read `timeToWrite`, which returns the bent time, while
+  the write had stopped sending that to the routine's alarm hours earlier. So the safety screen said
+  "Weekdays to 08:05" for a request carrying 06:05, and said "one PUT per routine" for a write about
+  to POST a new alarm and PUT a skip. Two requests to a live account that the gate did not mention.
+  Alex found the last version of this himself, and the rule it produced is already in this file: **a
+  gate that lies is worse than no gate, because it is where you go to rule the thing out.**
+- **The build stamp was not where the question is asked.** It was added to answer "is the code you
+  are running the code I pushed", and it lived three taps into Connections while that question gets
+  asked on the home screen before anything happens. An instruction had just told him to check "the
+  footer", where it was not.
+
+**The transferable part is the sweep, not the three bugs.** One found defect of a kind is evidence of
+a **class**, and the cheapest moment to find the rest is immediately, while the shape is in your head.
+Fixing the one you tripped over and moving on is how the other two ship.
+
 ## 2. Method: what did not work
 
 **Trusting a single source for a payload shape.** `[observed, three times]` The Whoop field names,

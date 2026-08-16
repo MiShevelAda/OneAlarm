@@ -1146,6 +1146,58 @@ final class EightSleepWritePathTests: XCTestCase {
         XCTAssertTrue(receipt.highlights.contains { $0.contains("not be woken") }, "\(receipt.highlights)")
     }
 
+    // MARK: The gate has to describe what will actually be sent
+
+    /// The preview shows the routine's own time, not the override's.
+    ///
+    /// **A gate that lies is worse than no gate**, because it is where you go to rule something out.
+    /// This project paid for that once: the preview claimed to be built by the same code as the real
+    /// request, was a reconstruction, and omitted the field most likely to be causing a refusal.
+    ///
+    /// It said "Weekdays to 08:05" from 18 August, because it read `timeToWrite`, which returns the
+    /// bent time. The write sends 06:05. The one number the gate exists to show was the one it had
+    /// wrong.
+    func testThePreviewShowsTheRoutineTimeNotTheOverride() async {
+        let preview = await adapter().preview(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 8, 5)],
+                              skipsNextMorning: false)
+        )
+
+        XCTAssertTrue(preview.summary.contains("06:05"), preview.summary)
+        XCTAssertFalse(preview.summary.contains("Weekdays (5 days) to 08:05"), preview.summary)
+    }
+
+    /// The preview names the two extra requests a one time change makes.
+    ///
+    /// It described "one PUT per routine" while the write was about to POST a new alarm and PUT a
+    /// skip. Two requests to his live account that the safety screen did not mention.
+    func testThePreviewNamesTheOverridesOwnRequests() async {
+        let preview = await adapter().preview(
+            target,
+            plan: RoutinePlan(device: .eightSleep, entries: [bent(onDay: 19, at: 8, 5)],
+                              skipsNextMorning: false)
+        )
+
+        XCTAssertTrue(preview.summary.contains("POST"), preview.summary)
+        XCTAssertTrue(preview.summary.contains("skipNext"), preview.summary)
+        XCTAssertTrue(preview.summary.contains("Tu 08:05"), preview.summary)
+    }
+
+    /// With no override, the gate says nothing about one. The control.
+    func testThePreviewIsQuietWithNoOverride() async {
+        let preview = await adapter().preview(
+            target,
+            plan: RoutinePlan(
+                device: .eightSleep,
+                entries: [entry("weekdays", "Weekdays", Locale.Weekday.weekdaysOnly, hour: 6, minute: 5)],
+                skipsNextMorning: false
+            )
+        )
+
+        XCTAssertFalse(preview.summary.contains("one time change"), preview.summary)
+    }
+
     /// Signing out forgets which alarms OneAlarm made, not just which routine owns which.
     ///
     /// The created list is the only thing that licenses a delete. Left behind across a sign out it
