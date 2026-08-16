@@ -580,6 +580,24 @@ fail loudly, it falls through to the default answers, the last request 404s, and
 would have caught something quietly never runs. The test goes on passing while testing less than it
 says. **Count the requests against the code, never against the intention.**
 
+**Five delivery defects, zero logic defects.** `[18 August]` The one day override was written, tested
+and correct, and then five separate things stopped it reaching Alex:
+
+| Where it died | What he would have seen |
+|---|---|
+| `ScheduleStore` discards `note` on a clean write | "Set for 06:05" and nothing about the one time change |
+| the preview gate read `timeToWrite` | a safety screen showing a time the write does not send |
+| the build stamp lived three taps into Connections | no way to tell which build he was running |
+| the stranded check did not know the new ownership | "delete it in the Eight Sleep app", about the alarm the feature just made |
+| `verify` read back the routine's alarm, which had just been skipped | "Accepted, but it reads back as Wed 06:05 instead of Tue 08:05" |
+| the Good night sheet covers the row every time | "All confirmed. Nothing left to do. Put the phone down" |
+
+Not one was in the reasoning about alarms. **The writing was right and the path from it to a person
+was where everything broke.** That is worth more than any of the six fixes: on this project the risk
+has not been getting the logic wrong, it has been assuming a correct value is a delivered one. The
+work is not done at the return statement, and it is not done at the receipt either. It is done at the
+pixel he is looking at when he stops.
+
 ## 2. Method: what did not work
 
 **Trusting a single source for a payload shape.** `[observed, three times]` The Whoop field names,

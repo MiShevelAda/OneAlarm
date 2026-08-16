@@ -26,6 +26,16 @@ final class ScheduleStore {
     /// one whose service holds more than one alarm.
     private(set) var plans: [DeviceID: RoutinePlan] = [:]
     private(set) var status: [DeviceID: DeviceSyncStatus] = [:]
+    /// Sentences from the last write that must be read whatever the outcome.
+    ///
+    /// **The Good night sheet is the screen he actually lands on**, and pressing Set all alarms
+    /// presents it over the row every time, settled or not. So on the run where a one time change
+    /// mattered most, the last thing on screen was "All confirmed. Nothing left to do. Put the phone
+    /// down", and the sentence saying whether the one time change landed was one dismissal behind it.
+    ///
+    /// Found on 18 August, tracing what he sees after the button rather than what the adapter
+    /// returns. The fifth defect of that shape in a row, and the last screen in the chain.
+    private(set) var highlights: [DeviceID: [String]] = [:]
     private(set) var authStates: [DeviceID: AuthState] = [:]
     private(set) var lastSyncedAt: Date?
     private(set) var isSyncing = false
@@ -728,6 +738,7 @@ final class ScheduleStore {
 
     private func apply(target: ResolvedTarget, using adapter: any DeviceAdapter) async {
         status[target.device] = .writing
+        highlights[target.device] = nil
         do {
             // **Rebuilt rather than emptied, and this fallback is a landmine rather than tidiness.**
             //
@@ -780,6 +791,7 @@ final class ScheduleStore {
                 // "Set for 06:05" and nothing about the one time change at all. Four rounds of work
                 // on a message that could not be displayed, and Alex had been asked to read that
                 // exact line back.
+                highlights[target.device] = receipt.highlights
                 let extra = receipt.highlights.joined(separator: " ")
                 if receipt.isPartial, let note = receipt.note {
                     status[target.device] = .warning("\(note) \(confirmation)")
@@ -793,6 +805,7 @@ final class ScheduleStore {
                 // alarm still landed somewhere else, almost always a time zone disagreement.
                 let formatter = DateFormatter()
                 formatter.dateFormat = "EEE HH:mm"
+                highlights[target.device] = receipt.highlights
                 // Highlights here too. This branch is the loudest thing the app can say, so it is
                 // the last place that should also swallow the sentence explaining what happened.
                 let detail = receipt.highlights.isEmpty
@@ -803,6 +816,7 @@ final class ScheduleStore {
                     + detail
                 )
             case .unavailable(let reason):
+                highlights[target.device] = receipt.highlights
                 // Same rule here. This is the branch a Whoop write always takes, and the branch an
                 // Eight Sleep write takes when the morning's own alarm was not among the ones that
                 // landed, which is exactly when a one time change is most worth reporting.

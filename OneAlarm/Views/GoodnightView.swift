@@ -35,7 +35,29 @@ struct GoodnightView: View {
                     .foregroundStyle(Theme.grey)
                     .multilineTextAlignment(.center)
 
-                if allConfirmed {
+                // **Anything that must be read, read here.**
+                //
+                // This sheet is presented over the home screen every time Set all alarms finishes,
+                // settled or not, so it is the screen he is actually looking at. Until 18 August a
+                // one time change that landed perfectly ended with "All confirmed. Nothing left to
+                // do. Put the phone down" on screen and the sentence confirming it one dismissal
+                // behind. The screen was telling him to stop looking at the moment there was
+                // something to look at.
+                if !notices.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(notices, id: \.self) { line in
+                            Text(line)
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.grey)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(.top, 18)
+                    .padding(.horizontal, 4)
+                }
+
+                if allConfirmed, notices.isEmpty {
                     Text("Put the phone down.")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.greyDim)
@@ -87,6 +109,16 @@ struct GoodnightView: View {
         case .whoop: return "Wrist buzzes"
         case .iphone: return "Phone and watch, loud"
         }
+    }
+
+    /// Sentences the last write said must be read, in device order, deduplicated.
+    ///
+    /// Deduplicated because a routine covering a morning on two legs can produce the same warning
+    /// twice, and the same sentence printed twice reads as two problems.
+    private var notices: [String] {
+        var seen = Set<String>()
+        return store.targets.flatMap { store.highlights[$0.device] ?? [] }
+            .filter { seen.insert($0).inserted }
     }
 
     private var summary: String {
