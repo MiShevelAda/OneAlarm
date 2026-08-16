@@ -498,6 +498,31 @@ fact, and twice it existed in an endpoint nobody had called. The third time the 
 better still: the field was missing because the **relationship does not exist**, and the question
 had to be rephrased rather than answered.
 
+**A "broken" row that had been fixed for two days, and nobody re-checked it.** `[18 August]` Both
+`LEARNED.md` and `STATUS.md` recorded that merging two routines *"orphans both alarms and leaves them
+ringing"*, and that narrowing a routine's days *"strands the alarm that had served it for weeks"*.
+That went into the handover document for external experts as a **BROKEN** row.
+
+Tested rather than assumed, and it is stale. Once a routine owns an alarm through `RemoteAlarmLink`,
+the link is consulted before the day sets are, so:
+
+- merging keeps the survivor's alarm and rewrites its days to the merged set
+- narrowing keeps the alarm and reshapes it
+- the merged-away routine's alarm is an orphan, which provenance resolves: deleted if OneAlarm made
+  it, switched off if he did
+
+The notes described the world before ownership was recorded, and were never revisited after the fix.
+
+**What is genuinely still open is narrower and worth stating precisely:** the gap is the **first**
+adoption, not the lifetime. A routine with no link finds its alarm only by exact day set equality, so
+a routine created after its alarm has drifted never adopts it, and an alarm nobody has adopted stays
+unowned forever. That is Alex's own diagnosis, *"it works if you set it up to match"*, stated exactly.
+
+**Two rules from this.** A defect note is a claim with a date on it, and it decays: re-test before
+quoting it, especially into a document going to someone outside. And **a fix that closes a defect
+must go back and edit every note that describes it**, or the project keeps paying for a bug it has
+already fixed.
+
 **Cutting a check before shipping it, because something else already said it.** `[18 August]` The
 week check was written with two findings: a morning with no alarm on it, and an alarm ringing that
 nothing asked for. The second was deleted before it ever ran, because the stranded-alarm line on the

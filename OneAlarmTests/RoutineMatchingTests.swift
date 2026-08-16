@@ -91,6 +91,99 @@ final class RoutineMatchingTests: XCTestCase {
     }
 
     /// An alarm nobody describes is left alone and named, never claimed by the nearest routine.
+    // MARK: Merging and splitting routines, which is where the model was said to fall over
+
+    /// **Merging two routines into one keeps the survivor's alarm, and does not strand it.**
+    ///
+    /// `LEARNED.md` and `STATUS.md` both record this case as broken: *"merged Weekdays and Weekend
+    /// into Every day: both real alarms orphaned, still ringing, and a third about to be created."*
+    /// That was written before ownership was recorded in `RemoteAlarmLink`, and the notes were never
+    /// revisited afterwards.
+    ///
+    /// Written to find out which is true rather than to confirm either. If the link survives a day
+    /// set change, the survivor keeps its alarm and the note is stale.
+    func testMergingTwoRoutinesKeepsTheSurvivorsAlarm() {
+        // He merged Weekdays and Weekend into one "Every day" routine, keeping the weekday routine's
+        // identity. Its days are now all seven, which match neither alarm on the bed.
+        let everyDay = entry("weekdays", Locale.Weekday.everyDay, at: 7)
+
+        let report = RoutinePlan.match(
+            entries: [everyDay],
+            against: [
+                weekdayAlarm,
+                weekendAlarm,
+            ],
+            // The link recorded when this routine first adopted its alarm.
+            links: ["weekdays": "a1"]
+        )
+
+        XCTAssertEqual(report.pairs.count, 1, "the link survives a day set that matches nothing")
+        XCTAssertEqual(report.pairs.first?.alarmID, "a1")
+        XCTAssertEqual(report.pairs.first?.weekdays, Locale.Weekday.everyDay,
+                       "and the alarm's days are rewritten to the merged routine's")
+        XCTAssertTrue(report.routinesWithNoAlarm.isEmpty,
+                      "so nothing is created for a routine that already owns an alarm")
+    }
+
+    /// The other routine's alarm is left for the caller to clear, and is named.
+    ///
+    /// It is not silently adopted by the survivor and it is not silently deleted. Its link is an
+    /// orphan, which the adapter resolves by provenance: deleted if OneAlarm made it, switched off if
+    /// he did. What `match` must not do is pretend it is not there.
+    func testTheMergedAwayAlarmIsNotAdoptedBySomebodyElse() {
+        let everyDay = entry("weekdays", Locale.Weekday.everyDay, at: 7)
+
+        let report = RoutinePlan.match(
+            entries: [everyDay],
+            against: [
+                weekdayAlarm,
+                weekendAlarm,
+            ],
+            // Both links still exist: the weekend routine has gone from OneAlarm, not from the bed.
+            links: ["weekdays": "a1", "weekend": "a2"]
+        )
+
+        XCTAssertEqual(report.pairs.map(\.alarmID), ["a1"])
+        XCTAssertFalse(report.alarmsWithNoRoutine.contains { $0.contains("Sat") },
+                       "an alarm OneAlarm still owns is not reported as somebody else's")
+    }
+
+    /// **Narrowing a routine's days keeps its alarm rather than stranding it.**
+    ///
+    /// The second failure in the same note: *"narrowing a routine's days strands the alarm that had
+    /// served it for weeks."* Same question, same answer if the link is doing its job.
+    func testNarrowingARoutinesDaysKeepsItsAlarm() {
+        let narrowed = entry("weekdays", [.monday, .tuesday, .wednesday], at: 7)
+
+        let report = RoutinePlan.match(
+            entries: [narrowed],
+            against: [weekdayAlarm],
+            links: ["weekdays": "a1"]
+        )
+
+        XCTAssertEqual(report.pairs.first?.alarmID, "a1")
+        XCTAssertEqual(report.pairs.first?.weekdays, [.monday, .tuesday, .wednesday],
+                       "the owned alarm is reshaped, which is the whole point of recording ownership")
+    }
+
+    /// And with no link, a changed day set correctly finds nothing. The control.
+    ///
+    /// This is the behaviour the notes describe, and it is right for an alarm nobody owns yet. The
+    /// bug was never that matching is strict; it was that a link should stop matching being consulted
+    /// at all.
+    func testWithoutALinkAChangedDaySetMatchesNothing() {
+        let narrowed = entry("weekdays", [.monday, .tuesday, .wednesday], at: 7)
+
+        let report = RoutinePlan.match(
+            entries: [narrowed],
+            against: [weekdayAlarm],
+            links: [:]
+        )
+
+        XCTAssertTrue(report.pairs.isEmpty)
+        XCTAssertEqual(report.routinesWithNoAlarm, ["weekdays"])
+    }
+
     func testAnUnmatchedAlarmIsReportedRatherThanTouched() {
         let stray = Alarm(id: "a9", weekdays: [.wednesday], isEnabled: true, label: "05:30 Wed")
         let report = RoutinePlan.match(

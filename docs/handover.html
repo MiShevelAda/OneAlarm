@@ -633,11 +633,11 @@ PUT https://api.prod.whoop.com/smart-alarm-bff/v1/schedule/{id}?apiVersion=7
         <td><span class="chip c-warn">Unverified</span></td>
         <td class="fn">7</td>
       </tr>
-      <tr class="r-bad">
+      <tr class="r-warn">
         <td><b>Resilience to change</b></td>
         <td>Editing a routine's days keeps the alarm it already owns</td>
-        <td><b>Breaks.</b> Merging two routines orphans both alarms and leaves them ringing. Narrowing a routine's days strands its alarm</td>
-        <td><span class="chip c-bad">Broken</span></td>
+        <td><b>Corrected 18 Aug.</b> Merging and narrowing keep the owned alarm: the recorded link is consulted before day sets, so the earlier "orphans both alarms" note was stale. The gap is the <b>first</b> adoption, which still needs exact day-set equality</td>
+        <td><span class="chip c-warn">Partly</span></td>
         <td class="fn">8</td>
       </tr>
       <tr class="r-bad">
@@ -733,7 +733,8 @@ PUT https://api.prod.whoop.com/smart-alarm-bff/v1/schedule/{id}?apiVersion=7
     <div>
       <h3>Identity by content similarity: the real architectural problem</h3>
       <p><span class="lab">Assessment</span>This is the most important row in the table and the owner diagnosed it himself. A routine finds its alarm three ways, in order: a recorded link, then <strong>exact day-set equality</strong> for an alarm nobody owns yet, then nothing. Exact equality is a good rule for a first meeting and a poor one for a lifetime. It works perfectly from a matched starting state, which is why the app looks reliable when set up carefully and fragile the moment anything changes.</p>
-      <p><span class="lab">Observed failures</span>Merging two routines into one orphans both real alarms, leaves them ringing, and prepares a third to be created. Narrowing a routine's days strands the alarm that had served it for weeks. Deleting a routine used to leave its alarm behind entirely.</p>
+      <p><span class="lab">Corrected 18 August</span>This note previously said merging orphans both alarms and narrowing strands one. Tested rather than assumed, and both are stale: once a routine owns an alarm through the recorded link, the link is consulted before any day set, so merging keeps the survivor's alarm and rewrites its days, narrowing reshapes it, and the merged-away alarm becomes an orphan that provenance resolves. The notes described the world before ownership was recorded and were never revisited.</p>
+      <p><span class="lab">What is genuinely open</span>The <strong>first</strong> adoption, not the lifetime. A routine with no link finds its alarm only by exact day-set equality, so a routine created after its alarm has drifted never adopts it, and an alarm nobody has adopted stays unowned forever. That is the owner's own diagnosis stated precisely, and it is a much smaller problem than the one this row used to describe.</p>
       <p><span class="lab">Proposed fix</span>Content similarity is a fine way to <em>propose</em> a pairing and a bad way to <em>maintain</em> one. Mature sync systems use it once, at adoption, with an explicit user confirmation, and never again as identity. This app has the ID mapping already; what it lacks is a confirmation step at adoption and a diff shown before the write. A "week coverage diff" that says what will change before it changes is the concrete next piece of work, and it is more valuable than any further one-off work.</p>
     </div>
   </div>
