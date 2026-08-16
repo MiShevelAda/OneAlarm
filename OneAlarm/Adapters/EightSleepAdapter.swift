@@ -1297,9 +1297,16 @@ actor EightSleepAdapter: DeviceAdapter {
 
         // Two envelope shapes, because nobody has seen this account's yet and guessing one would
         // return empty and read as "you have no routines".
-        return (json["routines"] as? [[String: Any]])
-            ?? (json["settings"] as? [String: Any])?["routines"] as? [[String: Any]]
-            ?? []
+        //
+        // Written out rather than as one `??` chain crossing an `as?` cast. That chain typechecks by
+        // precedence rules most readers would have to look up, and the compiler that would settle it
+        // is on Alex's Mac rather than here.
+        if let direct = json["routines"] as? [[String: Any]] { return direct }
+        if let settings = json["settings"] as? [String: Any],
+           let nested = settings["routines"] as? [[String: Any]] {
+            return nested
+        }
+        return []
     }
 
     /// The routine an alarm belongs to, from its own `tags`.
@@ -1375,7 +1382,10 @@ actor EightSleepAdapter: DeviceAdapter {
         return [
             "enabled": true,
             "disabledIndividually": false,
-            "timeWithOffset": ["time": time.hhmmss, "dayOffset": 0],
+            // Annotated on purpose. A nested literal mixing a String and an Int is a hard error in
+            // Swift, "heterogeneous collection literal could only be inferred to [String : Any]",
+            // not a warning, and there is no compiler in the session that would have caught it.
+            "timeWithOffset": ["time": time.hhmmss, "dayOffset": 0] as [String: Any],
             "settings": settings,
         ]
     }
