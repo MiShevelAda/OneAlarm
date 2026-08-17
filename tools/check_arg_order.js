@@ -186,6 +186,12 @@ for (const [file] of trees) {
   const lines = fs.readFileSync(file, 'utf8').split('\n');
   for (let i = 0; i < lines.length - 1; i++) {
     if (!/^\s*@[A-Za-z_]\w*(\(|\s*$)/.test(lines[i])) continue;
+    // **The attribute has to be ALONE on its line.** `@Environment(Store.self) private var store`
+    // carries its own declaration, so a doc comment underneath belongs to whatever comes next and
+    // nothing is orphaned. Without this the check fired on that shape, which is the most common
+    // property declaration in this codebase: a false positive on nearly every SwiftUI view, and a
+    // checker that cries wolf is one somebody switches off.
+    if (/\b(var|let|func|struct|class|enum|init)\b/.test(lines[i])) continue;
     if (!/^\s*\/\/\//.test(lines[i + 1])) continue;
     failures++;
     console.log(`  FAIL ${rel}:${i + 1}  attribute separated from its declaration by a doc comment`);

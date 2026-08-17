@@ -498,6 +498,24 @@ fact, and twice it existed in an endpoint nobody had called. The third time the 
 better still: the field was missing because the **relationship does not exist**, and the question
 had to be rephrased rather than answered.
 
+**OneAlarm's iPhone alarm is not the Clock app's alarm, and nothing can close that gap.** `[20
+August]` He was woken an hour early and reported: *"Apple alarm doesn't change but an alarm rang this
+morning according to set time, but the other apple alarm rang before and was not changed."* Both
+halves true, neither a bug. OneAlarm's alarm fired at 09:30 exactly as set. His Clock app's
+**Sleep | Wake Up** at 08:30 fired too.
+
+AlarmKit hands an app its **own** alarms and nothing else. There is no API to read, edit or cancel an
+alarm made in the Clock app, and the Sleep schedule is further away again, owned by Health. This is a
+property of the platform, not a gap to close.
+
+**So saying it is the only fix available, and it had never been said.** The failure mode is being
+woken early by an alarm this app did not set and cannot see, which is the same class as the Whoop
+strap buzzing early, and it cost him a morning before anything on screen mentioned it.
+
+**The rule.** When a platform limit means the app cannot control something the user will reasonably
+assume it controls, that assumption is the bug. Name it on the screen where they would form it, once,
+dismissibly. Silence about a limit reads as absence of the limit.
+
 **A diagnostic you can only reach while broken is a diagnostic nobody reaches.** `[20 August]` The
 Whoop account level check shipped on the `blocked` screen, which appears when a write is refused.
 That felt right: it answers the question the block raises. Alex went looking for it on the Whoop

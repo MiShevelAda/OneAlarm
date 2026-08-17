@@ -8,6 +8,8 @@ import SwiftUI
 @MainActor
 struct CascadeView: View {
     @Environment(ScheduleStore.self) private var store
+    /// Whether he has been told that Clock app alarms are separate and still ring.
+    @AppStorage("clockAlarmsAcknowledged") private var hasAcknowledgedClockAlarms = false
 
     @State private var showingConnections = false
     @State private var previewDevice: DeviceID?
@@ -33,6 +35,7 @@ struct CascadeView: View {
                 weekStrip
                 wakeWindow
                 cascade
+                clockAppAlarmsAreSeparate
                 previewLink
                 footer
             }
@@ -329,6 +332,41 @@ struct CascadeView: View {
                 ForEach(store.schedule.rules.filter { !$0.isEnabled }, id: \.id) { rule in
                     DisabledRow(device: rule.device, reason: "Off")
                 }
+            }
+        }
+    }
+
+    /// **OneAlarm's phone alarm is not the Clock app's alarm, and it cannot switch that one off.**
+    ///
+    /// Alex, 20 August, after being woken an hour early: *"Apple alarm doesn't change but an alarm
+    /// rang this morning according to set time, but the other apple alarm rang before and was not
+    /// changed."* Both statements are true and neither is a bug here. OneAlarm's alarm fired at 09:30
+    /// exactly as set. His Clock app's **Sleep | Wake Up** at 08:30 fired too, because nothing in
+    /// this app can see it, change it, or turn it off.
+    ///
+    /// AlarmKit gives an app its **own** alarms and nothing else. There is no API to read, edit or
+    /// cancel an alarm made in the Clock app, and the Sleep schedule is further away again, owned by
+    /// Health. So this is a permanent property of the platform rather than a gap to close.
+    ///
+    /// Which makes saying it the only available fix, and worth saying loudly: **the failure mode is
+    /// being woken early by an alarm this app did not set and cannot see.** Same class as the Whoop
+    /// strap buzzing early, and it cost him a morning before anything said so.
+    ///
+    /// Dismissible, and it stays dismissed. A fact to learn once, not a warning to live with, and a
+    /// permanent banner is one nobody reads by the third day.
+    @ViewBuilder
+    private var clockAppAlarmsAreSeparate: some View {
+        if !hasAcknowledgedClockAlarms {
+            VStack(alignment: .leading, spacing: 10) {
+                Notice(.warn,
+                       title: "Your Clock app alarms still ring.",
+                       "OneAlarm sets its own iPhone alarm, and iOS gives it no way to see or switch off the ones in the Clock app. If you have alarms there, or a Sleep schedule under Sleep | Wake Up, they ring as well and can wake you before this one. Open the Clock app and turn off the ones you do not want.")
+
+                Button("I have turned them off") { hasAcknowledgedClockAlarms = true }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.State.confirmed)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
         }
     }
