@@ -200,6 +200,28 @@ for (const [file] of trees) {
   }
 }
 
+// An `Any?` collection, which silently double wraps an optional.
+//
+// `let changes: [String: Any?] = ["k": someIntOptional]` stores
+// `Optional<Any>.some(Optional<Int>.none as Any)` when that optional is nil, so `guard let` peels the
+// outer layer, succeeds, and hands you a boxed nil. It compiles, it type checks, and it wrote a
+// setting Alex had deliberately left alone: "now it sets the eight sleep alarm always to heavy."
+//
+// There is no legitimate use of `Any?` in a collection in this codebase. A concrete optional type
+// says what it means and `guard let` then does what it says.
+for (const [file] of trees) {
+  const rel = path.relative(root, file);
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*(\/\/|\*|\/\*)/.test(lines[i])) continue;
+    if (!/:\s*\[[^\]]*\bAny\?/.test(lines[i])) continue;
+    failures++;
+    console.log(`  FAIL ${rel}:${i + 1}  an Any? collection double wraps optionals`);
+    console.log(`       ${lines[i].trim()}`);
+    console.log('       Use a concrete optional type, so `guard let` actually skips nil.');
+  }
+}
+
 // A standard library method called without its required argument label.
 //
 // `pair.weekdays.subtracting(own).isSubset(othersCover)` broke Alex's build on 20 August:

@@ -49,38 +49,69 @@ struct Comfort: Codable, Equatable, Sendable {
     static func apply(_ comfort: Comfort, to alarm: [String: Any]) -> [String: Any] {
         var payload = alarm
 
-        payload = update(payload, block: "vibration", changes: [
+        payload = update(payload, block: "vibration", bools: [
             "enabled": comfort.vibrationEnabled,
+        ], ints: [
             "powerLevel": comfort.vibrationPower,
             "level": comfort.vibrationPower,
+        ], strings: [
             "pattern": comfort.vibrationPattern,
         ])
-        payload = update(payload, block: "thermal", changes: [
+        payload = update(payload, block: "thermal", bools: [
             "enabled": comfort.thermalEnabled,
+        ], ints: [
             "level": comfort.thermalLevel,
             "temperature": comfort.thermalLevel,
-        ])
-        payload = update(payload, block: "smart", changes: [
+        ], strings: [:])
+        payload = update(payload, block: "smart", bools: [
             "lightSleepEnabled": comfort.smartEnabled,
-        ])
+        ], ints: [:], strings: [:])
 
         return payload
     }
 
     /// One sub-block, changed in place.
     ///
-    /// Both spellings of a value are offered and only the one his account actually carries is
-    /// written. That is how this can be correct without anybody resolving which of the two
-    /// contradictory docs is right: the account is the authority, and it has already answered.
+    /// **Three typed dictionaries rather than one `[String: Any?]`, and that is not fussiness.**
+    /// The first version of this took `[String: Any?]` and skipped nils with `guard let value`. It
+    /// does not work, and it shipped:
+    ///
+    /// ```swift
+    /// let power: Int? = nil
+    /// let changes: [String: Any?] = ["powerLevel": power]
+    /// for (key, value) in changes {
+    ///     guard let value else { continue }   // DOES NOT SKIP
+    /// }
+    /// ```
+    ///
+    /// Putting an `Int?` into an `Any?` dictionary **double wraps** it, into
+    /// `Optional<Any>.some(Optional<Int>.none as Any)`, so `guard let` peels only the outer layer
+    /// and succeeds. Every field he had left on `Leave` was then written back as a boxed nil.
+    ///
+    /// Alex found it within the hour: *"now it sets the eight sleep alarm always to heavy."* A
+    /// setting he never touched was being overwritten on every sync, which is precisely the failure
+    /// the whole three-way `Leave` design exists to prevent, reintroduced one layer below it.
+    ///
+    /// With concrete types there is one level of optionality and `guard let` means what it says.
+    ///
+    /// Both spellings of a value are still offered and only the one his account carries is written,
+    /// so the account settles which of the contradictory docs is right.
     private static func update(
         _ payload: [String: Any],
         block name: String,
-        changes: [String: Any?]
+        bools: [String: Bool?],
+        ints: [String: Int?],
+        strings: [String: String?]
     ) -> [String: Any] {
         guard var block = payload[name] as? [String: Any] else { return payload }
-        for (key, value) in changes {
-            guard let value, block[key] != nil else { continue }
-            block[key] = value
+        for (key, value) in bools where block[key] != nil {
+            if let value { block[key] = value }
+        }
+        for (key, value) in ints where block[key] != nil {
+            if let value { block[key] = value }
+        }
+        for (key, value) in strings where block[key] != nil {
+            if let value { block[key] = value }
         }
         var out = payload
         out[name] = block

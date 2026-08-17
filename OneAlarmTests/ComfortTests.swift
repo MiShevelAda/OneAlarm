@@ -83,6 +83,44 @@ final class ComfortTests: XCTestCase {
         XCTAssertEqual(out["time"] as? String, "07:45:00")
     }
 
+    /// **The regression that shipped: a boxed nil overwriting a setting he never touched.**
+    ///
+    /// Alex within the hour: *"now it sets the eight sleep alarm always to heavy."* `apply` took
+    /// `[String: Any?]` and skipped nils with `guard let value`, which does not skip: putting an
+    /// `Int?` into an `Any?` dictionary double wraps it, so the unwrap peels the outer layer and
+    /// succeeds. Every field left on `Leave` was written back as `Optional.none` boxed as `Any`.
+    ///
+    /// `testUnchangedComfortTouchesNothing` above did not catch it, because it only checked the
+    /// values were unchanged and a boxed nil compares unequal to nothing it was asked about. This
+    /// checks the **types** that survive, which is where the damage was.
+    func testNothingIsEverWrittenAsABoxedOptional() {
+        let out = Comfort.apply(.unchanged, to: his)
+
+        for block in ["vibration", "thermal", "smart"] {
+            let dict = try? XCTUnwrap(out[block] as? [String: Any])
+            for (key, value) in dict ?? [:] {
+                // A boxed `Optional.none` is not a Bool, Int or String, and is what JSON refuses.
+                let isConcrete = value is Bool || value is Int || value is String || value is Double
+                XCTAssertTrue(isConcrete, "\(block).\(key) survived as \(type(of: value)), not a value")
+            }
+        }
+    }
+
+    /// And with values set, the same holds: real types out, no wrappers.
+    func testSetValuesArriveAsConcreteTypes() throws {
+        var comfort = Comfort.unchanged
+        comfort.vibrationEnabled = false
+        comfort.vibrationPower = 40
+        comfort.vibrationPattern = "RISE"
+
+        let out = Comfort.apply(comfort, to: his)
+        let vibration = try XCTUnwrap(out["vibration"] as? [String: Any])
+
+        XCTAssertEqual(vibration["enabled"] as? Bool, false)
+        XCTAssertEqual(vibration["powerLevel"] as? Int, 40)
+        XCTAssertEqual(vibration["pattern"] as? String, "RISE")
+    }
+
     /// The summary says only what he actually set, so an untouched routine says nothing.
     func testTheSummaryIsEmptyUntilHeSetsSomething() {
         XCTAssertTrue(Comfort.unchanged.summary.isEmpty)

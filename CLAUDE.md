@@ -90,10 +90,21 @@ finished.
   shouldn't do it manually."* What makes it safe is not care, it is that `clone` copies an alarm the
   account already has and changes two fields. No field is ever guessed, the account is capped at 8
   alarms, and nothing here can delete what it makes.
-- Author Eight Sleep `vibration`, `thermal`, `audio`, level or pattern. Echo them; they are his, and
-  he set the line himself: *"only the modifications of temperature, vibration etc should be done in
-  the respective app."* OneAlarm authors exactly three fields on an alarm it owns: `time`,
-  `repeat.weekDays`, `enabled`.
+- **Compose** an Eight Sleep `vibration`, `thermal`, `smart` or `audio` field. Alex overruled the
+  outright ban on 2026-08-20: *"for eight sleep please add following options when editing the
+  routine."* The old line, *"only the modifications of temperature, vibration etc should be done in
+  the respective app"*, is kept here because **the danger it named has not gone away**.
+
+  The reference docs contradict themselves about these exact names thirty lines apart:
+  `vibration.powerLevel` against `vibration.level`, `thermal.level` against `thermal.temperature`.
+  A guess there does not fail loudly, it warms his bed to the wrong temperature.
+
+  So `Comfort.apply` writes **only into a key the server itself just sent**, never introduces one and
+  never creates a missing block. The account settles which doc is right. Every control is three-way:
+  `Leave` is the default and touches nothing, because a two state toggle cannot say "as it is" and
+  would overwrite his settings the moment he opened the screen.
+
+  Still never authored without him asking: nothing outside `Comfort`, and `audio` remains echo-only.
 - Author a routine's `bedtime`, or any routine field other than `days` and `enabled`. When he goes to
   bed is not an alarm setting. The routine object is read, two fields are replaced, and the whole
   rest of it is sent back exactly as it came, unknown fields included.
