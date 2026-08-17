@@ -498,6 +498,30 @@ fact, and twice it existed in an endpoint nobody had called. The third time the 
 better still: the field was missing because the **relationship does not exist**, and the question
 had to be rephrased rather than answered.
 
+**He reversed his own rule on temperature and vibration, and the reason behind it still shapes the
+fix.** `[20 August]` On 16 August: *"only the modifications of temperature, vibration etc should be
+done in the respective app."* On 20 August, with a screenshot of the Eight Sleep alarm screen: *"for
+eight sleep please add following options when editing the routine."*
+
+The old rule is kept in view rather than deleted, because **the danger it guarded against has not
+gone away**. The reference documentation contradicts itself about these exact field names thirty
+lines apart: `vibration.powerLevel` against `vibration.level`, `thermal.level` against
+`thermal.temperature`. A guess there does not fail loudly, it warms his bed to the wrong temperature
+or writes a setting his account ignores.
+
+**So nothing is composed.** Every value is written into a key the server itself just sent, and a key
+it did not send is never introduced. Whichever spelling his account uses is the one that gets
+written, because it is the one that came back, and neither doc has to be right. Same principle that
+makes `clone` safe for creating alarms.
+
+**And every control is three-way, not two.** `Leave` is the default and means the field is not
+touched. A plain on/off toggle has no way to express "as it is", so merely opening the routine screen
+would start overwriting settings he made in Eight Sleep's app. That is exactly what the ban existed
+to prevent, and a two state control would have reintroduced it through the UI rather than the wire.
+
+**The rule.** When a rule is overruled, keep the reason. It usually still constrains **how** the new
+thing is built, even when it no longer decides **whether**.
+
 **OneAlarm's iPhone alarm is not the Clock app's alarm, and nothing can close that gap.** `[20
 August]` He was woken an hour early and reported: *"Apple alarm doesn't change but an alarm rang this
 morning according to set time, but the other apple alarm rang before and was not changed."* Both

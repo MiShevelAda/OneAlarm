@@ -141,6 +141,7 @@ private struct RoutineEditor: View {
             if isExpanded {
                 chips
                 timePicker
+                comfortSection
                 deleteRow
             } else {
                 summary
@@ -231,6 +232,73 @@ private struct RoutineEditor: View {
     /// It is safe to be a wheel here precisely because of where it is. On the home screen the same
     /// control meant "bend tomorrow", and having both was the confusion Alex named. There is now one
     /// wheel per screen and each screen has one scope.
+    /// **Temperature, vibration and smart wake, on the routine.**
+    ///
+    /// Alex reversed his own rule to get this: *"only the modifications of temperature, vibration
+    /// etc should be done in the respective app"*, 16 August, replaced on 20 August by *"for eight
+    /// sleep please add following options when editing the routine"*.
+    ///
+    /// **Every control is three-way, not two.** `Leave` is the default and means OneAlarm does not
+    /// touch that field at all, which is what every routine does today and what a routine he never
+    /// opens must keep doing. A plain on/off toggle would have no way to express "as it is", so
+    /// merely opening this screen would start overwriting settings he made in Eight Sleep's app.
+    /// That is the failure this whole section was banned to prevent, and a two state control would
+    /// have reintroduced it through the UI instead of the wire.
+    @ViewBuilder
+    private var comfortSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("On your bed").themeLabel()
+
+            tristate("Temperature wake", value: routine.comfort.thermalEnabled) {
+                var next = routine.comfort
+                next.thermalEnabled = $0
+                store.setComfort(next, routineID: routine.id)
+            }
+
+            tristate("Vibration", value: routine.comfort.vibrationEnabled) {
+                var next = routine.comfort
+                next.vibrationEnabled = $0
+                store.setComfort(next, routineID: routine.id)
+            }
+
+            tristate("Smart alarm", value: routine.comfort.smartEnabled) {
+                var next = routine.comfort
+                next.smartEnabled = $0
+                store.setComfort(next, routineID: routine.id)
+            }
+
+            Notice("Leave means OneAlarm does not touch that setting, so whatever you chose in the Eight Sleep app stays. Strength and pattern are still set there.")
+        }
+    }
+
+    /// On, Off, or Leave alone. The third option is the point.
+    private func tristate(
+        _ label: String,
+        value: Bool?,
+        onChange: @escaping (Bool?) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.system(size: 15, weight: .semibold))
+            HStack(spacing: 8) {
+                ForEach([("Leave", Bool?.none), ("On", Bool?.some(true)), ("Off", Bool?.some(false))], id: \.0) { title, option in
+                    Button {
+                        onChange(option)
+                    } label: {
+                        Text(title)
+                            .font(.system(size: 13, weight: .bold))
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(value == option ? Theme.State.confirmed.opacity(0.18) : Theme.card,
+                                        in: Capsule())
+                            .overlay(Capsule().strokeBorder(
+                                value == option ? Theme.State.confirmed : Theme.lineStrong, lineWidth: 1))
+                            .foregroundStyle(value == option ? Theme.State.confirmed : Theme.grey)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private var timePicker: some View {
         if hasDays {

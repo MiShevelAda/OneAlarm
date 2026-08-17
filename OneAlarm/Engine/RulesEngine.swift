@@ -200,6 +200,11 @@ enum RulesEngine {
                     isSkippedNextMorning: skippedWeekday.map {
                         days.contains($0.shifted(by: dayShift))
                     } ?? false,
+                    // His temperature, vibration and smart wake for this routine. Carried rather
+                    // than looked up, so the adapter never needs the whole schedule. Declared before
+                    // `overrideDay` on `Entry`, so it is passed before it: Swift builds the
+                    // memberwise initialiser in declaration order and accepts no other.
+                    comfort: routine.comfort,
                     overrideDay: overrideDay
                 )
             }

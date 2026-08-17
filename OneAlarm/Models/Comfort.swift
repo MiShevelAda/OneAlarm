@@ -1,0 +1,110 @@
+import Foundation
+
+/// Temperature, vibration and smart wake, as OneAlarm is now allowed to set them.
+///
+/// **This reverses a rule Alex set himself**, and the reversal is his: *"only the modifications of
+/// temperature, vibration etc should be done in the respective app"*, 16 August, replaced on 20
+/// August by *"for eight sleep please add following options when editing the routine"*, with a
+/// screenshot of the Eight Sleep alarm screen showing Temperature, Vibration and Smart alarm.
+///
+/// The old rule is kept in view rather than deleted, because the reason behind it has not gone away
+/// and still shapes how this works. It existed because the reference documentation for this API
+/// **contradicts itself about these exact field names**, thirty lines apart: `vibration.powerLevel`
+/// against `vibration.level`, `thermal.level` against `thermal.temperature`, `"RISE"` against
+/// `"rise"`. A guess there does not fail loudly, it warms his bed to the wrong temperature.
+///
+/// **So nothing here is ever composed.** Every value is written into a key the server itself just
+/// sent, and a key the server did not send is never introduced. That sidesteps the contradiction
+/// completely: whichever spelling his account actually uses is the one that gets written, because it
+/// is the one that came back. The same principle that makes `clone` safe for creating alarms.
+///
+/// Every field is optional and `nil` means **leave it exactly as it was**, so a routine that has
+/// never been edited writes precisely what it wrote yesterday.
+struct Comfort: Codable, Equatable, Sendable {
+    var vibrationEnabled: Bool?
+    /// Eight Sleep's app calls this Off / Low / Medium / High. On the wire it is a number.
+    var vibrationPower: Int?
+    /// `RISE` and `INTENSE` are the two his account has returned. Written back in the casing the
+    /// server used, never normalised, because the docs disagree with themselves about that too.
+    var vibrationPattern: String?
+    var thermalEnabled: Bool?
+    var thermalLevel: Int?
+    /// Their app's "Smart alarm", which is `smart.lightSleepEnabled` on the wire.
+    var smartEnabled: Bool?
+
+    /// Nothing set, so nothing changes. The default for every routine.
+    static let unchanged = Comfort()
+
+    var isUnchanged: Bool { self == .unchanged }
+
+    /// Apply to an alarm object from the server, touching only keys it already contains.
+    ///
+    /// **The guard is `existing[key] != nil`, and it is the whole safety argument.** Setting a key
+    /// the server did not send would be composing a field name, which is the thing that made this
+    /// area dangerous enough to ban in the first place. If his account spells it `level` and this
+    /// wrote `powerLevel`, the write would succeed, the app would show a changed value, and his bed
+    /// would ignore it.
+    ///
+    /// A missing sub-block is left missing rather than created, for the same reason.
+    static func apply(_ comfort: Comfort, to alarm: [String: Any]) -> [String: Any] {
+        var payload = alarm
+
+        payload = update(payload, block: "vibration", changes: [
+            "enabled": comfort.vibrationEnabled,
+            "powerLevel": comfort.vibrationPower,
+            "level": comfort.vibrationPower,
+            "pattern": comfort.vibrationPattern,
+        ])
+        payload = update(payload, block: "thermal", changes: [
+            "enabled": comfort.thermalEnabled,
+            "level": comfort.thermalLevel,
+            "temperature": comfort.thermalLevel,
+        ])
+        payload = update(payload, block: "smart", changes: [
+            "lightSleepEnabled": comfort.smartEnabled,
+        ])
+
+        return payload
+    }
+
+    /// One sub-block, changed in place.
+    ///
+    /// Both spellings of a value are offered and only the one his account actually carries is
+    /// written. That is how this can be correct without anybody resolving which of the two
+    /// contradictory docs is right: the account is the authority, and it has already answered.
+    private static func update(
+        _ payload: [String: Any],
+        block name: String,
+        changes: [String: Any?]
+    ) -> [String: Any] {
+        guard var block = payload[name] as? [String: Any] else { return payload }
+        for (key, value) in changes {
+            guard let value, block[key] != nil else { continue }
+            block[key] = value
+        }
+        var out = payload
+        out[name] = block
+        return out
+    }
+
+    /// What this will change, in his words, for the preview gate and the row.
+    ///
+    /// Empty when nothing is set, so a routine he has never edited says nothing rather than a
+    /// reassuring sentence about defaults he did not choose.
+    var summary: [String] {
+        var lines: [String] = []
+        if let vibrationEnabled {
+            lines.append(vibrationEnabled ? "vibration on" : "vibration off")
+        }
+        if let vibrationPower { lines.append("vibration strength \(vibrationPower)") }
+        if let vibrationPattern { lines.append("vibration pattern \(vibrationPattern)") }
+        if let thermalEnabled {
+            lines.append(thermalEnabled ? "temperature wake on" : "temperature wake off")
+        }
+        if let thermalLevel { lines.append("temperature level \(thermalLevel)") }
+        if let smartEnabled {
+            lines.append(smartEnabled ? "smart alarm on" : "smart alarm off")
+        }
+        return lines
+    }
+}

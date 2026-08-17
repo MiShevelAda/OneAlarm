@@ -235,6 +235,17 @@ final class ScheduleStore {
         persistAndRecompute()
     }
 
+    /// Temperature, vibration and smart wake for one routine's Eight Sleep alarm.
+    ///
+    /// Alex reversed his own rule on 20 August: *"for eight sleep please add following options when
+    /// editing the routine"*, having said on 16 August that those belonged only in Eight Sleep's own
+    /// app. Nothing is written until he presses Set all alarms, same as every other routine edit.
+    func setComfort(_ comfort: Comfort, routineID: String) {
+        guard let index = schedule.routines.firstIndex(where: { $0.id == routineID }) else { return }
+        schedule.routines[index].comfort = comfort
+        persistAndRecompute()
+    }
+
     func setRoutineTime(_ time: WallClockTime, routineID: String) {
         guard let index = schedule.routines.firstIndex(where: { $0.id == routineID }) else { return }
         schedule.routines[index].time = time

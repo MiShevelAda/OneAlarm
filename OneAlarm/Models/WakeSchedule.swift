@@ -69,6 +69,12 @@ struct Routine: Codable, Equatable, Sendable, Identifiable {
     var weekdayIndices: [Int]
     var time: WallClockTime
     var isOn: Bool = true
+    /// Temperature, vibration and smart wake for this routine's Eight Sleep alarm.
+    ///
+    /// Declared last and defaulted, so every existing saved schedule decodes unchanged and no call
+    /// site moves. Swift builds the memberwise initialiser in declaration order and accepts no
+    /// other, which `tools/check_arg_order.js` enforces after that exact mistake broke a build.
+    var comfort: Comfort = .unchanged
 
     var weekdays: Set<Locale.Weekday> {
         get { WeekdaySetCoding.decode(weekdayIndices) }

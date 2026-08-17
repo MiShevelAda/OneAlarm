@@ -76,6 +76,10 @@ struct RoutinePlan: Equatable, Sendable {
         /// Only ever true for the one routine the skip falls on, and only until that morning has
         /// passed. It suppresses the alarm for one night and is put back by the next sync.
         let isSkippedNextMorning: Bool
+        /// Temperature, vibration and smart wake for this routine, carried through so the adapter
+        /// does not need the whole schedule to write them. Defaulted, so every existing construction
+        /// of an `Entry` compiles unchanged.
+        var comfort: Comfort = .unchanged
 
         /// The date the bend falls on, and the weekday it lands on for **this** device.
         ///

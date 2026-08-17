@@ -802,9 +802,16 @@ actor EightSleepAdapter: DeviceAdapter {
         _ alarm: [String: Any],
         time: WallClockTime,
         days: Set<Locale.Weekday>,
-        enabled: Bool
+        enabled: Bool,
+        comfort: Comfort = .unchanged
     ) -> [String: Any] {
-        var payload = alarm
+        // **Temperature, vibration and smart wake, when he has set them on the routine.**
+        //
+        // Defaulted to `.unchanged`, which touches nothing, so every existing caller and every
+        // routine he has never edited writes precisely what it wrote before. `Comfort.apply` only
+        // ever changes a key the server itself just sent and never introduces one, which is what
+        // keeps this clear of the field name contradiction that made the area dangerous.
+        var payload = Comfort.apply(comfort, to: alarm)
         for field in computedFields {
             payload.removeValue(forKey: field)
         }
@@ -2075,7 +2082,9 @@ actor EightSleepAdapter: DeviceAdapter {
             }
 
             let body = try HTTPClient.json(
-                Self.author(existing, time: pair.time, days: pair.weekdays, enabled: pair.shouldBeEnabled)
+                Self.author(existing, time: pair.time, days: pair.weekdays,
+                            enabled: pair.shouldBeEnabled,
+                            comfort: entries.first { $0.routineID == pair.routineID }?.comfort ?? .unchanged)
             )
             let response = try await http.send("PUT", url, headers: Self.baseHeaders(token: token), body: body)
 
@@ -2150,7 +2159,8 @@ actor EightSleepAdapter: DeviceAdapter {
                     // Already made on an earlier sync. Moved rather than remade, so changing his mind
                     // about the time does not leave two override alarms on the bed.
                     let body = try HTTPClient.json(
-                        Self.author(existing, time: bentTime, days: [bend.weekday], enabled: entry.isOn)
+                        Self.author(existing, time: bentTime, days: [bend.weekday],
+                                    enabled: entry.isOn, comfort: entry.comfort)
                     )
                     let response = try await http.send("PUT", url, headers: Self.baseHeaders(token: token), body: body)
                     if response.isSuccess {
