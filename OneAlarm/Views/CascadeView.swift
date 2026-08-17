@@ -10,6 +10,10 @@ struct CascadeView: View {
     @Environment(ScheduleStore.self) private var store
     /// Whether he has been told that Clock app alarms are separate and still ring.
     @AppStorage("clockAlarmsAcknowledged") private var hasAcknowledgedClockAlarms = false
+    /// The name of his Shortcuts shortcut that changes a Clock alarm. Typed, never guessed: it has
+    /// to match exactly and only he knows what he called it.
+    @AppStorage("clockShortcutName") private var clockShortcutName = ""
+    @Environment(\.openURL) private var openURL
 
     @State private var showingConnections = false
     @State private var previewDevice: DeviceID?
@@ -36,6 +40,7 @@ struct CascadeView: View {
                 wakeWindow
                 cascade
                 clockAppAlarmsAreSeparate
+                clockShortcutBridge
                 previewLink
                 footer
             }
@@ -367,6 +372,55 @@ struct CascadeView: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Theme.State.confirmed)
                     .frame(maxWidth: .infinity, minHeight: 44)
+            }
+        }
+    }
+
+    /// **The one route to his Clock app alarms, and it is a one way street.**
+    ///
+    /// Alex, 20 August: *"Make the app be able to change it and see it."* Half of that is possible.
+    ///
+    /// **Seeing is not.** No framework hands one app another app's alarms, so nothing here can ever
+    /// show the state of his Clock alarms, and this section deliberately does not pretend to. It
+    /// shows no tick, no time, and no status.
+    ///
+    /// **Changing is, through Shortcuts.** Apple's Clock app publishes actions to Shortcuts, and any
+    /// app may launch a shortcut by URL. He writes the shortcut once, names it here, and OneAlarm
+    /// hands it the master time.
+    ///
+    /// Kept off the device cascade on purpose. Those three rows mean "OneAlarm wrote this and read it
+    /// back". This is a request handed to another app that answers nothing, and putting it beside
+    /// them would borrow a confidence it has not got.
+    @ViewBuilder
+    private var clockShortcutBridge: some View {
+        if let master = store.targets.first(where: { $0.device == .iphone })?.localTime {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("CLOCK APP")
+                    .font(.system(size: 11, weight: .bold)).tracking(1.4)
+                    .foregroundStyle(Theme.grey)
+
+                TextField("Name of your shortcut", text: $clockShortcutName)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.system(size: 15))
+                    .padding(.vertical, 12).padding(.horizontal, 14)
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
+
+                if let url = ClockShortcut.runURL(named: clockShortcutName, handing: master) {
+                    Button {
+                        openURL(url)
+                    } label: {
+                        Text("Run it with \(master.hhmm)")
+                            .font(.system(size: 15, weight: .bold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(Theme.card, in: Capsule())
+                            .overlay(Capsule().strokeBorder(Theme.lineStrong, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Notice(ClockShortcut.honestLimits)
             }
         }
     }

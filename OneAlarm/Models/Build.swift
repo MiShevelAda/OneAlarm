@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "20 Aug, 10:15 · Clock app alarms still ring, and it says so"
+    static let marker = "20 Aug, 11:10 · a bridge to your Clock app alarms"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "You were woken early by an alarm OneAlarm did not set. Its iPhone alarm is separate from the Clock app, and iOS gives it no way to see or switch those off. The home screen now says so, with a dismiss button once you have turned them off."
+    static let whatIsNew = "There is a CLOCK APP box on the home screen. Make a shortcut in the Shortcuts app that changes your Clock alarm, type its name in the box, and OneAlarm hands it your wake time. It cannot read your Clock alarms back, so it will never claim this one is confirmed."
 }
