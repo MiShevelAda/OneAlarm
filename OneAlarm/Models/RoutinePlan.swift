@@ -111,6 +111,19 @@ struct RoutinePlan: Equatable, Sendable {
                 bentTo: nil,
                 isOn: isOn,
                 isSkippedNextMorning: isSkippedNextMorning,
+                // **Carried, and it was not.** This rebuild listed every field except `comfort`, so
+                // it silently defaulted back to `.unchanged`. `EightSleepAdapter` runs **every**
+                // planned entry through here, not only the bent ones, and then reads comfort back out
+                // of that same array, so his temperature, vibration and smart alarm settings could be
+                // saved, persisted and shown on screen while the payload stayed byte identical.
+                //
+                // It compiled, type checked, and `Comfort.apply` then correctly changed nothing. The
+                // whole feature was inert and would have read as Eight Sleep ignoring him.
+                //
+                // A memberwise rebuild is a list that has to be maintained by hand, and this is the
+                // second time one has quietly dropped a new field. Anything added to `Entry` must be
+                // added here in the same commit.
+                comfort: comfort,
                 overrideDay: nil
             )
         }

@@ -213,8 +213,15 @@ for (const [file] of trees) {
   const rel = path.relative(root, file);
   const lines = fs.readFileSync(file, 'utf8').split('\n');
   for (let i = 0; i < lines.length; i++) {
-    if (/^\s*(\/\/|\*|\/\*)/.test(lines[i])) continue;
-    if (!/:\s*\[[^\]]*\bAny\?/.test(lines[i])) continue;
+    // Strip a trailing comment rather than skipping only lines that START with one. This file and
+    // its neighbours discuss `[String: Any?]` in prose constantly, and a trailing mention would have
+    // failed the gate on a correct line.
+    const code = lines[i].replace(/\/\/.*$/, '');
+    if (/^\s*(\*|\/\*)/.test(lines[i])) continue;
+    // `(Any?) -> Void` is a legitimate closure parameter and is not a collection of optionals.
+    if (/\(\s*Any\?\s*\)/.test(code)) continue;
+    // Both spellings: `[String: Any?]` and `Dictionary<String, Any?>`, plus a bare `[Any?]`.
+    if (!/(:\s*\[[^\]]*\bAny\?)|(\bDictionary\s*<[^>]*\bAny\?)|(->\s*\[[^\]]*\bAny\?)/.test(code)) continue;
     failures++;
     console.log(`  FAIL ${rel}:${i + 1}  an Any? collection double wraps optionals`);
     console.log(`       ${lines[i].trim()}`);

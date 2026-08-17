@@ -831,7 +831,10 @@ actor EightSleepAdapter: DeviceAdapter {
         repeatBlock["weekDays"] = weekDays
         payload["repeat"] = repeatBlock
 
-        return payload
+        // **His settings, applied to the copy.** A created alarm otherwise inherits whichever alarm
+        // was the template, and because the update loop skips anything created in the same run, it
+        // was never corrected on a later sync either. Still only writes keys the template carried.
+        return Comfort.apply(comfort, to: payload)
     }
 
     /// Switch an owned alarm off without touching anything else about it.
@@ -1167,7 +1170,8 @@ actor EightSleepAdapter: DeviceAdapter {
     static func clone(
         _ template: [String: Any],
         days: Set<Locale.Weekday>,
-        time: WallClockTime
+        time: WallClockTime,
+        comfort: Comfort = .unchanged
     ) -> [String: Any] {
         var payload = template
         for field in computedFields { payload.removeValue(forKey: field) }
@@ -1223,17 +1227,28 @@ actor EightSleepAdapter: DeviceAdapter {
     ///
     /// `tags` is deliberately absent. It is absent from the integration's payload too, and copying it
     /// is what made a fortnight of alarms invisible.
-    static func oneShot(like template: [String: Any], at time: WallClockTime) -> [String: Any] {
+    static func oneShot(
+        like template: [String: Any],
+        at time: WallClockTime,
+        comfort: Comfort = .unchanged
+    ) -> [String: Any] {
         var payload: [String: Any] = [
             "time": time.hhmmss,
             "enabled": true,
         ]
         // Echoed, never authored. Absent from the template means absent here: sending a composed
         // default would be choosing a vibration strength on his behalf.
-        for field in ["vibration", "thermal", "audio"] {
+        //
+        // `smart` was missing from this list until 20 August, so a one-off alarm silently lost his
+        // smart wake setting. Harmless while nobody could set it; a real gap now that he can.
+        for field in ["vibration", "thermal", "audio", "smart"] {
             if let value = template[field] { payload[field] = value }
         }
-        return payload
+        // **His settings, applied to the copy.** Without this a created alarm inherits whichever
+        // alarm happened to be the template, and because a created alarm is skipped by the update
+        // loop in the same run, it was never corrected on any later sync either. `Comfort.apply`
+        // still only writes keys the template actually carried.
+        return Comfort.apply(comfort, to: payload)
     }
 
     /// The create payload, in the order worth trying, each one differing from the last by **one**
@@ -1261,14 +1276,17 @@ actor EightSleepAdapter: DeviceAdapter {
     static func cloneVariants(
         _ template: [String: Any],
         days: Set<Locale.Weekday>,
-        time: WallClockTime
+        time: WallClockTime,
+        comfort: Comfort = .unchanged
     ) -> [(name: String, payload: [String: Any])] {
-        let full = clone(template, days: days, time: time)
+        let full = clone(template, days: days, time: time, comfort: comfort)
 
         var untagged = full
         untagged.removeValue(forKey: "tags")
 
-        let keep: Set<String> = ["time", "enabled", "repeat", "vibration", "thermal", "audio"]
+        // `smart` added 20 August. Without it the trimmed rung dropped his smart wake setting, which
+        // was invisible while nobody could set one.
+        let keep: Set<String> = ["time", "enabled", "repeat", "vibration", "thermal", "audio", "smart"]
         let minimal = untagged.filter { keep.contains($0.key) }
 
         return [("full", full), ("no tags", untagged), ("schedule only", minimal)]
@@ -1287,10 +1305,11 @@ actor EightSleepAdapter: DeviceAdapter {
     static func oneOffVariants(
         _ template: [String: Any],
         day: Locale.Weekday,
-        time: WallClockTime
+        time: WallClockTime,
+        comfort: Comfort = .unchanged
     ) -> [(name: String, payload: [String: Any])] {
-        [("one-shot, no repeat", oneShot(like: template, at: time))]
-            + cloneVariants(template, days: [day], time: time)
+        [("one-shot, no repeat", oneShot(like: template, at: time, comfort: comfort))]
+            + cloneVariants(template, days: [day], time: time, comfort: comfort)
     }
 
     /// Tags Eight Sleep's own app uses to mean "this is not one of your alarms".
@@ -1538,11 +1557,26 @@ actor EightSleepAdapter: DeviceAdapter {
             guard let day = entry.overrideDay, let time = entry.bentTo else { return nil }
             return "\(day.weekday.shortLabel) \(time.hhmm)"
         }
+        // **What the bed settings will actually do, named rather than denied.**
+        //
+        // This gate said "Vibration, thermal, level, pattern ... are echoed back exactly as the
+        // server gave them", which stopped being true the moment he could set them. The comment
+        // eight lines below calls that unforgivable, and it is: the gate is where he goes to rule a
+        // cause out, so a gate describing a payload that is not the one being sent is worse than no
+        // gate. It now names each routine that changes something and what it changes, and says
+        // nothing at all when nothing is set.
+        let comfortChanges = plan.entries
+            .filter { !$0.comfort.isUnchanged }
+            .map { "\($0.routineName): \($0.comfort.summary.joined(separator: ", "))" }
+        let comfortLine = comfortChanges.isEmpty
+            ? "Temperature, vibration and smart wake are echoed back untouched, because no routine sets them. "
+            : "Bed settings you have set are written too: \(comfortChanges.joined(separator: "; ")). Anything left on Leave is echoed back untouched. "
+
         let overrideLine = bends.isEmpty ? "" : " Plus your one time change: a POST creating a separate single day alarm for \(bends.joined(separator: " and ")), copied from an alarm you already have, and a PUT setting `skipNext` on the routine's own alarm so it does not also ring that morning. The routine's alarm keeps its own time and all of its days. The extra alarm is deleted on the first sync after that morning."
 
         return WritePreview(
             device: .eightSleep,
-            summary: "One PUT per routine, carrying three changed fields: `time`, `repeat.weekDays` and `enabled`. \(lines). Vibration, thermal, level, pattern and every field with no known meaning are echoed back exactly as the server gave them. A routine with no alarm on the bed gets one created, as a copy of an alarm you already have, capped at \(Self.alarmCeiling) alarms. An alarm whose routine you deleted is removed if OneAlarm made it, and switched off rather than removed if you made it. An alarm OneAlarm has never owned is not touched at all.\(overrideLine)",
+            summary: "One PUT per routine, carrying three changed fields: `time`, `repeat.weekDays` and `enabled`. \(lines). \(comfortLine)Every field with no known meaning is echoed back exactly as the server gave them. A routine with no alarm on the bed gets one created, as a copy of an alarm you already have, capped at \(Self.alarmCeiling) alarms. An alarm whose routine you deleted is removed if OneAlarm made it, and switched off rather than removed if you made it. An alarm OneAlarm has never owned is not touched at all.\(overrideLine)",
             method: "PUT",
             url: "\(Self.appHost)/v1/users/{userId}/alarms/{alarmId}",
             body: HTTPClient.redactedPreview(sketch, showing: Self.previewKeys),
@@ -1946,7 +1980,9 @@ actor EightSleepAdapter: DeviceAdapter {
                 // field is dropped. If the path is the problem, that shows up in two requests and no
                 // setting of his is discarded chasing a phantom payload error. Change one thing per
                 // step, which is the rule that took six rounds to learn on the Whoop write.
-                outer: for variant in Self.cloneVariants(template, days: entry.weekdays, time: entry.timeToWrite) {
+                outer: for variant in Self.cloneVariants(template, days: entry.weekdays,
+                                                         time: entry.timeToWrite,
+                                                         comfort: entry.comfort) {
                     for version in Self.createPaths {
                         outcome = try await postAlarm(variant.payload, version: version,
                                                       token: token, user: user)
@@ -2189,7 +2225,8 @@ actor EightSleepAdapter: DeviceAdapter {
                     // fallback definitely needs deleting. Not knowing which is on the bed means not
                     // knowing whether the cleanup matters, which is the release-blocking question.
                     var acceptedRung: String?
-                    outer: for variant in Self.oneOffVariants(template, day: bend.weekday, time: bentTime) {
+                    outer: for variant in Self.oneOffVariants(template, day: bend.weekday,
+                                                              time: bentTime, comfort: entry.comfort) {
                         for version in Self.createPaths {
                             outcome = try await postAlarm(variant.payload, version: version,
                                                           token: token, user: user)

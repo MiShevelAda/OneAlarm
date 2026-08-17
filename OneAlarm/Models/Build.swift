@@ -12,10 +12,10 @@ import Foundation
 /// none, because it answers the question wrongly and confidently.
 enum Build {
     /// Date, then what landed. Short enough for a footer, specific enough to match against a commit.
-    static let marker = "20 Aug, 13:15 · fixes the always-heavy vibration"
+    static let marker = "20 Aug, 15:00 · the bed settings actually reach the bed"
 
     /// What this build can do that the one before it could not, in his words rather than mine.
     ///
     /// One line, and it is the thing to go and test. Anything longer gets skipped.
-    static let whatIsNew = "Fixes what you just found. A Swift trap meant every bed setting you had left on Leave was written back as an empty value on each sync, which is why vibration kept going to heavy. Set a routine to Leave, press Set all alarms, and your Eight Sleep settings should stay exactly as you left them."
+    static let whatIsNew = "A review found the bed settings were never reaching your bed at all: you could set them, they saved, the row went green, and the request was unchanged. Fixed, and newly created alarms now get them too. Set Smart alarm to On, press Set all alarms, and check the Eight Sleep app."
 }

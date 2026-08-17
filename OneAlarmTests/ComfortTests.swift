@@ -121,6 +121,57 @@ final class ComfortTests: XCTestCase {
         XCTAssertEqual(vibration["pattern"] as? String, "RISE")
     }
 
+    /// **At most one numeric spelling, even when the account carries both.**
+    ///
+    /// `powerLevel` and `level` both map to `vibrationPower` so that whichever name his account uses
+    /// is the one written. That argument only holds while exactly one is present. His account returns
+    /// `powerLevel: 100`, a percentage; the other shape returns `temperature: -10`, a signed offset.
+    /// Writing one integer to both would be the wrong-temperature failure this design prevents.
+    func testOnlyOneSpellingIsWrittenWhenBothArePresent() throws {
+        let both: [String: Any] = [
+            "vibration": ["enabled": true, "powerLevel": 100, "level": 50],
+            "thermal": ["enabled": true, "level": 0, "temperature": -10],
+        ]
+        var comfort = Comfort.unchanged
+        comfort.vibrationPower = 40
+        comfort.thermalLevel = 20
+
+        let out = Comfort.apply(comfort, to: both)
+        let vibration = try XCTUnwrap(out["vibration"] as? [String: Any])
+        let thermal = try XCTUnwrap(out["thermal"] as? [String: Any])
+
+        let vibrationChanged = [vibration["powerLevel"] as? Int, vibration["level"] as? Int]
+            .filter { $0 == 40 }
+        XCTAssertEqual(vibrationChanged.count, 1, "exactly one of the two spellings may be written")
+
+        let thermalChanged = [thermal["level"] as? Int, thermal["temperature"] as? Int]
+            .filter { $0 == 20 }
+        XCTAssertEqual(thermalChanged.count, 1, "and the other keeps whatever it had")
+    }
+
+    /// **A created alarm gets his settings too, and did not.**
+    ///
+    /// A neutral review on 20 August found `clone` and `oneShot` copying vibration and thermal
+    /// wholesale from whichever alarm was the template, never applying his choices. Because the
+    /// update loop skips anything created in the same run, it was never corrected on a later sync
+    /// either: a routine whose alarm OneAlarm made would have kept a different alarm's settings
+    /// forever.
+    func testACreatedAlarmCarriesHisSettings() throws {
+        var comfort = Comfort.unchanged
+        comfort.vibrationEnabled = false
+        comfort.smartEnabled = true
+
+        let shot = EightSleepAdapter.oneShot(like: his, at: WallClockTime(hour: 8, minute: 5),
+                                             comfort: comfort)
+        XCTAssertEqual((shot["vibration"] as? [String: Any])?["enabled"] as? Bool, false)
+        XCTAssertEqual((shot["smart"] as? [String: Any])?["lightSleepEnabled"] as? Bool, true,
+                       "smart was missing from the copied fields entirely until 20 August")
+
+        let copy = EightSleepAdapter.clone(his, days: [.monday], time: WallClockTime(hour: 8, minute: 5),
+                                           comfort: comfort)
+        XCTAssertEqual((copy["vibration"] as? [String: Any])?["enabled"] as? Bool, false)
+    }
+
     /// The summary says only what he actually set, so an untouched routine says nothing.
     func testTheSummaryIsEmptyUntilHeSetsSomething() {
         XCTAssertTrue(Comfort.unchanged.summary.isEmpty)

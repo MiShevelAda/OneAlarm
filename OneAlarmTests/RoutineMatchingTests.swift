@@ -91,6 +91,41 @@ final class RoutineMatchingTests: XCTestCase {
     }
 
     /// An alarm nobody describes is left alone and named, never claimed by the nearest routine.
+    /// **`withoutBend()` must carry every field, and it dropped the newest one.**
+    ///
+    /// Found by a neutral review on 20 August. The rebuild lists fields by hand, `comfort` was not on
+    /// the list, and it defaulted back to `.unchanged`. The Eight Sleep adapter runs every planned
+    /// entry through it, so his bed settings never reached the wire while appearing to save fine.
+    ///
+    /// A memberwise rebuild is a hand maintained list and this is the second field it has quietly
+    /// lost, so the test is written against the property rather than the one field.
+    func testWithoutBendKeepsEverythingExceptTheBend() {
+        var comfort = Comfort.unchanged
+        comfort.smartEnabled = true
+        comfort.thermalEnabled = false
+
+        let bent = RoutinePlan.Entry(
+            routineID: "weekdays", routineName: "Weekdays",
+            weekdays: Locale.Weekday.weekdaysOnly,
+            localTime: WallClockTime(hour: 7, minute: 50),
+            bentTo: WallClockTime(hour: 9, minute: 30),
+            isOn: true, isSkippedNextMorning: true,
+            comfort: comfort,
+            overrideDay: nil
+        )
+        let flat = bent.withoutBend()
+
+        XCTAssertNil(flat.bentTo, "the bend is the one thing it is meant to drop")
+        XCTAssertNil(flat.overrideDay)
+        XCTAssertEqual(flat.comfort, comfort, "his bed settings must survive")
+        XCTAssertEqual(flat.routineID, bent.routineID)
+        XCTAssertEqual(flat.routineName, bent.routineName)
+        XCTAssertEqual(flat.weekdays, bent.weekdays)
+        XCTAssertEqual(flat.localTime, bent.localTime)
+        XCTAssertEqual(flat.isOn, bent.isOn)
+        XCTAssertEqual(flat.isSkippedNextMorning, bent.isSkippedNextMorning)
+    }
+
     // MARK: Coverage matching, for a Whoop account split into single days
 
     /// **Seven single day schedules, two routines, and every day finds its owner.**

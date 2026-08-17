@@ -62,10 +62,10 @@ struct Comfort: Codable, Equatable, Sendable {
         ], ints: [
             "level": comfort.thermalLevel,
             "temperature": comfort.thermalLevel,
-        ], strings: [:])
+        ])
         payload = update(payload, block: "smart", bools: [
             "lightSleepEnabled": comfort.smartEnabled,
-        ], ints: [:], strings: [:])
+        ])
 
         return payload
     }
@@ -100,15 +100,33 @@ struct Comfort: Codable, Equatable, Sendable {
         _ payload: [String: Any],
         block name: String,
         bools: [String: Bool?],
-        ints: [String: Int?],
-        strings: [String: String?]
+        // Defaulted, so a block with no numeric or string field omits them rather than writing an
+        // empty literal. `CLAUDE.md` has a documented grep for `: [:]` that finds real bugs, and
+        // three false hits would have made it noise.
+        ints: [String: Int?] = [:],
+        strings: [String: String?] = [:]
     ) -> [String: Any] {
         guard var block = payload[name] as? [String: Any] else { return payload }
         for (key, value) in bools where block[key] != nil {
             if let value { block[key] = value }
         }
-        for (key, value) in ints where block[key] != nil {
-            if let value { block[key] = value }
+        // **At most one spelling, even if the account carries both.**
+        //
+        // `powerLevel` and `level` both map to `vibrationPower`, and `level` and `temperature` both
+        // map to `thermalLevel`, so that whichever name his account uses is the one written and
+        // neither contradictory doc has to be right. That argument only holds while exactly one of a
+        // pair is present. If both were, the same integer would go into two fields on two different
+        // scales: his account returns `powerLevel: 100`, a percentage, and the other shape returns
+        // `temperature: -10`, a signed offset. Writing 40 to both would be the "wrong temperature"
+        // failure this design exists to prevent.
+        //
+        // So the first present key in the given order wins and the rest are skipped. Sorted for a
+        // stable order, because dictionary iteration is not.
+        var written = false
+        for key in ints.keys.sorted() where !written {
+            guard block[key] != nil, let value = ints[key] ?? nil else { continue }
+            block[key] = value
+            written = true
         }
         for (key, value) in strings where block[key] != nil {
             if let value { block[key] = value }
@@ -118,10 +136,12 @@ struct Comfort: Codable, Equatable, Sendable {
         return out
     }
 
-    /// What this will change, in his words, for the preview gate and the row.
+    /// What this will change, in his words. Read by the write preview gate.
     ///
     /// Empty when nothing is set, so a routine he has never edited says nothing rather than a
-    /// reassuring sentence about defaults he did not choose.
+    /// reassuring sentence about defaults he did not choose. A neutral review on 20 August found
+    /// this and `isUnchanged` declared and never called, which is the shape of a promise a screen
+    /// was going to make and did not. Both are now used by `EightSleepAdapter.preview`.
     var summary: [String] {
         var lines: [String] = []
         if let vibrationEnabled {

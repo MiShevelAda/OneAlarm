@@ -498,6 +498,32 @@ fact, and twice it existed in an endpoint nobody had called. The third time the 
 better still: the field was missing because the **relationship does not exist**, and the question
 had to be rephrased rather than answered.
 
+**"Now it sets the eight sleep alarm always to heavy", and then the fix for it was inert.** `[20
+August]` Two failures in one hour on the same feature, and the second is the more instructive.
+
+**First:** `Comfort.apply` took `[String: Any?]` and skipped nils with `guard let value`, which does
+not skip. Putting an `Int?` into an `Any?` dictionary double wraps it, so the unwrap peels the outer
+layer and succeeds. Every field he had left on `Leave` was written back as a boxed nil on every
+sync, which is exactly what the three-way `Leave` design exists to prevent, reintroduced one layer
+below the UI that prevents it. Now three concrete dictionaries, and the gate bans `Any?` collections.
+
+**Second, found by a neutral review he asked for rather than by me:** `RoutinePlan.Entry.withoutBend()`
+rebuilds the entry field by field and never listed `comfort`, so it silently defaulted back to
+`.unchanged`. The adapter runs **every** planned entry through that, not only the bent ones. He could
+set the options, watch them persist across launches, press Set all alarms, get a green receipt, and
+the payload was byte identical to before. **The whole feature was inert and would have read as Eight
+Sleep ignoring him.**
+
+**The rule from the second one.** A memberwise rebuild is a hand maintained list, and this is the
+second time one has quietly dropped a new field. Adding a stored property to a type means grepping
+for every place that reconstructs it, in the same commit. Nothing in the compiler or the gates catches
+it, because a defaulted parameter is exactly what makes it compile.
+
+**And the rule from both together.** The first bug was mine and the second was mine, and the one that
+would have wasted his week was found by asking for a review rather than by re-reading my own work.
+When a change touches a field that flows through several types, the value of an outside pass is
+higher than the value of another careful look.
+
 **He reversed his own rule on temperature and vibration, and the reason behind it still shapes the
 fix.** `[20 August]` On 16 August: *"only the modifications of temperature, vibration etc should be
 done in the respective app."* On 20 August, with a screenshot of the Eight Sleep alarm screen: *"for

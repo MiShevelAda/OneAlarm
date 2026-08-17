@@ -280,7 +280,11 @@ private struct RoutineEditor: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label).font(.system(size: 15, weight: .semibold))
             HStack(spacing: 8) {
-                ForEach([("Leave", Bool?.none), ("On", Bool?.some(true)), ("Off", Bool?.some(false))], id: \.0) { title, option in
+                // Keyed on the title, not `\.0`. A key path to an **unlabelled** tuple element is the
+                // only one of its kind in this tree and nothing here can compile-check it, and the
+                // titles are unique anyway. The labelled form is what the rest of the app uses.
+                ForEach(["Leave", "On", "Off"], id: \.self) { title in
+                    let option: Bool? = title == "Leave" ? nil : (title == "On")
                     Button {
                         onChange(option)
                     } label: {
