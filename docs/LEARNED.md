@@ -1080,3 +1080,29 @@ See `docs/RESEARCH.md` for the full record. The short version, with evidence mar
 | Eight Sleep's app models alarms **inside routines**: `PUT /v2/users/{id}/routines/{id}` carries `days`, `bedtime`, `alarms` and `alarmsToCreate` | `[documented]` public capture, 16 Aug. This is what every alarm's `routine-<uuid>` tag points at |
 | An alarm created standalone belongs to no routine, and their app appears not to list it | `[inferred]`, and it fits the observation that the API returned a Mon-Fri alarm his app did not show |
 | Whoop holds **one** schedule per account, so its days genuinely cannot express two routines | `[observed]` its own UI, and the mutually exclusive one-off dialog |
+
+## 2026-08-18: the app compiles, and had been able to all along
+
+`CI has never once compiled this app` (`90949e0`). Two weeks of every document in this repo saying
+"built, never compiled" and treating that as an unavoidable property of writing Swift on Linux. It
+was not. The macOS job existed, ran on every push, and died before the compiler every single time.
+
+**The rule this is an instance of, and it already existed: a red check nobody reads is worse than no
+check.** The workflow had been failing since the repo's first push. Nobody looked, because the
+failure was assumed to be the known one, that macOS minutes cost money on a private repo. The actual
+cause was `sudo xcodebuild -downloadPlatform iOS` returning `Unable to connect to simulator`,
+exit 70, in a job whose own header comment said it builds for the **device** SDK specifically so that
+no simulator runtime is needed. The step contradicted the design written six lines above it.
+
+**And the new rule: check the CI history when you inherit a claim about what has never been tried.**
+The move to a standalone repo was housekeeping. Reading the Actions tab while confirming it was
+clean answered the project's oldest open question in ten minutes.
+
+Second bug in the same job, found because the log was read rather than skimmed for the error: a step
+named `Prefer Xcode 26` globbed `/Applications/Xcode_26*.app` and took the **first** match, which
+sorts as 26.0.1, while the runner's default was already 26.6. A step written to raise the toolchain
+lowered it on every run and nothing noticed, because nothing downstream of it ever ran.
+
+**What this does not mean.** A clean compile says the types line up. Every claim about the three
+device legs still rests on Alex's own hardware, and the two tests that matter, the Eight Sleep
+comfort write and the Whoop seven day split, are still unrun.

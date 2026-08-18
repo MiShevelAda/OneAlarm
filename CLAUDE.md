@@ -171,8 +171,15 @@ phone. Do not spend the time re-discovering that.
 And never ask him for a password to work around it. Credentials live in his iPhone Keychain, that is
 the whole design, and a session holding one would be worse than the delay it saves.
 
-Nothing here has been compiled by a session; the app is built by Alex in Xcode. **Say "not compiled"
-rather than implying otherwise**, and never call something done that only a compiler could confirm.
+Nothing here is compiled **inside** a session, and that has not changed. What changed on 2026-08-18
+is that CI compiles it. Every run since the repo's first push had been red without ever reaching the
+Build step, on a `-downloadPlatform iOS` that contradicted the workflow's own device-build design, so
+the project's oldest caveat was true only by accident. It builds clean now, in 44 seconds.
+
+So **say what you actually know**. "Parsed, not compiled" for work you have only run `npm run check`
+over. "Compiled in CI at <sha>" once a run is green, and check the run rather than assuming it. Never
+call something done that only Alex's devices could confirm, which is still most of this app: a clean
+compile says the types line up and nothing whatsoever about whether an alarm moved.
 
 ## Capture as you go
 

@@ -182,9 +182,10 @@ There is no such entitlement. It does not exist. If that line appears anywhere, 
 common wrong suggestion and Apple's own engineers have complained about it.
 
 **The build fails with Swift errors.**
-Expect this to be possible. The code was written on a Linux machine with no Swift compiler, so it
-has never been compiled. Copy the **first** error and send it over. The first is usually the only
-real one and the rest cascade from it.
+Less likely than it used to be. Since 2026-08-18 a macOS runner compiles this clean for the device
+SDK on every push, so the code that reaches you has been through a real compiler. Your Xcode can
+still differ in version or settings. Copy the **first** error and send it over. The first is usually
+the only real one and the rest cascade from it.
 
 **Alarms do not fire in the simulator.**
 Known, and not a bug in this app. Use a real phone.

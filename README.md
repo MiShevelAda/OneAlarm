@@ -26,9 +26,15 @@ wake time moves.
 
 ## Status
 
-**Built. Never compiled.** A complete Xcode project: open it, set your Apple ID as the signing team,
-press play. It was written on a Linux machine with no Swift compiler and no Xcode, so no compiler
-has seen it yet. Expect a build error or two and send over the first one.
+**Compiles, as of 2026-08-18.** A complete Xcode project: open it, set your Apple ID as the signing
+team, press play. It was written on a Linux machine with no Swift compiler and no Xcode, and for two
+weeks nothing had ever compiled it, because the CI job that was supposed to died before reaching the
+compiler on every single run. With that fixed, a macOS runner builds it clean for the device SDK in
+44 seconds and the AlarmKit usage description is confirmed present in the built bundle.
+
+**A clean compile is not a working app.** It says the types line up. It says nothing about whether
+the Eight Sleep, Whoop and iPhone legs move a real alarm, and those are confirmed only on Alex's own
+devices.
 
 The iPhone leg needs no credentials, no network and no accounts, so it works the moment it installs.
 

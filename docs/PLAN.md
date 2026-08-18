@@ -322,10 +322,14 @@ finish and hand over:
 - Review panel run over all of it, `security-reviewer` signed off
 - `.claude/agents/` definitions, `CLAUDE.md`, `gitleaks` hook
 
-**The honest label on Track A is "written, never compiled."** No Swift in it has been near a
-compiler. Expect real compile errors on first build. That is not a failure of the work, it is the
-unavoidable consequence of the environment, and pretending otherwise would be the exact thing the
-brief warns against.
+**The honest label on Track A was "written, never compiled", and it stopped being true on
+2026-08-18.** CI now builds it clean for the device SDK. The label had outlived its accuracy for a
+dull reason: the macOS job existed and had been red from the first push, failing before the compiler
+on a step that contradicted its own design, so nobody had ever seen a compile succeed or fail.
+
+The caution the label was carrying still applies, just moved down a level. A green compile means the
+types line up. It means nothing about the three device legs, which are confirmed only on Alex's own
+hardware.
 
 **Track B, Alex's Mac, and only he can call these done:**
 
