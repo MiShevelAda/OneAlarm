@@ -31,7 +31,7 @@ phone through TestFlight, over the air, with no cable ever.
 Open Terminal on the Mac and paste this one line:
 
 ```
-git clone https://github.com/MiShevelAda/Alex_personal_brand.git ~/OneAlarm-repo && cd ~/OneAlarm-repo && git checkout claude/onealarm-ios-app-qgwk4k && open alarm-app/OneAlarm.xcodeproj
+git clone https://github.com/MiShevelAda/OneAlarm.git ~/OneAlarm-repo && cd ~/OneAlarm-repo && open OneAlarm.xcodeproj
 ```
 
 Xcode opens. If it asks whether to trust the project, say yes.
@@ -164,11 +164,11 @@ order:
 2. **The repository** → Settings → Actions → General → make sure **Allow all actions** is selected
    rather than Actions being disabled.
 
-**The cheapest fix, if you would rather not pay:** make the repository public, or move `alarm-app/`
-into its own public repository, which you were planning to do anyway. Public repositories get
-unlimited free Actions minutes including the Mac servers. The only thing to check first is that
-nothing private is in the history, and this folder has none: no credentials, no personal data, and
-a test that fails the build if anything token shaped ever appears.
+**The cheapest fix, if you would rather not pay:** make this repository public. Public repositories
+get unlimited free Actions minutes including the Mac servers. The move out of `Alex_personal_brand`
+happened on 2026-08-18 and was the prerequisite, because that repo holds the career-pivot material
+and could never be made public. This one can: no credentials, no personal data, and a test that
+fails the build if anything token shaped ever appears.
 
 Once either fix is in, every push builds and tests the app automatically and you find out about a
 broken build in five minutes instead of at 6am.

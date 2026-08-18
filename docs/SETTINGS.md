@@ -1,6 +1,6 @@
 # OneAlarm settings specification
 
-> Spine: **Tomorrow, Stated**. Grafted: the partitioned routines and the dated, self-expiring exception from **Tonight**; the projection step, the `Fidelity` sentences and device-owned location from **Plan and Projection**. Every blocking objection from the consensus round is resolved below or named as out of scope with what the user sees. Repo paths are absolute under `/home/user/Alex_personal_brand/alarm-app/`.
+> Spine: **Tomorrow, Stated**. Grafted: the partitioned routines and the dated, self-expiring exception from **Tonight**; the projection step, the `Fidelity` sentences and device-owned location from **Plan and Projection**. Every blocking objection from the consensus round is resolved below or named as out of scope with what the user sees. Repo paths are relative to the root of this repository, which was `Alex_personal_brand/alarm-app/` when this was written.
 
 ## 1. Three laws
 

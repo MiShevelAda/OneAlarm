@@ -5,6 +5,12 @@ name: Build
 #
 # Builds for the device SDK with signing switched off. That is the combination proven to work by
 # hand, and it avoids depending on a simulator runtime being installed on the runner.
+#
+# It had never once compiled. Every run from the first push to 2026-08-18 died before reaching the
+# Build step, on `sudo xcodebuild -downloadPlatform iOS`, with "Unable to connect to simulator" and
+# exit 70. That step contradicted the two lines above it: the whole point of a device build is that
+# no simulator runtime is needed, and macos-latest already ships the iOS device SDK. So the step was
+# not flaky, it was asking for the one thing this design had decided not to depend on. Removed.
 
 on:
   push:
@@ -39,20 +45,34 @@ jobs:
           ls -d /Applications/Xcode*.app 2>/dev/null || echo "no Xcode found"
           xcodebuild -version
 
-      - name: Prefer Xcode 26
+      # This step used to walk /Applications/Xcode_26*.app and switch to the FIRST match, which in
+      # shell glob order is 26.0.1. The runner's default is already 26.6, so every run silently
+      # downgraded the toolchain by six minor versions before building anything. Now it only
+      # switches when the default is not an Xcode 26 at all, and then takes the newest one.
+      - name: Use the newest Xcode 26
         run: |
-          for app in /Applications/Xcode_26*.app /Applications/Xcode.app; do
-            [ -d "$app" ] || continue
-            version=$("$app/Contents/Developer/usr/bin/xcodebuild" -version 2>/dev/null | head -1 || true)
-            echo "$app -> $version"
-            case "$version" in
-              *"Xcode 26"*) sudo xcode-select -s "$app"; break ;;
-            esac
-          done
+          current=$(xcodebuild -version | head -1)
+          echo "runner default: $current"
+          case "$current" in
+            *"Xcode 26"*)
+              echo "already on Xcode 26, leaving the default alone"
+              ;;
+            *)
+              newest=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+              if [ -z "$newest" ]; then
+                echo "::error::no Xcode 26 on this runner, and AlarmKit needs it"
+                exit 1
+              fi
+              sudo xcode-select -s "$newest"
+              ;;
+          esac
           xcodebuild -version
 
-      - name: Install the iOS platform
-        run: sudo xcodebuild -downloadPlatform iOS
+      # Printed on every run, not only on failure. Two questions on this project went unanswered
+      # for weeks because the diagnostic was gated behind the error path. If the build below ever
+      # fails for a missing SDK, the answer is already above it in the log.
+      - name: What SDKs this runner actually has
+        run: xcodebuild -showsdks
 
       - name: Build
         run: |
