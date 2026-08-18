@@ -4,9 +4,11 @@ A personal iOS app. One wake time, propagated to every device that can wake Alex
 Eight Sleep Pod, his Whoop strap. It **moves alarms that already exist** rather than creating them,
 on two of its three legs.
 
-This is Alex's own project and is deliberately separate from the repo it currently sits inside. It
-will move to its own repository. Nothing in the parent repo's instructions applies here, except by
-coincidence of good sense.
+**This repository is the app's only home**, at `github.com/MiShevelAda/OneAlarm`. It used to live
+inside `Alex_personal_brand` as `alarm-app/`, on a branch, and mirrored by hand into a second repo.
+That ended on 2026-08-18: the copy in the brand repo is gone, both `claude/*` branches are deleted,
+and there is one place to push to. If you find yourself reasoning about a second copy, there is not
+one. Nothing in that repo's instructions applies here, except by coincidence of good sense.
 
 ## Read these first, in this order
 

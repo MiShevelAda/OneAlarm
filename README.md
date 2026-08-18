@@ -22,6 +22,7 @@ wake time moves.
 
 - **`BUILD.md`**: getting it onto your iPhone. Three routes, including one with no Mac at all.
 - **`CONNECT.md`**: connecting the iPhone, Eight Sleep and Whoop, and what to do in each app first.
+- **`promo/`**: two competing promotional websites, to pick between. Nothing in there is published.
 
 ## Status
 
@@ -56,6 +57,7 @@ build and why it should not be published to the public App Store.
 
 ## Repo note
 
-This folder is a standalone project. It currently sits inside another repository for convenience
-only and has no dependency on anything outside `alarm-app/`. It is meant to be lifted out into its
-own repo unchanged.
+This is the app's only home. It spent its first two weeks inside `Alex_personal_brand` as
+`alarm-app/`, on a branch, mirrored by hand into a second repo, which meant every change had to be
+pushed twice and a stale copy was always one missed push away. That ended on 2026-08-18. The copy in
+the brand repo is gone and both `claude/*` branches there are deleted.

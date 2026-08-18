@@ -1,0 +1,2403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="description" content="OneAlarm is an app for iPhone that holds one wake time and moves the alarms you already have on your Eight Sleep and your Whoop to follow it. One morning, told from 22:41 to 10:00.">
+<meta name="theme-color" content="#F4F2EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B0C10" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='8'%20fill='%2305070C'/%3E%3Ccircle%20cx='16'%20cy='17.5'%20r='8'%20fill='none'%20stroke='%2300F19F'%20stroke-width='2.2'/%3E%3Cpath%20d='M16%2013.4v4.4l3%201.8'%20fill='none'%20stroke='%2300F19F'%20stroke-width='2.2'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M9%205.6%205.4%208.6M23%205.6l3.6%203'%20fill='none'%20stroke='%2300F19F'%20stroke-width='2.2'%20stroke-linecap='round'/%3E%3C/svg%3E">
+<title>OneAlarm. One morning.</title>
+<style>
+/* ==========================================================================
+   OneAlarm promo, variant B: "One Morning".
+   Warm paper ground, editorial serif, one pinned device.
+   The phone screen is dark in every theme. It is a picture of a thing,
+   not a surface the reader is standing on.
+
+   House rules honoured here:
+   . one single self contained file, zero external requests
+   . no em-dashes anywhere, including in these comments
+   . static state is the default, motion is added under no-preference
+   . exactly one chromatic gradient language, and it is the cascade, which
+     encodes time. Flat accents encode state.
+   . exactly one shadow, and it is under the phone
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- tokens */
+:root {
+  color-scheme: light dark;
+
+  /* Page. Light is the committed ground for this variant. Three tones:
+     the third is used once, on the closing band, to break the rhythm. */
+  --paper:      #F4F2EE;
+  --paper-2:    #EAE7E1;
+  --paper-3:    #E1DDD4;
+  --ink:        #14161A;
+  --ink-soft:   #575C64;
+  --rule:       rgba(20, 22, 28, .12);
+  --rule-firm:  rgba(20, 22, 28, .3);
+  --ink-invert: #F4F2EE;
+
+  /* Accent. Defined twice, because the light-ground value disappears on dark. */
+  --focus:      #4A4FC4;
+
+  /* The one shadow in the system. It goes under the phone and nowhere else. */
+  --shadow:     3px 5px 30px rgba(0, 0, 0, .22);
+
+  /* Device screen. Fixed in every theme. From OneAlarm/Design/Theme.swift. */
+  --ground-top: #101A2B;
+  --ground-bot: #05070C;
+  --card:       #0D1119;
+  --card-lift:  #161C28;
+  --line:       rgba(255, 255, 255, .09);
+  --grey:       #B8C0C3;
+  --grey-dim:   #8B9498;
+  --white:      #F5F7F8;
+
+  --mint:    #00F19F;
+  --amber:   #FFDE00;
+  --coral:   #FF0026;
+  --coral-r: #FF5C77;
+
+  /* Light-ground versions of the three states, so a dot on cream is legible. */
+  --mint-ink:  #00734F;
+  --amber-ink: #8A7000;
+  --coral-ink: #C4001D;
+
+  /* The dawn ramp. The gradient encodes TIME. */
+  --cool: #2E7FD4;
+  --mid:  #6E74D8;
+  --warm: #F4643C;
+
+  --num:    'DIN Alternate', 'DIN Alternate Bold', 'Avenir Next Condensed', 'Arial Narrow', ui-sans-serif, system-ui, sans-serif;
+  --ui:     -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  --serif:  ui-serif, 'New York', Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+
+  --dur-fast: 150ms;
+  --dur-base: 260ms;
+  --dur-slow: 420ms;
+  --ease: cubic-bezier(.25, .46, .45, .94);
+
+  --measure: 64ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:      #0B0C10;
+    --paper-2:    #131519;
+    --paper-3:    #191C21;
+    --ink:        #ECEEF1;
+    --ink-soft:   #9AA0A8;
+    --rule:       rgba(255, 255, 255, .14);
+    --rule-firm:  rgba(255, 255, 255, .32);
+    --ink-invert: #0B0C10;
+    --focus:      #8F94E6;
+    --shadow:     3px 5px 30px rgba(0, 0, 0, .55);
+    --mint-ink:   #00F19F;
+    --amber-ink:  #FFDE00;
+    --coral-ink:  #FF5C77;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper:      #0B0C10;
+  --paper-2:    #131519;
+  --paper-3:    #191C21;
+  --ink:        #ECEEF1;
+  --ink-soft:   #9AA0A8;
+  --rule:       rgba(255, 255, 255, .14);
+  --rule-firm:  rgba(255, 255, 255, .32);
+  --ink-invert: #0B0C10;
+  --focus:      #8F94E6;
+  --shadow:     3px 5px 30px rgba(0, 0, 0, .55);
+  --mint-ink:   #00F19F;
+  --amber-ink:  #FFDE00;
+  --coral-ink:  #FF5C77;
+}
+
+:root[data-theme="light"] { color-scheme: light; }
+
+/* ---------------------------------------------------------------- base */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--ui);
+  font-size: 17px;
+  line-height: 1.6;
+  letter-spacing: -.011em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis-weight: none;
+}
+
+p { margin: 0 0 1.05em; max-width: var(--measure); }
+p:last-child { margin-bottom: 0; }
+
+a { color: inherit; }
+
+:where(a, button, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--ink);
+  color: var(--ink-invert);
+  padding: 14px 20px;
+  z-index: 60;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 0 0 8px 0;
+}
+.skip:focus { left: 0; }
+
+.vh {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip-path: inset(50%);
+  overflow: hidden; white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- shell */
+.shell {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding-inline: clamp(20px, 5.2vw, 72px);
+}
+
+/* Full bleed tiles, stacked edge to edge. The change of ground is the divider.
+   No rule, no shadow, no fade between sections, on purpose. */
+.band   { background: var(--paper); }
+.band-2 { background: var(--paper-2); }
+.band-3 { background: var(--paper-3); }
+
+.sec { padding-block: clamp(76px, 12vw, 176px); }
+
+/* Long page. Skip the work for tiles that are nowhere near the viewport.
+   Not applied to the narrative, which owns a sticky child, nor to the
+   closing tile, which is an in-page anchor target. */
+.cv { content-visibility: auto; contain-intrinsic-size: auto 1100px; }
+
+/* ---------------------------------------------------------------- type */
+.label {
+  font-family: var(--ui);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.eyebrow {
+  font-family: var(--ui);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 14px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--rule);
+  max-width: var(--measure);
+}
+
+h1 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(40px, 7.5vw, 84px);
+  line-height: .98;
+  letter-spacing: -.03em;
+  margin: 0 0 .4em;
+  text-wrap: balance;
+  max-width: 15ch;
+}
+
+h2 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(28px, 4vw, 46px);
+  line-height: 1.05;
+  letter-spacing: -.02em;
+  margin: 0 0 .5em;
+  text-wrap: balance;
+  max-width: 20ch;
+}
+
+h3 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(21px, 2.2vw, 27px);
+  line-height: 1.16;
+  letter-spacing: -.018em;
+  margin: 0 0 .48em;
+  text-wrap: balance;
+}
+
+.lede {
+  font-family: var(--serif);
+  font-weight: 300;
+  font-size: clamp(20px, 2.3vw, 25px);
+  line-height: 1.42;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  max-width: 44ch;
+}
+
+.body-soft { color: var(--ink-soft); }
+
+.num {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+
+/* ---------------------------------------------------------------- header */
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--paper);
+  background: color-mix(in srgb, var(--paper) 86%, transparent);
+  backdrop-filter: saturate(140%) blur(14px);
+  -webkit-backdrop-filter: saturate(140%) blur(14px);
+  border-bottom: 1px solid var(--rule);
+  padding-top: env(safe-area-inset-top);
+}
+@supports not (backdrop-filter: blur(4px)) {
+  .masthead { background: var(--paper); }
+}
+
+.masthead-in {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 60px;
+}
+
+.wordmark {
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 400;
+  letter-spacing: -.02em;
+  text-decoration: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.wordmark .wm-dim { color: var(--ink-soft); }
+
+.mast-right { display: flex; align-items: center; gap: clamp(4px, 2vw, 18px); }
+
+.mast-link {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -.011em;
+  text-decoration: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: 8px;
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.mast-link .mast-underline {
+  border-bottom: 1px solid var(--rule-firm);
+  padding-bottom: 2px;
+}
+.mast-link:hover .mast-underline { border-bottom-color: currentColor; }
+.mast-link:active { transform: scale(.95); }
+
+.tbtn {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  color: var(--ink-soft);
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+  padding-inline: 8px;
+  transition: color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.tbtn:hover { color: var(--ink); }
+.tbtn:active { transform: scale(.95); }
+.tbtn svg { width: 16px; height: 16px; display: block; }
+.tbtn .tbtn-txt { display: none; }
+@media (min-width: 600px) { .tbtn .tbtn-txt { display: inline; } }
+
+.ico-moon { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ico-sun { display: none; }
+  :root:not([data-theme="light"]) .ico-moon { display: block; }
+}
+:root[data-theme="dark"] .ico-sun { display: none; }
+:root[data-theme="dark"] .ico-moon { display: block; }
+:root[data-theme="light"] .ico-sun { display: block; }
+:root[data-theme="light"] .ico-moon { display: none; }
+
+/* ---------------------------------------------------------------- hero */
+.hero {
+  padding-top: clamp(56px, 11vw, 128px);
+  padding-bottom: clamp(52px, 9vw, 104px);
+  min-height: 84vh;
+  min-height: 84svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.hero-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 clamp(28px, 5vw, 56px);
+}
+
+.hero-lede { margin-top: clamp(16px, 2.2vw, 26px); }
+
+.hero-cta {
+  margin-top: clamp(24px, 3vw, 34px);
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.hero-cta span { border-bottom: 1px solid var(--rule-firm); padding-bottom: 2px; }
+.hero-cta:hover span { border-bottom-color: currentColor; }
+.hero-cta:active { transform: scale(.95); }
+
+.offsets {
+  margin-top: clamp(44px, 8vw, 92px);
+  padding-top: 20px;
+  border-top: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px 26px;
+  max-width: 820px;
+}
+@media (min-width: 760px) { .offsets { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+.offset dt {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 7px;
+}
+.offset dd {
+  margin: 0;
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1.08;
+  letter-spacing: -.02em;
+}
+.offset .offset-why {
+  display: block;
+  font-family: var(--ui);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.45;
+  letter-spacing: -.006em;
+  color: var(--ink-soft);
+  margin-top: 8px;
+}
+
+.offsets-note {
+  margin-top: 22px;
+  font-size: 15px;
+  color: var(--ink-soft);
+  max-width: 58ch;
+}
+
+.cue {
+  margin-top: clamp(40px, 7vw, 84px);
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.cue svg { width: 13px; height: 22px; display: block; }
+.cue:hover { color: var(--ink); }
+.cue:active { transform: scale(.95); }
+
+/* ---------------------------------------------------------------- editorial grid
+   Text at the left two thirds, labels hanging in the margin.
+   On mobile the margin label moves above its paragraph. */
+.ed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px clamp(28px, 5vw, 76px);
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .ed { grid-template-columns: minmax(0, 196px) minmax(0, 68ch); }
+}
+
+.ed.ruled {
+  border-top: 1px solid var(--rule);
+  padding-top: clamp(20px, 3vw, 32px);
+}
+
+.ed-margin { min-width: 0; }
+.ed-body { min-width: 0; }
+
+.margin-note {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  margin: 10px 0 0;
+  max-width: 34ch;
+}
+
+.hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: clamp(40px, 5vw, 64px) 0;
+  max-width: var(--measure);
+}
+
+/* ---------------------------------------------------------------- night narrative */
+.night-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(28px, 5vw, 76px);
+  align-items: start;
+}
+@media (min-width: 960px) {
+  .night-grid { grid-template-columns: minmax(0, 1fr) minmax(300px, 356px); }
+}
+
+.moments { min-width: 0; }
+
+.moment { min-width: 0; padding-block: clamp(30px, 5vw, 46px); }
+
+[data-pinned="on"] .moment {
+  min-height: 82vh;
+  min-height: 82svh;
+  display: flex;
+  align-items: center;
+  padding-block: clamp(44px, 8vh, 88px);
+}
+[data-pinned="on"] .moment:last-child { min-height: 74vh; min-height: 74svh; }
+
+.moment-inner {
+  width: 100%;
+  border-top: 1px solid var(--rule);
+  padding-top: clamp(16px, 2vw, 22px);
+}
+@media (min-width: 700px) {
+  .moment-inner {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    column-gap: clamp(20px, 3vw, 44px);
+    align-items: start;
+  }
+}
+
+.moment-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+@media (min-width: 700px) {
+  .moment-head { flex-direction: column; align-items: flex-start; gap: 6px; margin-bottom: 0; }
+}
+
+.moment-time {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  flex: none;
+}
+
+.moment-step {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.moment-main { min-width: 0; }
+
+.moment-main h3 {
+  font-size: clamp(24px, 3.4vw, 38px);
+  line-height: 1.08;
+  letter-spacing: -.022em;
+  margin-bottom: .38em;
+  max-width: 20ch;
+}
+
+.moment-body { color: var(--ink-soft); max-width: 56ch; }
+.moment-body strong { color: var(--ink); font-weight: 600; }
+.moment-body em { font-style: italic; color: var(--ink); }
+
+.moment-media { margin-top: 32px; }
+/* On the narrowest phones the device is the widest thing on the page, so it is
+   allowed a little of the shell's gutter rather than shrinking the screen
+   below the width its type was laid out for. */
+@media (max-width: 400px) { .moment-media { margin-inline: -8px; } }
+@media (min-width: 620px) { .moment-media { max-width: 340px; } }
+
+.pin { position: sticky; top: 92px; }
+.pin[hidden] { display: none; }
+
+.pin-caption {
+  margin: 20px auto 0;
+  max-width: 320px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.pin-dots {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 16px;
+}
+.pin-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--rule-firm);
+}
+.pin-dot.on { background: var(--ink); transform: scale(1.34); }
+@media (prefers-reduced-motion: no-preference) {
+  .pin-dot { transition: background var(--dur-base) var(--ease), transform var(--dur-base) var(--ease); }
+}
+
+/* ---------------------------------------------------------------- device frame */
+.device {
+  width: 100%;
+  max-width: 320px;
+  margin-inline: auto;
+}
+
+.device-shell {
+  position: relative;
+  border-radius: 52px;
+  padding: 10px;
+  background: #16181D;
+  box-shadow: var(--shadow);
+}
+.device-shell::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  pointer-events: none;
+}
+
+.device-btn {
+  position: absolute;
+  width: 3px;
+  border-radius: 3px;
+  background: #2C2F36;
+}
+.btn-silent { left: -2px; top: 108px; height: 30px; }
+.btn-vup    { left: -2px; top: 156px; height: 54px; }
+.btn-vdn    { left: -2px; top: 222px; height: 54px; }
+.btn-power  { right: -2px; top: 178px; height: 84px; }
+
+.island {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 92px;
+  height: 27px;
+  border-radius: 999px;
+  background: #000;
+  z-index: 8;
+  pointer-events: none;
+}
+.island::after {
+  content: "";
+  position: absolute;
+  right: 9px; top: 50%;
+  margin-top: -4px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #16202B;
+}
+
+.home-ind {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 116px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(245, 247, 248, .34);
+  z-index: 8;
+  pointer-events: none;
+}
+
+.pin-stack {
+  position: relative;
+  aspect-ratio: 300 / 650;
+  border-radius: 43px;
+  overflow: hidden;
+  background: var(--ground-bot);
+}
+.pin-stack .screen {
+  position: absolute;
+  inset: 0;
+  aspect-ratio: auto;
+  border-radius: 0;
+  opacity: 0;
+}
+.pin-stack .screen.live { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) {
+  .pin-stack .screen { transition: opacity var(--dur-base) var(--ease); }
+}
+
+/* ---------------------------------------------------------------- the screen itself
+   Dark in every theme. Laid out for a 300px wide screen. */
+.screen {
+  position: relative;
+  aspect-ratio: 300 / 650;
+  border-radius: 43px;
+  overflow: hidden;
+  background: var(--ground-top);
+  color: var(--white);
+  font-family: var(--ui);
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: -.006em;
+  display: flex;
+  flex-direction: column;
+}
+
+.s-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 22px 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--white);
+}
+.s-status .s-icons { display: inline-flex; align-items: center; gap: 5px; color: var(--white); }
+.s-status svg { display: block; }
+
+.s-appbar {
+  flex: none;
+  text-align: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .26em;
+  color: var(--grey-dim);
+  padding: 9px 0 8px;
+}
+
+.s-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 15px 26px;
+}
+
+.s-eyebrow {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .17em;
+  text-transform: uppercase;
+  color: var(--grey);
+  margin: 0 0 2px;
+}
+
+.s-big {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 66px;
+  line-height: .94;
+  letter-spacing: -.03em;
+  margin: 2px 0 0;
+  color: var(--white);
+}
+
+.s-sub { font-size: 12px; color: var(--grey); margin: 5px 0 0; }
+
+.s-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .17em;
+  text-transform: uppercase;
+  color: var(--grey-dim);
+  margin: 17px 0 8px;
+}
+
+.s-verb {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--card-lift);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 9px 12px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--white);
+  line-height: 1.3;
+}
+.s-verb.is-primary {
+  background: var(--white);
+  color: #06070B;
+  border-color: var(--white);
+}
+.s-verb small {
+  display: block;
+  font-weight: 400;
+  font-size: 10.5px;
+  line-height: 1.35;
+  opacity: .72;
+  margin-top: 2px;
+}
+
+.s-railhead {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .17em;
+  text-transform: uppercase;
+  color: var(--grey-dim);
+  margin: 16px 0 8px;
+}
+
+.s-row {
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr);
+  gap: 11px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 9px 11px 10px;
+  margin-bottom: 6px;
+}
+.s-rail { border-radius: 2px; }
+.r-bed   .s-rail { background: var(--cool); }
+.r-strap .s-rail { background: var(--mid); }
+.r-phone .s-rail { background: var(--warm); }
+
+.s-rtop { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+.s-rtime {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: -.02em;
+  color: var(--white);
+}
+.s-rname { font-size: 11.5px; font-weight: 700; color: var(--white); }
+.s-loud {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .11em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(244, 100, 60, .45);
+  color: var(--warm);
+}
+.s-rsay { font-size: 11px; line-height: 1.42; color: var(--grey); margin: 4px 0 0; }
+
+.s-tabs { display: flex; gap: 5px; margin: 0 0 12px; }
+.s-tab {
+  flex: 1;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 7px 3px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  color: var(--grey-dim);
+}
+.s-tab.on { background: var(--card-lift); color: var(--white); }
+
+.s-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 9px 12px 10px;
+  margin-bottom: 6px;
+}
+.s-cardname {
+  margin: 0 0 5px;
+  max-width: none;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.s-state {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.s-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.s-state.ok  { color: var(--mint); }
+.s-state.wr  { color: var(--amber); }
+.s-state.nil { color: var(--grey-dim); }
+
+.s-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  padding: 4px 0;
+}
+.s-kv + .s-kv { border-top: 1px solid var(--line); }
+.s-kv > span:first-child { color: var(--grey-dim); flex: none; }
+.s-kv > span:last-child { color: var(--grey); text-align: right; }
+
+.s-standing {
+  border-left: 2px solid var(--amber);
+  padding: 2px 0 2px 10px;
+  margin: 0 0 12px;
+}
+.s-standing p { margin: 0; font-size: 11px; line-height: 1.45; color: var(--grey); max-width: none; }
+.s-standing b { color: var(--white); font-weight: 600; }
+
+/* cascade: the one chromatic gradient on this page. It encodes time. */
+.s-cascade { position: relative; padding-left: 20px; margin-top: 14px; }
+.s-cascade::before {
+  content: "";
+  position: absolute;
+  left: 4px; top: 8px; bottom: 26px;
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--cool) 0%, var(--mid) 50%, var(--warm) 100%);
+}
+.s-step { position: relative; margin-bottom: 16px; }
+.s-step::before {
+  content: "";
+  position: absolute;
+  left: -20px; top: 6px;
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--ground-bot);
+}
+.s-step.st-bed::before   { background: var(--cool); }
+.s-step.st-strap::before { background: var(--mid); }
+.s-step.st-phone::before { background: var(--warm); }
+.s-step .s-cardname { margin: 0; max-width: none; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.s-step .s-rtime { font-size: 22px; }
+.s-step p { margin: 3px 0 0; font-size: 11px; line-height: 1.42; color: var(--grey); max-width: none; }
+
+.s-close {
+  border-radius: 12px;
+  padding: 9px 11px;
+  font-size: 11px;
+  line-height: 1.42;
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  margin-top: 12px;
+}
+.s-close .s-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 4px; }
+.s-close.green { background: rgba(0, 241, 159, .1); color: var(--mint); }
+.s-close.green .s-dot { background: var(--mint); }
+
+/* sheet */
+.s-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 5, 10, .68);
+  display: flex;
+  align-items: flex-end;
+  z-index: 6;
+}
+.s-sheet {
+  width: 100%;
+  background: #10141D;
+  border-top: 1px solid var(--line);
+  border-radius: 24px 24px 43px 43px;
+  padding: 16px 14px 30px;
+}
+.s-sheet-title {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--grey);
+  text-align: center;
+  margin: 0 0 10px;
+}
+.s-wheel {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 46px;
+  line-height: 1;
+  letter-spacing: -.03em;
+  text-align: center;
+  margin: 0 0 3px;
+  color: var(--white);
+}
+.s-wheel-was { text-align: center; font-size: 10px; color: var(--grey-dim); margin: 0 0 10px; }
+.s-nudge { display: flex; gap: 7px; justify-content: center; margin: 0 0 13px; }
+.s-nudge span {
+  width: 62px; height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card-lift);
+  color: var(--white);
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+}
+.s-honesty {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--grey);
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+  margin: 8px 0 0;
+  max-width: none;
+}
+
+/* ring: the warm terminal of the same cascade ramp, so it still means time */
+.screen.is-ring { background: linear-gradient(180deg, #2E0E10 0%, #150A0C 48%, var(--ground-bot) 100%); }
+.s-ring {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 22px 40px;
+}
+.s-ring .s-eyebrow { color: var(--warm); }
+.s-ring-time {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 82px;
+  line-height: .9;
+  letter-spacing: -.035em;
+  margin: 4px 0 6px;
+  color: var(--white);
+}
+.s-ring-app {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--grey);
+  margin: 0 0 20px;
+}
+.s-ring-facts { list-style: none; margin: 0 0 22px; padding: 0; }
+.s-ring-facts li {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--white);
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.s-ring-facts li:last-child { border-bottom: 1px solid var(--line); }
+.s-stop {
+  display: block;
+  width: 100%;
+  text-align: center;
+  background: var(--white);
+  color: #06070B;
+  border-radius: 13px;
+  padding: 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.s-ring-foot { font-size: 10.5px; line-height: 1.45; color: var(--grey-dim); margin: 12px 0 0; max-width: none; }
+
+/* ---------------------------------------------------------------- columns */
+.cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(36px, 4vw, 56px);
+}
+@media (min-width: 880px) { .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 760px) { .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.col { min-width: 0; }
+.col > p { max-width: 42ch; }
+.col-rule { padding-top: 22px; border-top: 1px solid var(--rule-firm); }
+
+@media (min-width: 760px) {
+  .cols-2.split > .col + .col {
+    padding-left: clamp(28px, 4vw, 56px);
+    border-left: 1px solid var(--rule);
+  }
+}
+
+.col-tag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 12px;
+}
+
+/* ---------------------------------------------------------------- state rows */
+.states { margin-top: clamp(30px, 4vw, 46px); max-width: 74ch; }
+
+.state-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 6px 14px;
+  padding: 22px 0;
+  border-top: 1px solid var(--rule);
+  align-items: start;
+}
+@media (min-width: 700px) {
+  .state-row { grid-template-columns: 20px minmax(0, 212px) minmax(0, 1fr); }
+}
+.state-row:last-child { border-bottom: 1px solid var(--rule); }
+
+/* Colour is never the only signal: each state also carries its name and a
+   distinct mark, so the row survives being read in greyscale. */
+.state-mark {
+  width: 14px; height: 14px;
+  margin-top: 7px;
+  color: var(--ink-soft);
+}
+.state-mark svg { width: 14px; height: 14px; display: block; }
+.state-mark.mint  { color: var(--mint-ink); }
+.state-mark.amber { color: var(--amber-ink); }
+.state-mark.coral { color: var(--coral-ink); }
+
+.state-name {
+  font-family: var(--ui);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  margin: 6px 0 0;
+  color: var(--ink);
+}
+.state-say { margin: 4px 0 0; color: var(--ink-soft); font-size: 17px; line-height: 1.55; max-width: 52ch; }
+
+/* ---------------------------------------------------------------- pull quote */
+.pull {
+  margin: clamp(44px, 6vw, 78px) 0 0;
+  padding: 0 0 0 clamp(18px, 3vw, 34px);
+  border-left: 2px solid var(--ink);
+  max-width: 30ch;
+}
+.pull p {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(24px, 3.3vw, 36px);
+  line-height: 1.16;
+  letter-spacing: -.024em;
+  margin: 0;
+  text-wrap: balance;
+  max-width: none;
+}
+.pull cite {
+  display: block;
+  font-family: var(--ui);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-top: 18px;
+}
+.pull-wide { max-width: 40ch; }
+
+/* ---------------------------------------------------------------- choices */
+.choices { list-style: none; margin: 28px 0 0; padding: 0; max-width: 60ch; }
+.choices li {
+  padding: 16px 0;
+  border-top: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 14px;
+  align-items: baseline;
+}
+.choices li:last-child { border-bottom: 1px solid var(--rule); }
+.choices .ch-n {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -.02em;
+  color: var(--ink-soft);
+}
+.choices .ch-t { font-weight: 600; }
+.choices .ch-s { display: block; font-weight: 400; color: var(--ink-soft); margin-top: 3px; }
+
+/* ---------------------------------------------------------------- limits */
+.limits { counter-reset: lim; list-style: none; margin: clamp(30px, 4vw, 50px) 0 0; padding: 0; max-width: 70ch; }
+.limits > li {
+  counter-increment: lim;
+  position: relative;
+  padding: clamp(24px, 3vw, 32px) 0 clamp(24px, 3vw, 32px) clamp(46px, 6vw, 80px);
+  border-top: 1px solid var(--rule);
+}
+.limits > li:last-child { border-bottom: 1px solid var(--rule); }
+.limits > li::before {
+  content: counter(lim);
+  position: absolute;
+  left: 0;
+  top: clamp(26px, 3vw, 36px);
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: clamp(22px, 3vw, 30px);
+  line-height: 1;
+  letter-spacing: -.02em;
+  color: var(--ink-soft);
+}
+.limits h3 { font-size: clamp(21px, 2.7vw, 29px); margin-bottom: .32em; max-width: 24ch; }
+.limits p { color: var(--ink-soft); max-width: 58ch; }
+
+/* ---------------------------------------------------------------- plain list */
+.plain-list { list-style: none; margin: clamp(26px, 3vw, 40px) 0 0; padding: 0; max-width: 62ch; }
+.plain-list li { padding: 16px 0; border-top: 1px solid var(--rule); }
+.plain-list li:last-child { border-bottom: 1px solid var(--rule); }
+.plain-list b { font-weight: 600; }
+
+/* ---------------------------------------------------------------- close */
+.close-line {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(31px, 5.6vw, 64px);
+  line-height: 1.02;
+  letter-spacing: -.03em;
+  margin: 0 0 .48em;
+  max-width: 17ch;
+  text-wrap: balance;
+}
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px 26px;
+  margin-top: clamp(28px, 4vw, 42px);
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--ui);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -.011em;
+  text-decoration: none;
+  color: var(--ink-invert);
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  min-height: 52px;
+  padding: 14px 28px;
+  transition: transform var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
+}
+.cta:hover { opacity: .88; }
+.cta:active { transform: scale(.95); }
+.cta svg { width: 15px; height: 15px; display: block; }
+.cta:focus-visible { outline-offset: 3px; }
+
+.cta-flag {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--ink-soft);
+  border-bottom: 1px dashed var(--rule-firm);
+  padding-bottom: 2px;
+}
+
+.close-next {
+  margin-top: clamp(20px, 3vw, 28px);
+  font-size: 17px;
+  color: var(--ink-soft);
+  max-width: 46ch;
+}
+
+.close-fine {
+  margin-top: clamp(32px, 4vw, 50px);
+  padding-top: 22px;
+  border-top: 1px solid var(--rule);
+  font-size: 16px;
+  color: var(--ink-soft);
+  max-width: 62ch;
+}
+
+/* ---------------------------------------------------------------- footer */
+/* The change of ground is the divider. No rule, no fade, above the footer. */
+.foot {
+  background: var(--paper);
+  padding-top: 44px;
+  padding-bottom: calc(48px + env(safe-area-inset-bottom));
+}
+.foot-in {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 36px;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+.foot-in p { margin: 0; max-width: 52ch; }
+
+/* ---------------------------------------------------------------- motion
+   The static state is the default. Motion is added, never subtracted, so a
+   browser that never runs the script or never matches the query still gets a
+   correct page rather than an invisible one. */
+.rise { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  html.js-anim .rise {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease);
+    transition-delay: var(--d, 0ms);
+  }
+  html.js-anim .rise.in { opacity: 1; transform: none; }
+}
+
+/* ---------------------------------------------------------------- print */
+@media print {
+  .masthead, .cue, .pin-dots, .hero-cta { display: none; }
+  .pin { position: static; }
+  .hero { min-height: 0; }
+  body { background: #fff; color: #000; }
+}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to the page</a>
+
+<header class="masthead">
+  <div class="shell masthead-in">
+    <a class="wordmark" href="#top">One<span class="wm-dim">Alarm</span></a>
+    <div class="mast-right">
+      <button type="button" class="tbtn" id="themeBtn" hidden aria-pressed="false">
+        <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.3M12 19.3v2.3M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M2.4 12h2.3M19.3 12h2.3M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
+        <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.3 14.6A8.6 8.6 0 0 1 9.4 3.7a8.6 8.6 0 1 0 10.9 10.9z"/></svg>
+        <span class="tbtn-txt" id="themeTxt">Dark</span>
+      </button>
+      <a class="mast-link" href="#access"><span class="mast-underline">Ask for access</span></a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ============================================================ 1. opening -->
+  <section class="band" id="top" aria-labelledby="h1">
+    <div class="shell hero">
+      <p class="hero-kicker rise">OneAlarm &nbsp;·&nbsp; an app for iPhone</p>
+      <h1 id="h1" class="rise" style="--d:50ms">One wake time. Every device follows it.</h1>
+      <p class="lede hero-lede rise" style="--d:100ms">
+        The thing it removes is setting the same alarm three times by hand, in three apps, every
+        time the wake time moves.
+      </p>
+
+      <p style="margin:0">
+        <a class="hero-cta rise" href="#access" style="--d:150ms"><span>Ask for access</span></a>
+      </p>
+
+      <dl class="offsets rise" style="--d:200ms">
+        <div class="offset">
+          <dt>Eight Sleep</dt>
+          <dd>T minus 10<span class="offset-why">Thermal and vibration ramp needs a run-up.</span></dd>
+        </div>
+        <div class="offset">
+          <dt>Whoop</dt>
+          <dd>T minus 5<span class="offset-why">Haptic smart-wake window.</span></dd>
+        </div>
+        <div class="offset">
+          <dt>iPhone</dt>
+          <dd>T<span class="offset-why">The loud backstop that actually gets you up.</span></dd>
+        </div>
+        <div class="offset">
+          <dt>Apple Watch</dt>
+          <dd>T<span class="offset-why">Mirrors the iPhone alarm automatically, no integration work.</span></dd>
+        </div>
+      </dl>
+
+      <p class="offsets-note rise" style="--d:250ms">
+        Those are the defaults. Every offset is adjustable on its own row, and changing the master
+        time once recomputes all of them.
+      </p>
+
+      <p style="margin:0">
+        <a class="cue rise" href="#night" style="--d:300ms">
+          <span>One morning, told properly</span>
+          <svg viewBox="0 0 13 22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 1v19"/><path d="M1.6 15.2 6.5 20.4l4.9-5.2"/></svg>
+        </a>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ 2. the night -->
+  <section class="band-2 sec" id="night" aria-labelledby="h-night" data-pinned="off">
+    <div class="shell">
+      <p class="eyebrow rise">The night of 15 to 16 August 2026</p>
+      <h2 id="h-night" class="rise" style="--d:50ms">One morning, from 22:41 to 10:00.</h2>
+      <p class="rise body-soft" style="--d:100ms; margin-bottom: clamp(44px, 6vw, 80px);">
+        This is a Friday night. Tomorrow is Saturday the 16th, the weekend routine says 10:30, and
+        she wants half an hour less of it. Follow the night down and the app explains itself,
+        because there is only ever one number to look at.
+      </p>
+
+      <div class="night-grid">
+        <div class="moments" id="moments">
+
+          <!-- moment 1 ------------------------------------------------ -->
+          <article class="moment rise" id="m1"
+                   data-cap="Home. Tomorrow, Saturday 16 August, 10:30, on the weekend routine.">
+            <div class="moment-inner">
+              <div class="moment-head">
+                <span class="moment-time">22:41</span>
+                <span class="moment-step">One of five</span>
+              </div>
+              <div class="moment-main">
+                <h3>You set tomorrow, not a schedule.</h3>
+                <div class="moment-body">
+                  <p>
+                    Home is one morning. The big number is tomorrow's, the date is written out in
+                    full, and the routine that produced the number is named underneath it.
+                  </p>
+                  <p>
+                    Routines are read only here. They are edited on their own screen, once, and then
+                    mostly left alone. <strong>Under the number sit three verbs, and they are the
+                    whole interaction.</strong>
+                  </p>
+                </div>
+
+                <div class="moment-media">
+                  <div class="device">
+                    <div class="device-shell">
+                      <span class="device-btn btn-silent" aria-hidden="true"></span>
+                      <span class="device-btn btn-vup" aria-hidden="true"></span>
+                      <span class="device-btn btn-vdn" aria-hidden="true"></span>
+                      <span class="device-btn btn-power" aria-hidden="true"></span>
+
+                      <div class="screen" role="group" aria-label="OneAlarm home screen at 22:41 on Friday">
+                        <div class="s-status">
+                          <span class="num">22:41</span>
+                          <span class="s-icons">
+                            <svg width="17" height="11" viewBox="0 0 18 12" fill="currentColor" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="6" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+                            <svg width="15" height="11" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M1.2 4.3a10 10 0 0 1 13.6 0"/><path d="M3.7 7a6.3 6.3 0 0 1 8.6 0"/><path d="M6.3 9.6a2.6 2.6 0 0 1 3.4 0"/></svg>
+                            <svg width="25" height="11" viewBox="0 0 27 12" aria-hidden="true"><rect x=".5" y=".5" width="22" height="11" rx="3.2" fill="none" stroke="currentColor" stroke-opacity=".45"/><rect x="2" y="2" width="19" height="8" rx="1.8" fill="currentColor"/><path d="M24.3 4.3v3.4a1.9 1.9 0 0 0 0-3.4z" fill="currentColor" fill-opacity=".5"/></svg>
+                          </span>
+                        </div>
+                        <div class="s-appbar">ONEALARM</div>
+                        <div class="s-body">
+                          <p class="s-eyebrow">Tomorrow, Saturday 16 August</p>
+                          <p class="s-big">10:30</p>
+                          <p class="s-sub">in 11h 49m &nbsp;·&nbsp; Weekend routine</p>
+
+                          <p class="s-label">This morning only</p>
+                          <span class="s-verb is-primary">Just Saturday 16 August</span>
+                          <span class="s-verb">Every weekend, from now on</span>
+                          <span class="s-verb">No alarm on Saturday 16 August</span>
+
+                          <p class="s-railhead">Who wakes you, in order</p>
+                          <div class="s-row r-bed">
+                            <span class="s-rail"></span>
+                            <div>
+                              <div class="s-rtop"><span class="s-rtime">10:00 to 10:30</span><span class="s-rname">Eight Sleep</span></div>
+                              <p class="s-rsay">Starts 30 minutes before you. Light sleep window.</p>
+                            </div>
+                          </div>
+                          <div class="s-row r-strap">
+                            <span class="s-rail"></span>
+                            <div>
+                              <div class="s-rtop"><span class="s-rtime">by 10:25</span><span class="s-rname">Whoop</span></div>
+                              <p class="s-rsay">Smart alarm, so it may buzz any time in the hour before.</p>
+                            </div>
+                          </div>
+                          <div class="s-row r-phone">
+                            <span class="s-rail"></span>
+                            <div>
+                              <div class="s-rtop"><span class="s-rtime">10:30</span><span class="s-rname">iPhone</span><span class="s-loud">LOUD</span></div>
+                              <p class="s-rsay">Armed on this phone. Rings through Silent and Focus.</p>
+                            </div>
+                          </div>
+                        </div>
+                        <span class="island" aria-hidden="true"></span>
+                        <span class="home-ind" aria-hidden="true"></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- moment 2 ------------------------------------------------ -->
+          <article class="moment rise" id="m2"
+                   data-cap="The change sheet. Three choices, each one naming the date.">
+            <div class="moment-inner">
+              <div class="moment-head">
+                <span class="moment-time">22:41</span>
+                <span class="moment-step">Two of five</span>
+              </div>
+              <div class="moment-main">
+                <h3>Change the number and it asks which you meant.</h3>
+                <div class="moment-body">
+                  <p>
+                    The gesture is Apple's, from the most tested alarm interface there is, so there
+                    is no new screen to learn. The wording is not Apple's. Apple offers
+                    <em>Change Next Alarm Only</em>, which does not say which morning.
+                    <strong>This one names the date.</strong>
+                  </p>
+                  <p>
+                    Bending Saturday leaves Sunday at 10:30, leaves next Saturday at 10:30, and
+                    reverts by itself with nothing to cancel. An override you have to remember to
+                    switch off is an override that eventually fires on a morning nobody chose.
+                  </p>
+                  <p>
+                    Take the first choice and the home screen says so, and says when it ends:
+                    <em>Tomorrow only, 10:00. Your weekend routine is still 10:30 and returns on
+                    Sunday.</em>
+                  </p>
+                </div>
+
+                <div class="moment-media">
+                  <div class="device">
+                    <div class="device-shell">
+                      <span class="device-btn btn-silent" aria-hidden="true"></span>
+                      <span class="device-btn btn-vup" aria-hidden="true"></span>
+                      <span class="device-btn btn-vdn" aria-hidden="true"></span>
+                      <span class="device-btn btn-power" aria-hidden="true"></span>
+
+                      <div class="screen" role="group" aria-label="OneAlarm change sheet for Saturday 16 August">
+                        <div class="s-status">
+                          <span class="num">22:41</span>
+                          <span class="s-icons">
+                            <svg width="17" height="11" viewBox="0 0 18 12" fill="currentColor" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="6" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+                            <svg width="15" height="11" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M1.2 4.3a10 10 0 0 1 13.6 0"/><path d="M3.7 7a6.3 6.3 0 0 1 8.6 0"/><path d="M6.3 9.6a2.6 2.6 0 0 1 3.4 0"/></svg>
+                            <svg width="25" height="11" viewBox="0 0 27 12" aria-hidden="true"><rect x=".5" y=".5" width="22" height="11" rx="3.2" fill="none" stroke="currentColor" stroke-opacity=".45"/><rect x="2" y="2" width="19" height="8" rx="1.8" fill="currentColor"/><path d="M24.3 4.3v3.4a1.9 1.9 0 0 0 0-3.4z" fill="currentColor" fill-opacity=".5"/></svg>
+                          </span>
+                        </div>
+                        <div class="s-appbar">ONEALARM</div>
+                        <div class="s-body">
+                          <p class="s-eyebrow">Tomorrow, Saturday 16 August</p>
+                          <p class="s-big">10:30</p>
+                          <p class="s-sub">in 11h 49m &nbsp;·&nbsp; Weekend routine</p>
+                        </div>
+
+                        <div class="s-scrim">
+                          <div class="s-sheet">
+                            <p class="s-sheet-title">Saturday 16 August</p>
+                            <p class="s-wheel">10:00</p>
+                            <p class="s-wheel-was">was 10:30</p>
+                            <div class="s-nudge"><span>-15</span><span>+15</span></div>
+                            <span class="s-verb is-primary">Just Saturday 16 August
+                              <small>Sunday stays 10:30. Next Saturday stays 10:30.</small></span>
+                            <span class="s-verb">Every weekend, from now on
+                              <small>Overwrites Saturday and Sunday in the Weekend routine.</small></span>
+                            <span class="s-verb">No alarm on Saturday 16 August
+                              <small>The routine is untouched and comes back on Sunday.</small></span>
+                            <p class="s-honesty">
+                              Your phone rings at the time above. Your bed starts 30 minutes earlier.
+                              Your wrist may buzz any time in the hour before, because Whoop chooses
+                              the moment, not us.
+                            </p>
+                          </div>
+                        </div>
+                        <span class="island" aria-hidden="true"></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- moment 3 ------------------------------------------------ -->
+          <article class="moment rise" id="m3"
+                   data-cap="Devices. What each one holds now, and the time it was read back.">
+            <div class="moment-inner">
+              <div class="moment-head">
+                <span class="moment-time">23:41</span>
+                <span class="moment-step">Three of five</span>
+              </div>
+              <div class="moment-main">
+                <h3>It reads the bed and the strap before it writes anything.</h3>
+                <div class="moment-body">
+                  <p>
+                    An hour later the write goes out, and then it is read straight back. The bed
+                    returns an absolute instant, and the instant matched, so the bed can be called
+                    <strong>confirmed</strong>. Whoop returns no instant at all, so the strap says
+                    <strong>saved</strong>, and it will keep saying saved, permanently.
+                  </p>
+                  <p>
+                    Every row states what the device holds right now and when that was read, rather
+                    than what the app hoped it did. A 200 from a server is not a moved alarm, and
+                    this screen exists because that difference was learned the expensive way.
+                  </p>
+                </div>
+
+                <div class="moment-media">
+                  <div class="device">
+                    <div class="device-shell">
+                      <span class="device-btn btn-silent" aria-hidden="true"></span>
+                      <span class="device-btn btn-vup" aria-hidden="true"></span>
+                      <span class="device-btn btn-vdn" aria-hidden="true"></span>
+                      <span class="device-btn btn-power" aria-hidden="true"></span>
+
+                      <div class="screen" role="group" aria-label="OneAlarm devices screen at 23:41">
+                        <div class="s-status">
+                          <span class="num">23:41</span>
+                          <span class="s-icons">
+                            <svg width="17" height="11" viewBox="0 0 18 12" fill="currentColor" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="6" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+                            <svg width="15" height="11" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M1.2 4.3a10 10 0 0 1 13.6 0"/><path d="M3.7 7a6.3 6.3 0 0 1 8.6 0"/><path d="M6.3 9.6a2.6 2.6 0 0 1 3.4 0"/></svg>
+                            <svg width="25" height="11" viewBox="0 0 27 12" aria-hidden="true"><rect x=".5" y=".5" width="22" height="11" rx="3.2" fill="none" stroke="currentColor" stroke-opacity=".45"/><rect x="2" y="2" width="19" height="8" rx="1.8" fill="currentColor"/><path d="M24.3 4.3v3.4a1.9 1.9 0 0 0 0-3.4z" fill="currentColor" fill-opacity=".5"/></svg>
+                          </span>
+                        </div>
+                        <div class="s-appbar">ONEALARM</div>
+                        <div class="s-body">
+                          <div class="s-tabs">
+                            <span class="s-tab">Tonight</span>
+                            <span class="s-tab">My week</span>
+                            <span class="s-tab on">Devices</span>
+                          </div>
+
+                          <div class="s-standing">
+                            <p><b>Tomorrow only, 10:00.</b> Your weekend routine is still 10:30 and
+                            returns on Sunday.</p>
+                          </div>
+
+                          <div class="s-card">
+                            <p class="s-cardname">Eight Sleep <span class="s-state ok">Confirmed</span></p>
+                            <div class="s-kv"><span>Holds now</span><span>Sat 09:30 Zurich</span></div>
+                            <div class="s-kv"><span>Read at</span><span>23:41 tonight</span></div>
+                            <div class="s-kv"><span>Fires</span><span>09:30 to 10:00, light sleep</span></div>
+                            <div class="s-kv"><span>Lead</span><span>30 min before you</span></div>
+                            <div class="s-kv"><span>Clock</span><span>Stays in Zurich</span></div>
+                          </div>
+
+                          <div class="s-card">
+                            <p class="s-cardname">Whoop <span class="s-state wr">Saved</span></p>
+                            <div class="s-kv"><span>Holds now</span><span>09:55, saved not confirmed</span></div>
+                            <div class="s-kv"><span>Fires</span><span>any time in the hour before 09:55</span></div>
+                            <div class="s-kv"><span>Mode</span><span>Exact time, yours to change in Whoop</span></div>
+                            <div class="s-kv"><span>Reaches the strap</span><span>at its next sync with the Whoop app</span></div>
+                          </div>
+
+                          <div class="s-card">
+                            <p class="s-cardname">iPhone <span class="s-state nil">Local</span></p>
+                            <div class="s-kv"><span>Holds now</span><span>Armed on this phone for 10:00</span></div>
+                            <div class="s-kv"><span>Needs</span><span>nothing. No account, no network.</span></div>
+                            <div class="s-kv"><span>Role</span><span>The one that has to ring</span></div>
+                          </div>
+                        </div>
+                        <span class="island" aria-hidden="true"></span>
+                        <span class="home-ind" aria-hidden="true"></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- moment 4 ------------------------------------------------ -->
+          <article class="moment rise" id="m4"
+                   data-cap="The cascade. Bed at 09:30, strap by 09:55, phone at 10:00.">
+            <div class="moment-inner">
+              <div class="moment-head">
+                <span class="moment-time">09:30</span>
+                <span class="moment-step">Four of five</span>
+              </div>
+              <div class="moment-main">
+                <h3>The bed goes first, then the wrist, then the room.</h3>
+                <div class="moment-body">
+                  <p>
+                    Thirty minutes before her, the Pod starts its thermal and vibration ramp. It is a
+                    run-up rather than an alarm, which is why it needs the lead. Ten minutes is the
+                    default; this account is set to thirty, and every offset works that way.
+                  </p>
+                  <p>
+                    Whoop holds 09:55 and picks its own moment inside the hour before, so the honest
+                    drawing of it is a window and not a time. <strong>The phone is the backstop, and
+                    it is the only one allowed to say it will ring.</strong>
+                  </p>
+                </div>
+
+                <div class="moment-media">
+                  <div class="device">
+                    <div class="device-shell">
+                      <span class="device-btn btn-silent" aria-hidden="true"></span>
+                      <span class="device-btn btn-vup" aria-hidden="true"></span>
+                      <span class="device-btn btn-vdn" aria-hidden="true"></span>
+                      <span class="device-btn btn-power" aria-hidden="true"></span>
+
+                      <div class="screen" role="group" aria-label="OneAlarm cascade screen on Saturday morning at 09:30">
+                        <div class="s-status">
+                          <span class="num">09:30</span>
+                          <span class="s-icons">
+                            <svg width="17" height="11" viewBox="0 0 18 12" fill="currentColor" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="6" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+                            <svg width="15" height="11" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M1.2 4.3a10 10 0 0 1 13.6 0"/><path d="M3.7 7a6.3 6.3 0 0 1 8.6 0"/><path d="M6.3 9.6a2.6 2.6 0 0 1 3.4 0"/></svg>
+                            <svg width="25" height="11" viewBox="0 0 27 12" aria-hidden="true"><rect x=".5" y=".5" width="22" height="11" rx="3.2" fill="none" stroke="currentColor" stroke-opacity=".45"/><rect x="2" y="2" width="19" height="8" rx="1.8" fill="currentColor"/><path d="M24.3 4.3v3.4a1.9 1.9 0 0 0 0-3.4z" fill="currentColor" fill-opacity=".5"/></svg>
+                          </span>
+                        </div>
+                        <div class="s-appbar">ONEALARM</div>
+                        <div class="s-body">
+                          <p class="s-eyebrow">Saturday 16 August</p>
+                          <p class="s-label" style="margin-top:8px">Who wakes you, in order</p>
+
+                          <div class="s-cascade">
+                            <div class="s-step st-bed">
+                              <p class="s-cardname"><span class="s-rtime">09:30</span><span class="s-rname">Eight Sleep</span><span class="s-state ok">Confirmed</span></p>
+                              <p>Thermal and vibration ramp begins. Light sleep window runs to 10:00.</p>
+                            </div>
+                            <div class="s-step st-strap">
+                              <p class="s-cardname"><span class="s-rtime">09:55</span><span class="s-rname">Whoop</span><span class="s-state wr">Saved</span></p>
+                              <p>Holds 09:55. May buzz any time in the hour before, because Whoop chooses the moment, not us.</p>
+                            </div>
+                            <div class="s-step st-phone">
+                              <p class="s-cardname"><span class="s-rtime">10:00</span><span class="s-rname">iPhone</span><span class="s-loud">LOUD</span></p>
+                              <p>The one that has to ring. Armed on this phone. Your Apple Watch mirrors it.</p>
+                            </div>
+                          </div>
+
+                          <div class="s-close green">
+                            <span class="s-dot"></span>
+                            <span>Your phone will ring at 10:00 on Saturday 16 August. Both other devices agree.</span>
+                          </div>
+                        </div>
+                        <span class="island" aria-hidden="true"></span>
+                        <span class="home-ind" aria-hidden="true"></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- moment 5 ------------------------------------------------ -->
+          <article class="moment rise" id="m5"
+                   data-cap="10:00. It rings through Silent, through Focus, locked and face down.">
+            <div class="moment-inner">
+              <div class="moment-head">
+                <span class="moment-time">10:00</span>
+                <span class="moment-step">Five of five</span>
+              </div>
+              <div class="moment-main">
+                <h3>It rings.</h3>
+                <div class="moment-body">
+                  <p>
+                    Through Silent. Through Focus. Phone locked and face down. That is how the iPhone
+                    leg was verified on the night of 15 to 16 August 2026, and it is the leg that
+                    needs nothing at all: no credentials, no network, no accounts. It works the
+                    moment it installs.
+                  </p>
+                  <p>
+                    <strong>There is no snooze.</strong> Apple's sleep alarm gives you nine minutes.
+                    This one gives you a Stop button and the morning you asked for.
+                  </p>
+                </div>
+
+                <div class="moment-media">
+                  <div class="device">
+                    <div class="device-shell">
+                      <span class="device-btn btn-silent" aria-hidden="true"></span>
+                      <span class="device-btn btn-vup" aria-hidden="true"></span>
+                      <span class="device-btn btn-vdn" aria-hidden="true"></span>
+                      <span class="device-btn btn-power" aria-hidden="true"></span>
+
+                      <div class="screen is-ring" role="group" aria-label="OneAlarm ringing at 10:00 on Saturday 16 August">
+                        <div class="s-status">
+                          <span class="num">10:00</span>
+                          <span class="s-icons">
+                            <svg width="17" height="11" viewBox="0 0 18 12" fill="currentColor" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="6" width="3" height="6" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+                            <svg width="15" height="11" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M1.2 4.3a10 10 0 0 1 13.6 0"/><path d="M3.7 7a6.3 6.3 0 0 1 8.6 0"/><path d="M6.3 9.6a2.6 2.6 0 0 1 3.4 0"/></svg>
+                            <svg width="25" height="11" viewBox="0 0 27 12" aria-hidden="true"><rect x=".5" y=".5" width="22" height="11" rx="3.2" fill="none" stroke="currentColor" stroke-opacity=".45"/><rect x="2" y="2" width="19" height="8" rx="1.8" fill="currentColor"/><path d="M24.3 4.3v3.4a1.9 1.9 0 0 0 0-3.4z" fill="currentColor" fill-opacity=".5"/></svg>
+                          </span>
+                        </div>
+                        <div class="s-ring">
+                          <p class="s-eyebrow">Saturday 16 August</p>
+                          <p class="s-ring-time">10:00</p>
+                          <p class="s-ring-app">OneAlarm</p>
+                          <ul class="s-ring-facts">
+                            <li>Rings through Silent.</li>
+                            <li>Rings through Focus.</li>
+                            <li>Locked and face down.</li>
+                          </ul>
+                          <span class="s-stop">Stop</span>
+                          <p class="s-ring-foot">No snooze. Your bed began at 09:30. Your strap held 09:55.</p>
+                        </div>
+                        <span class="island" aria-hidden="true"></span>
+                        <span class="home-ind" aria-hidden="true"></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+        </div>
+
+        <!-- The pinned device. Built only when the script enhances the section. -->
+        <div class="pin" id="pin" hidden>
+          <div class="device">
+            <div class="device-shell">
+              <span class="device-btn btn-silent" aria-hidden="true"></span>
+              <span class="device-btn btn-vup" aria-hidden="true"></span>
+              <span class="device-btn btn-vdn" aria-hidden="true"></span>
+              <span class="device-btn btn-power" aria-hidden="true"></span>
+              <div class="pin-stack" id="pinStack"></div>
+              <span class="island" aria-hidden="true"></span>
+              <span class="home-ind" aria-hidden="true"></span>
+            </div>
+          </div>
+          <div class="pin-dots" id="pinDots" aria-hidden="true"></div>
+          <p class="pin-caption" id="pinCap" aria-live="polite"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 3. populations -->
+  <section class="band sec cv" aria-labelledby="h-people">
+    <div class="shell">
+      <div class="ed ruled">
+        <div class="ed-margin">
+          <p class="label">Three relationships</p>
+          <p class="margin-note">
+            All three are first class. Nobody here is a degraded version of somebody else, and a
+            person moves between them.
+          </p>
+        </div>
+        <div class="ed-body">
+          <h2 id="h-people" class="rise">Not everyone wakes up the same way.</h2>
+          <p class="rise body-soft" style="--d:50ms">
+            The first version of this app assumed everybody keeps a routine. That is one population
+            of three, and possibly not the largest. Day by day for a month, then routines, then back
+            again, with nothing to delete and nothing to migrate.
+          </p>
+        </div>
+      </div>
+
+      <div class="cols cols-3" style="margin-top: clamp(48px, 6vw, 80px);">
+        <div class="col col-rule rise">
+          <p class="col-tag">Routine led</p>
+          <h3>A statement they rarely touch.</h3>
+          <p class="body-soft">
+            Weekdays 07:45, with M T W T F lit. Weekend 10:30, with S S lit. Two sentences about how
+            the week goes, written once. What they need is not a better editor. It is a clean way to
+            bend a single date without touching the rule that produced it.
+          </p>
+        </div>
+        <div class="col col-rule rise" style="--d:50ms">
+          <p class="col-tag">Day by day</p>
+          <h3>An evening question, asked and answered.</h3>
+          <p class="body-soft">
+            What time do I need to get up tomorrow. That is the whole model. For them a weekday and
+            weekend split is noise, so they never meet the word routine anywhere in the app, and the
+            answer is one gesture on the screen already in front of them.
+          </p>
+        </div>
+        <div class="col col-rule rise" style="--d:100ms">
+          <p class="col-tag">No alarm at all</p>
+          <h3>A chosen setting, not an empty state.</h3>
+          <p class="body-soft">
+            Bed and wake recommendations, with nothing armed. Both services support this on purpose.
+            An app that reads zero alarms as a misconfiguration to be fixed is simply wrong about
+            these people, so this one reads it as an answer.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 4. moves, does not create -->
+  <section class="band-2 sec cv" aria-labelledby="h-moves">
+    <div class="shell">
+      <div class="ed ruled">
+        <div class="ed-margin">
+          <p class="label">The rule, and the exception</p>
+          <p class="margin-note">
+            Both halves have to be said together. The app once said only the first half, and the
+            first half on its own was wrong.
+          </p>
+        </div>
+        <div class="ed-body">
+          <h2 id="h-moves" class="rise">It moves alarms you already have.</h2>
+          <p class="rise body-soft" style="--d:50ms">
+            Nothing here is a new alarm competing with your old ones, on two of the three legs. On
+            the third it is exactly that, and saying so is the only honest option available.
+          </p>
+        </div>
+      </div>
+
+      <div class="cols cols-2 split" style="margin-top: clamp(48px, 6vw, 80px);">
+        <div class="col rise">
+          <p class="col-tag">On the bed and the strap</p>
+          <h3>Read, change the time, write it back.</h3>
+          <p class="body-soft">
+            Eight Sleep: it reads the alarm that is already there, changes the time, and writes it
+            back. Whoop: it reads the existing schedule, changes the time, and writes it back.
+          </p>
+          <p class="body-soft">
+            Your thermal settings, your vibration settings and your wake mode survive, because they
+            are echoed back exactly as the server sent them, including fields with no known meaning.
+            Nothing you chose is authored by this app.
+          </p>
+        </div>
+        <div class="col rise" style="--d:50ms">
+          <p class="col-tag">On the iPhone</p>
+          <h3>It creates one, beside the ones you have.</h3>
+          <p class="body-soft">
+            iOS exposes no way to read or change a Clock alarm or the Health sleep schedule, so on
+            the phone OneAlarm cannot move anything. It arms its own alarm next to whatever is
+            already set.
+          </p>
+          <p class="body-soft">
+            Which means your phone's own alarms still ring, and OneAlarm can neither see them nor
+            stop them. The remedy is to turn the Alarm toggle off inside your Sleep Schedule, and
+            the app says so permanently rather than as a banner you can dismiss.
+          </p>
+        </div>
+      </div>
+
+      <div class="pull pull-wide rise" style="margin-top: clamp(48px, 6vw, 76px);">
+        <p>
+          It cannot create one, delete one, change your bed temperature, or run the pump. Those
+          addresses are refused before a request leaves the phone.
+        </p>
+        <cite>From the devices screen</cite>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 5. three states -->
+  <section class="band sec cv" aria-labelledby="h-truth">
+    <div class="shell">
+      <div class="ed ruled">
+        <div class="ed-margin">
+          <p class="label">Confirmed, saved, failed</p>
+          <p class="margin-note">
+            The colour is not decoration. It is the difference between what was proved and what was
+            merely accepted.
+          </p>
+        </div>
+        <div class="ed-body">
+          <h2 id="h-truth" class="rise">It tells you the truth about what happened.</h2>
+          <p class="rise body-soft" style="--d:50ms">
+            Every remote write is read back. There are three outcomes, they are never blended, and
+            they never share a colour or a word. This is a selling point rather than a disclaimer.
+          </p>
+        </div>
+      </div>
+
+      <div class="states rise">
+        <div class="state-row">
+          <span class="state-mark mint" aria-hidden="true">
+            <svg viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="6"/><path d="M4.3 7.2 6.2 9.1l3.5-4.1"/></svg>
+          </span>
+          <p class="state-name">Confirmed</p>
+          <p class="state-say">
+            Written, read back, and the instant matched. Only a server that returns an absolute
+            instant can earn this, which today means the bed.
+          </p>
+        </div>
+        <div class="state-row">
+          <span class="state-mark amber" aria-hidden="true">
+            <svg viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="7" cy="7" r="6"/><path d="M7 4v3.4"/><path d="M7 10h.01"/></svg>
+          </span>
+          <p class="state-name">Accepted, unconfirmed</p>
+          <p class="state-say">
+            The service took it, but it could not be read back, or it read back at a different time.
+            Whoop returns no absolute instant, so its best available state is saved, permanently.
+          </p>
+        </div>
+        <div class="state-row">
+          <span class="state-mark coral" aria-hidden="true">
+            <svg viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="7" cy="7" r="6"/><path d="M4.8 4.8 9.2 9.2M9.2 4.8 4.8 9.2"/></svg>
+          </span>
+          <p class="state-name">Failed</p>
+          <p class="state-say">
+            It did not happen, and the cause is named. The row also says what that device still
+            holds, so a failure is a known time rather than an unknown one.
+          </p>
+        </div>
+      </div>
+
+      <div class="pull rise" style="--d:50ms">
+        <p>
+          Colouring amber green would be claiming a confirmation the app does not have, and the
+          moment that costs anything is 06:00.
+        </p>
+        <cite>Why the two are never blended</cite>
+      </div>
+
+      <hr class="hr">
+
+      <div class="ed">
+        <div class="ed-margin">
+          <p class="label">Before it sends</p>
+        </div>
+        <div class="ed-body">
+          <h3 class="rise">Nothing goes out before you have seen it.</h3>
+          <p class="rise body-soft" style="--d:50ms">
+            There is a preview, and it shows two things: the resolved values, and the literal
+            outbound request. It states plainly that nothing has been sent. An app that edits two
+            live accounts on your behalf owes you the chance to look first.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 6. foreign change -->
+  <section class="band-2 sec cv" aria-labelledby="h-foreign">
+    <div class="shell">
+      <div class="ed ruled">
+        <div class="ed-margin">
+          <p class="label">Owner, or participant</p>
+          <p class="margin-note">
+            Sole authorship is the aim, never the assumption. People use other apps, and that is
+            information rather than an error.
+          </p>
+        </div>
+        <div class="ed-body">
+          <h2 id="h-foreign" class="rise">Somebody else changed it.</h2>
+          <p class="rise body-soft" style="--d:50ms">
+            She has an early flight, so she sets 05:00 in the Whoop app, the way anyone would. She
+            does not open OneAlarm. The next time OneAlarm goes to write, it finds a time it did not
+            put there.
+          </p>
+          <p class="rise body-soft" style="--d:50ms">
+            An app that assumes it was the last one to write would flatten that silently, and this
+            is not hypothetical. On the first night of real use a test rewrote a Monday to Friday
+            Whoop alarm into every day, because the Whoop write replaces rather than merges. So the
+            app compares before it writes, and when the two disagree it stops and says which alarm
+            and which value.
+          </p>
+          <p class="rise body-soft" style="--d:50ms">
+            Then it offers three, and adopting is often the right one. If she set 05:00 for a
+            flight, the honest reading is that 05:00 is what she wants tomorrow, and the bed and the
+            phone should follow the strap rather than fight it. <strong>Any device can be the one
+            that gets changed.</strong>
+          </p>
+
+          <ol class="choices rise">
+            <li><span class="ch-n">1</span><span><span class="ch-t">Follow the strap.</span>
+              <span class="ch-s">The bed and the phone move to match what Whoop holds.</span></span></li>
+            <li><span class="ch-n">2</span><span><span class="ch-t">Put the old time back.</span>
+              <span class="ch-s">This overwrites what was set in the Whoop app, and says so.</span></span></li>
+            <li><span class="ch-n">3</span><span><span class="ch-t">Leave the strap alone.</span>
+              <span class="ch-s">The two disagree on purpose, and the screen keeps saying so.</span></span></li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="pull pull-wide rise" style="margin-top: clamp(44px, 5vw, 68px);">
+        <p>
+          There is no default button here on purpose. This one already cost a real schedule: a test
+          rewrote a Monday to Friday alarm into every day, silently.
+        </p>
+        <cite>Printed at the bottom of that sheet</cite>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 7. local first -->
+  <section class="band sec cv" aria-labelledby="h-local">
+    <div class="shell">
+      <div class="ed ruled">
+        <div class="ed-margin">
+          <p class="label">Local first</p>
+        </div>
+        <div class="ed-body">
+          <h2 id="h-local" class="rise">What stays on your phone.</h2>
+          <ul class="plain-list rise" style="--d:50ms">
+            <li><b>Credentials and tokens live in the iOS Keychain</b>, and nowhere else. Never in
+              UserDefaults, never in plaintext, never logged, never committed.</li>
+            <li><b>There is no backend.</b> Nothing about your night is stored on a server belonging
+              to this app, because there is no such server.</li>
+            <li><b>No telemetry, and no third party analytics.</b> Not reduced. Not anonymised.
+              Absent.</li>
+            <li><b>Destructive, firmware and wipe commands are refused</b> before a request leaves
+              the phone. The allowlist is the boundary, and it sits on your side of the network.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 8. limits -->
+  <section class="band-2 sec cv" aria-labelledby="h-limits">
+    <div class="shell">
+      <p class="eyebrow rise">Stated plainly, in the same type as everything else</p>
+      <div class="ed">
+        <div class="ed-margin">
+          <p class="label">Five of them</p>
+          <p class="margin-note">
+            This is the section to read if you are deciding whether you want it. Everything above
+            was easier to write than this.
+          </p>
+        </div>
+        <div class="ed-body">
+          <h2 id="h-limits" class="rise">What it cannot do.</h2>
+
+          <ol class="limits rise" style="--d:50ms">
+            <li>
+              <h3>Your phone's own alarms still ring.</h3>
+              <p>
+                OneAlarm cannot see or change a Clock alarm or the Health sleep schedule. Suppress a
+                morning here and the Sleep Schedule alarm fires anyway. The remedy is to turn the
+                Alarm toggle off inside your Sleep Schedule, and the app says so permanently, because
+                you can create a Clock alarm at any time and nothing will notice.
+              </p>
+            </li>
+            <li>
+              <h3>Whoop holds one schedule per account.</h3>
+              <p>
+                So it cannot express two routines the way Eight Sleep can. The day list of whichever
+                routine covers tonight is what gets written, and the other one is not represented on
+                the strap.
+              </p>
+            </li>
+            <li>
+              <h3>Whoop's server and your wrist are two claims.</h3>
+              <p>
+                That the server holds the new time, and that the strap buzzes at the new time, are
+                different statements. Only the first is verified. The second reaches the strap at its
+                next sync with the Whoop app.
+              </p>
+            </li>
+            <li>
+              <h3>There is no snooze.</h3>
+              <p>
+                Apple's sleep alarm has a nine minute snooze. This has none. If you want nine more
+                minutes you set the alarm nine minutes later, the night before, in the one place that
+                moves all of it.
+              </p>
+            </li>
+            <li>
+              <h3>It is not on the App Store, and it is not heading there.</h3>
+              <p>
+                It uses Whoop's and Eight Sleep's own internal web services, which is a question
+                about their terms rather than about the code. It is a personal, single account build.
+                It uses no private Apple APIs, so a personal build and TestFlight internal testing
+                are both open routes.
+              </p>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 9. close -->
+  <section class="band-3 sec" id="access" aria-labelledby="h-close">
+    <div class="shell">
+      <h2 id="h-close" class="close-line rise">
+        One number, and the truth about what happened to it.
+      </h2>
+      <p class="lede rise" style="--d:50ms">
+        Verified on a real iPhone against live Eight Sleep and Whoop accounts on the night of 15 to
+        16 August 2026. All three legs.
+      </p>
+
+      <div class="cta-row rise" style="--d:100ms">
+        <!-- [to confirm] the destination for this button. There is no App Store listing,
+             no form and no support address to point it at yet, so it deliberately
+             points at this section and nowhere else. -->
+        <a class="cta" href="#access" id="ctaLink">
+          Ask for access
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.6 8h10.2"/><path d="M8.7 3.4 13.4 8l-4.7 4.6"/></svg>
+        </a>
+        <span class="cta-flag">[to confirm] where this button goes</span>
+      </div>
+
+      <p class="close-next rise" style="--d:150ms">
+        One reply, saying exactly what it needs from you and how long it takes. Nothing else.
+      </p>
+
+      <p class="close-fine rise" style="--d:200ms">
+        OneAlarm is a personal, single account build for iPhone. It is not on the App Store and is
+        not heading there. It uses no private Apple APIs, so a personal build and TestFlight internal
+        testing are both open routes. There is no price on this page because there is no price.
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="shell foot-in">
+    <p><span class="wordmark" style="font-size:17px; min-height:0">One<span class="wm-dim">Alarm</span></span></p>
+    <p>One wake time. Every device follows it.</p>
+    <p>This page states nothing the app has not already earned.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var root = document.documentElement;
+  var still = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  function wantsStill() { return !!(still && still.matches); }
+
+  /* ---------------------------------------------------------------- theme */
+  var btn = document.getElementById('themeBtn');
+  var txt = document.getElementById('themeTxt');
+
+  function systemDark() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+  function effective() {
+    var set = root.getAttribute('data-theme');
+    if (set === 'dark' || set === 'light') { return set; }
+    return systemDark() ? 'dark' : 'light';
+  }
+  function paintToggle() {
+    var now = effective();
+    var next = now === 'dark' ? 'light' : 'dark';
+    if (txt) { txt.textContent = next === 'dark' ? 'Dark' : 'Light'; }
+    btn.setAttribute('aria-pressed', now === 'dark' ? 'true' : 'false');
+    btn.setAttribute('aria-label', 'Page ground is ' + now + '. Switch to ' + next + '.');
+  }
+  if (btn) {
+    btn.hidden = false;
+    paintToggle();
+    btn.addEventListener('click', function () {
+      root.setAttribute('data-theme', effective() === 'dark' ? 'light' : 'dark');
+      paintToggle();
+    });
+    if (window.matchMedia) {
+      var mq = window.matchMedia('(prefers-color-scheme: dark)');
+      var onSys = function () { if (!root.getAttribute('data-theme')) { paintToggle(); } };
+      if (mq.addEventListener) { mq.addEventListener('change', onSys); }
+      else if (mq.addListener) { mq.addListener(onSys); }
+    }
+  }
+
+  /* ---------------------------------------------------------------- reveals
+     The page is complete and visible without any of this. js-anim is the opt in,
+     and it is only ever added when motion is welcome, so the failure mode is a
+     static correct page rather than a blank one. One observer, one callback. */
+  if (!wantsStill() && 'IntersectionObserver' in window) {
+    root.classList.add('js-anim');
+    var revealer = new IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting) {
+          entries[i].target.classList.add('in');
+          revealer.unobserve(entries[i].target);
+        }
+      }
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.05 });
+
+    var risers = document.querySelectorAll('.rise');
+    for (var r = 0; r < risers.length; r++) { revealer.observe(risers[r]); }
+
+    /* Reloading part way down a page must never leave a block at opacity 0. */
+    window.setTimeout(function () {
+      var pending = document.querySelectorAll('.rise:not(.in)');
+      for (var p = 0; p < pending.length; p++) {
+        var box = pending[p].getBoundingClientRect();
+        if (box.top < window.innerHeight && box.bottom > 0) { pending[p].classList.add('in'); }
+      }
+    }, 40);
+  }
+
+  /* ---------------------------------------------------------------- pinned narrative
+     The markup ships one device per moment, stacked, which is exactly what a
+     reader gets with the script off, at narrow widths, on a short viewport, and
+     under reduced motion. When the viewport is wide enough and motion is
+     welcome, the screens are lifted out of the moments into one sticky device
+     and cross faded on opacity alone. */
+  var section = document.getElementById('night');
+  var pin = document.getElementById('pin');
+  var stack = document.getElementById('pinStack');
+  var dots = document.getElementById('pinDots');
+  var cap = document.getElementById('pinCap');
+  var moments = Array.prototype.slice.call(document.querySelectorAll('.moment'));
+
+  if (section && pin && stack && moments.length && window.matchMedia) {
+    var wide = window.matchMedia('(min-width: 960px)');
+    var tall = window.matchMedia('(min-height: 620px)');
+    var pinned = false;
+    var screens = [];
+    var homes = [];
+    var watcher = null;
+    var current = -1;
+
+    for (var m = 0; m < moments.length; m++) {
+      homes.push({
+        moment: moments[m],
+        screen: moments[m].querySelector('.screen'),
+        media: moments[m].querySelector('.moment-media')
+      });
+    }
+
+    function buildDots() {
+      if (dots.childNodes.length) { return; }
+      for (var d = 0; d < moments.length; d++) {
+        var s = document.createElement('span');
+        s.className = 'pin-dot';
+        dots.appendChild(s);
+      }
+    }
+
+    function setActive(i) {
+      if (i === current) { return; }
+      current = i;
+      for (var n = 0; n < screens.length; n++) {
+        if (n === i) {
+          screens[n].classList.add('live');
+          screens[n].removeAttribute('aria-hidden');
+        } else {
+          screens[n].classList.remove('live');
+          screens[n].setAttribute('aria-hidden', 'true');
+        }
+      }
+      for (var k = 0; k < dots.children.length; k++) {
+        if (k === i) { dots.children[k].classList.add('on'); }
+        else { dots.children[k].classList.remove('on'); }
+      }
+      if (cap) { cap.textContent = moments[i].getAttribute('data-cap') || ''; }
+    }
+
+    function enhance() {
+      if (pinned) { return; }
+      pinned = true;
+      screens = [];
+      for (var h = 0; h < homes.length; h++) {
+        if (!homes[h].screen) { continue; }
+        stack.appendChild(homes[h].screen);
+        screens.push(homes[h].screen);
+        if (homes[h].media) { homes[h].media.hidden = true; }
+      }
+      buildDots();
+      pin.hidden = false;
+      section.setAttribute('data-pinned', 'on');
+
+      watcher = new IntersectionObserver(function (entries) {
+        for (var e = 0; e < entries.length; e++) {
+          if (!entries[e].isIntersecting) { continue; }
+          var idx = moments.indexOf(entries[e].target);
+          if (idx > -1) { setActive(idx); }
+        }
+      }, { rootMargin: '-46% 0px -46% 0px', threshold: 0 });
+
+      for (var w = 0; w < moments.length; w++) { watcher.observe(moments[w]); }
+
+      current = -1;
+      setActive(0);
+    }
+
+    function unenhance() {
+      if (!pinned) { return; }
+      pinned = false;
+      if (watcher) { watcher.disconnect(); watcher = null; }
+      for (var h = 0; h < homes.length; h++) {
+        if (!homes[h].screen) { continue; }
+        homes[h].screen.classList.remove('live');
+        homes[h].screen.removeAttribute('aria-hidden');
+        var frame = homes[h].media ? homes[h].media.querySelector('.device-shell') : null;
+        if (frame) { frame.insertBefore(homes[h].screen, frame.querySelector('.island')); }
+        if (homes[h].media) { homes[h].media.hidden = false; }
+      }
+      screens = [];
+      pin.hidden = true;
+      section.setAttribute('data-pinned', 'off');
+      if (cap) { cap.textContent = ''; }
+      current = -1;
+    }
+
+    function decide() {
+      if (wide.matches && tall.matches && !wantsStill() && 'IntersectionObserver' in window) {
+        enhance();
+      } else {
+        unenhance();
+      }
+    }
+
+    decide();
+
+    var queries = [wide, tall, still];
+    for (var q = 0; q < queries.length; q++) {
+      if (!queries[q]) { continue; }
+      if (queries[q].addEventListener) { queries[q].addEventListener('change', decide); }
+      else if (queries[q].addListener) { queries[q].addListener(decide); }
+    }
+  }
+})();
+</script>
+
+</body>
+</html>

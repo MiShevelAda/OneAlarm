@@ -8,7 +8,14 @@ name: Build
 
 on:
   push:
+    # promo/ is a marketing website in plain HTML and ships nothing into the app target. Without
+    # this line every copy edit on it spends 45 minutes of macOS runner time rebuilding Swift that
+    # did not change.
+    paths-ignore:
+      - 'promo/**'
   pull_request:
+    paths-ignore:
+      - 'promo/**'
   workflow_dispatch:
 
 jobs:

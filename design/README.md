@@ -1,7 +1,7 @@
 # Design
 
-- **`prototype.html`** — every screen and state, clickable. Open it on the phone.
-- **`FLOW.md`** — the flow and the states inventory the prototype has to cover.
+- **`prototype.html`**: every screen and state, clickable. Open it on the phone.
+- **`FLOW.md`**: the flow and the states inventory the prototype has to cover.
 
 ## The design language, and where it came from
 

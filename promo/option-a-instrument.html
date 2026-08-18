@@ -1,0 +1,2324 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#05070C">
+<meta name="color-scheme" content="dark">
+<title>OneAlarm. One wake time. Every device follows it.</title>
+<meta name="description" content="OneAlarm is an iOS app that holds one wake time and moves the alarms you already have on Eight Sleep, Whoop and iPhone. Every write is read back, and the page says plainly what it cannot do.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2305070C'/%3E%3Crect x='7' y='7' width='9' height='4' rx='2' fill='%232E7FD4'/%3E%3Crect x='7' y='14' width='14' height='4' rx='2' fill='%236E74D8'/%3E%3Crect x='7' y='21' width='18' height='4' rx='2' fill='%23F4643C'/%3E%3C/svg%3E">
+<script>document.documentElement.className = 'js';</script>
+
+<style>
+/* ==========================================================================
+   OneAlarm promo, variant A: The Instrument.
+   Single file, no network requests, dark and committed to one theme.
+   Tokens are the app's own, from OneAlarm/Design/Theme.swift.
+
+   Two rules govern everything below.
+
+   1. The gradient encodes TIME, the flat accents encode STATE. There is
+      exactly ONE chromatic gradient on this page and it is the dawn ramp on
+      the cascade rows. Everything else that looks like a gradient is tonal:
+      two stops of one hue, near invisible.
+   2. Sections are divided by a change of ground colour, not by rules,
+      borders or shadows. The only shadow in the file is on the device frame,
+      which is product photography.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* ground and the section tiles that divide the page */
+  --ground-top: #101A2B;
+  --ground-bot: #05070C;
+  --tile:       #090D14;
+  --tile-2:     #0B1019;
+  --band-close: #161C28;
+
+  --card:      #0D1119;
+  --card-lift: #161C28;
+  --line:      rgba(255, 255, 255, 0.08);
+  --line-firm: rgba(255, 255, 255, 0.14);
+
+  /* type colour. Never pure white for body copy. */
+  --white:    #F5F7F8;
+  --grey:     #B8C0C3;
+  --grey-dim: #7F898D;
+
+  /* flat accents: STATE, never time */
+  --mint:  #00F19F;
+  --amber: #FFDE00;
+  --coral: #FF0026;
+  --coral-text: #FF5C77;   /* the pure coral lifts to 6.3:1 as text */
+  --optimal: #7BA1BB;
+
+  /* the dawn ramp: TIME, never decoration and never temperature */
+  --cool-a: #2E7FD4;
+  --mid-a:  #6E74D8;
+  --warm-a: #F4643C;
+
+  /* device screen. Dark in every theme, because it is a picture of a thing. */
+  --scr:      #05070D;
+  --scr-lift: #141A25;
+  --scr-line: rgba(255, 255, 255, 0.09);
+
+  --num: 'DIN Alternate', 'DIN Alternate Bold', 'Avenir Next Condensed',
+         'Arial Narrow', ui-sans-serif, system-ui, sans-serif;
+  --ui:  -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI',
+         system-ui, sans-serif;
+
+  /* motion tokens */
+  --dur-fast: 150ms;
+  --dur-base: 260ms;
+  --dur-slow: 420ms;
+  --ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --spring:   cubic-bezier(0.32, 1.6, 0.5, 1);
+
+  --gut: 1.5rem;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-size: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--ground-bot);
+  /* tonal, two stops of one hue, resolved before the fold ends */
+  background-image: linear-gradient(180deg, var(--ground-top), var(--ground-bot));
+  background-repeat: no-repeat;
+  background-size: 100% 1000px;
+  color: var(--grey);
+  font-family: var(--ui);
+  font-size: 1.0625rem;         /* 17px, the iOS Body token */
+  line-height: 1.47;
+  letter-spacing: -0.011em;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+img, svg { max-width: 100%; }
+::selection { background: rgba(0, 241, 159, 0.22); color: var(--white); }
+
+/* -------------------------------------------------------------- focus ring
+   The default ring is only suppressed where :focus-visible is understood, so
+   a browser without it keeps a ring rather than losing one. */
+:focus:not(:focus-visible) { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--optimal);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+.skip {
+  position: absolute; left: 0.75rem; top: -4rem; z-index: 100;
+  background: var(--white); color: #06070B; padding: 0.7rem 1rem;
+  border-radius: 8px; font-weight: 600; font-size: 0.875rem; text-decoration: none;
+}
+.skip:focus-visible { top: 0.75rem; }
+
+/* -------------------------------------------------------------- typography
+   Apple's ladder is 300 / 400 / 600 / 700, with 500 deliberately absent.
+   Headings are 600. 700 is reserved for the small tracked data labels and
+   for numerals in the DIN face, which is Whoop's instrument language.
+   Tracking is negative at every size from 17px up, and scales with size.  */
+h1, h2, h3, h4 { color: var(--white); font-weight: 600; margin: 0; text-wrap: balance; }
+
+h1 {
+  font-size: clamp(2.375rem, 6vw, 4.25rem);
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+}
+h2 {
+  font-size: clamp(1.625rem, 3.4vw, 2.5rem);
+  line-height: 1.07;
+  letter-spacing: -0.02em;
+}
+h3 {
+  font-size: clamp(1.125rem, 1.5vw, 1.3125rem);
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+h4 { font-size: 1rem; line-height: 1.35; letter-spacing: -0.013em; }
+
+p { margin: 0; max-width: 62ch; }
+
+a { color: var(--white); text-underline-offset: 3px; text-decoration-color: rgba(255,255,255,.35); }
+a:hover { text-decoration-color: var(--white); }
+strong, b { color: var(--white); font-weight: 600; }
+
+.micro {
+  font-family: var(--ui);
+  font-size: 0.65625rem;        /* 10.5px */
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--grey-dim);
+  margin: 0;
+}
+.micro-bright { color: var(--grey); }
+
+.num {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.lede {
+  font-size: clamp(1.0625rem, 1.5vw, 1.1875rem);
+  line-height: 1.45;
+  letter-spacing: -0.014em;
+  color: var(--grey);
+  max-width: 54ch;
+}
+.small { font-size: 0.90625rem; line-height: 1.5; letter-spacing: -0.008em; }
+.dim { color: var(--grey-dim); }
+
+/* -------------------------------------------------------------- layout */
+.container {
+  width: 100%;
+  max-width: 1220px;
+  margin: 0 auto;
+  padding-left: var(--gut);
+  padding-right: var(--gut);
+}
+
+/* Sections are full bleed tiles at radius 0, stacked edge to edge with no
+   gap. The change of ground colour is the divider: no rules between them. */
+.section { padding: clamp(4rem, 9vw, 8rem) 0; }
+.tile   { background: var(--tile); }
+.tile-2 { background: var(--tile-2); }
+
+.cv { content-visibility: auto; contain-intrinsic-size: auto 900px; }
+
+.section-head { max-width: 66ch; margin-bottom: clamp(2rem, 4vw, 3.25rem); }
+.section-head .micro { margin-bottom: 0.875rem; }
+.section-head h2 + p { margin-top: 1.125rem; }
+
+.scroller { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* -------------------------------------------------------------- buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: var(--ui);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  min-height: 2.875rem;         /* 46px, above the 44px touch floor */
+  padding: 0.9375rem 1.375rem;
+  border-radius: 12px;
+  border: 1px solid var(--line-firm);
+  background: transparent;
+  color: var(--white);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+.btn:hover { border-color: rgba(255,255,255,.34); background: rgba(255,255,255,.045); }
+.btn-solid { background: var(--white); color: #06070B; border-color: var(--white); }
+.btn-solid:hover { background: #FFFFFF; border-color: #FFFFFF; color: #06070B; }
+.btn-sm { font-size: 0.8125rem; padding: 0.75rem 1rem; border-radius: 10px; min-height: 2.75rem; }
+
+.btn-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+
+/* -------------------------------------------------------------- header
+   The only backdrop-filter in the file. */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(5, 7, 12, 0.62);
+  -webkit-backdrop-filter: saturate(150%) blur(14px);
+  backdrop-filter: saturate(150%) blur(14px);
+  border-bottom: 1px solid transparent;
+  padding-top: env(safe-area-inset-top);
+  transition: border-color var(--dur-base) var(--ease-out),
+              background-color var(--dur-base) var(--ease-out);
+}
+.site-header.is-scrolled {
+  border-bottom-color: var(--line);
+  background: rgba(5, 7, 12, 0.88);
+}
+.header-in { display: flex; align-items: center; gap: 1rem; height: 3.75rem; }
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-family: var(--num);
+  font-size: 1.1875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--white);
+  text-decoration: none;
+  margin-right: auto;
+}
+.wordmark:hover { text-decoration: none; }
+.mark { display: block; flex: none; }
+
+.site-nav { display: flex; gap: 0.25rem; }
+.site-nav a {
+  font-size: 0.84375rem;
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  color: var(--grey);
+  text-decoration: none;
+  padding: 0.75rem 0.75rem;
+  border-radius: 8px;
+  transition: color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
+}
+.site-nav a:hover { color: var(--white); background: rgba(255,255,255,.05); }
+@media (max-width: 860px) { .site-nav { display: none; } }
+
+/* -------------------------------------------------------------- hero */
+.hero {
+  padding-top: clamp(2.75rem, 6vw, 5.25rem);
+  padding-bottom: clamp(3.5rem, 7vw, 6.5rem);
+}
+@media (min-width: 1000px) {
+  .hero { min-height: 100svh; display: flex; flex-direction: column; justify-content: center; }
+}
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(2rem, 5vw, 4.5rem);
+  align-items: center;
+  width: 100%;
+}
+@media (max-width: 1000px) {
+  .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 2.5rem; }
+}
+
+.hero-copy .micro { margin-bottom: 1.125rem; }
+.hero-copy h1 { margin-bottom: 1.375rem; }
+.hero-copy .lede + .lede { margin-top: 0.875rem; }
+.hero-copy .btn-row { margin-top: 2rem; }
+
+.hero-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem 1.625rem;
+  margin-top: 1.875rem;
+  padding-top: 1.375rem;
+  border-top: 1px solid var(--line);
+}
+.hero-strip div { display: flex; align-items: baseline; gap: 0.5rem; }
+.hero-strip .num { font-size: 1.0625rem; color: var(--white); }
+
+/* -------------------------------------------------------------- instrument
+   Renders complete and correct on first paint. No entrance animation, no JS
+   dependency for its initial state, no layout shift. The only motion it has
+   is the moment its three numbers land on a new time. */
+.instrument {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 1.25rem 1.25rem 1.125rem;
+}
+@media (min-width: 560px) { .instrument { padding: 1.625rem 1.625rem 1.375rem; } }
+
+.inst-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.inst-live { display: inline-flex; align-items: center; gap: 0.4375rem; }
+.inst-live .pulse {
+  position: relative;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--mint);
+  flex: none;
+}
+.inst-live .pulse::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1px solid var(--mint);
+  opacity: 0;
+}
+
+.master {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 1.25rem 0 0.375rem;
+}
+.master-time {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: clamp(3.875rem, 12vw, 6rem);
+  line-height: 0.92;
+  letter-spacing: -0.035em;
+  color: var(--white);
+  text-align: center;
+  cursor: ew-resize;
+  border-radius: 12px;
+  padding: 0.25rem 0.375rem;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.master-time.is-dragging { background: rgba(255,255,255,.04); }
+
+.nudge {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  width: 3.625rem;
+  height: 3.25rem;
+  border-radius: 13px;
+  border: 1px solid var(--line-firm);
+  background: var(--card-lift);
+  color: var(--white);
+  cursor: pointer;
+  flex: none;
+  transition: background-color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+.nudge:hover { border-color: rgba(255,255,255,.3); background: #1B2331; }
+
+.inst-sub {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-bottom: 1rem;
+}
+.inst-hint { font-size: 0.78125rem; color: var(--grey-dim); line-height: 1.4; margin: 0; }
+.reset-btn {
+  font-family: var(--ui);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--optimal);
+  background: none;
+  border: 0;
+  min-height: 2.75rem;
+  padding: 0 0.25rem;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.reset-btn[hidden] { display: none; }
+
+/* the cascade. This is the page's one chromatic gradient, and it means time:
+   cool at the top, periwinkle in the middle, warm at the bottom. */
+.cascade { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+
+.crow {
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0 1rem;
+  padding: 0.875rem 1rem 0.875rem 0;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  overflow: hidden;
+  position: relative;
+}
+.crow::before { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.crow-es::before { background: linear-gradient(100deg, rgba(46, 127, 212, 0.26), rgba(10, 31, 56, 0.10) 62%, rgba(10, 31, 56, 0) 100%); }
+.crow-wh::before { background: linear-gradient(100deg, rgba(110, 116, 216, 0.26), rgba(22, 23, 46, 0.10) 62%, rgba(22, 23, 46, 0) 100%); }
+.crow-ip::before { background: linear-gradient(100deg, rgba(244, 100, 60, 0.26), rgba(46, 14, 16, 0.10) 62%, rgba(46, 14, 16, 0) 100%); }
+.crow > * { position: relative; z-index: 1; }
+
+.crow-rail { align-self: stretch; border-radius: 0 3px 3px 0; }
+.crow-es .crow-rail { background: var(--cool-a); }
+.crow-wh .crow-rail { background: var(--mid-a); }
+.crow-ip .crow-rail { background: var(--warm-a); }
+
+.crow-id { padding-left: 0.8125rem; min-width: 0; }
+.crow-name {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--white);
+  margin: 0;
+}
+.crow-why {
+  font-size: 0.78125rem;
+  line-height: 1.4;
+  letter-spacing: -0.004em;
+  color: var(--grey);
+  margin: 0.1875rem 0 0;
+  max-width: 34ch;
+}
+
+.offset {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line-firm);
+  border-radius: 11px;
+  background: rgba(5, 7, 12, 0.5);
+  overflow: hidden;
+  flex: none;
+}
+.offset button {
+  width: 2.5rem;
+  height: 2.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--white);
+  font-family: var(--num);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  transition: background-color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+.offset button:hover { background: rgba(255,255,255,.08); }
+.offset button:disabled { opacity: .3; cursor: default; }
+.offset button:disabled:hover { background: transparent; }
+.offset-val {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--white);
+  min-width: 3.25rem;
+  text-align: center;
+  padding: 0 0.125rem;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  line-height: 2.75rem;
+}
+
+.crow-out {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  justify-content: flex-end;
+  min-width: 6.75rem;
+}
+.crow-time {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.875rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--white);
+  line-height: 1;
+}
+
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
+.dot-mint  { background: var(--mint); }
+.dot-amber { background: var(--amber); }
+.dot-coral { background: var(--coral); }
+.dot-idle  { background: transparent; border: 1.5px solid var(--grey-dim); }
+
+.inst-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  margin-top: 1rem;
+  padding-top: 0.9375rem;
+  border-top: 1px solid var(--line);
+}
+.inst-foot p { font-size: 0.8125rem; line-height: 1.45; color: var(--grey); margin: 0; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; margin-top: 0.875rem; }
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  font-size: 0.65625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--grey-dim);
+}
+
+@media (max-width: 560px) {
+  .crow {
+    grid-template-columns: 3px minmax(0, 1fr) auto;
+    grid-template-areas: "rail id out" "rail off out";
+    row-gap: 0.625rem;
+    padding: 0.8125rem 0.875rem 0.8125rem 0;
+  }
+  .crow-rail { grid-area: rail; }
+  .crow-id { grid-area: id; }
+  .offset { grid-area: off; margin-left: 0.8125rem; }
+  .crow-out { grid-area: out; min-width: 0; flex-direction: column; align-items: flex-end; gap: 0.375rem; }
+  .crow-time { font-size: 1.625rem; }
+  .crow-why { display: none; }
+  .offset button { width: 2.75rem; height: 2.875rem; }
+  .offset-val { line-height: 2.875rem; }
+}
+
+/* -------------------------------------------------------------- problem */
+.problem-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) auto minmax(0, 1fr);
+  gap: clamp(1.25rem, 3vw, 2.5rem);
+  align-items: center;
+}
+@media (max-width: 900px) {
+  .problem-grid { grid-template-columns: minmax(0, 1fr); gap: 1.375rem; }
+}
+
+.hand-stack { display: grid; gap: 0.625rem; }
+.hand-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.875rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.875rem 1rem;
+}
+.hand-card .micro { margin-bottom: 0.3125rem; }
+.hand-card .num { font-size: 1.625rem; color: var(--white); }
+.hand-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.65625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--grey-dim);
+}
+
+.problem-arrow { display: flex; align-items: center; justify-content: center; }
+@media (max-width: 900px) { .problem-arrow svg { transform: rotate(90deg); } }
+
+.one-card {
+  background: var(--card-lift);
+  border: 1px solid var(--line-firm);
+  border-radius: 18px;
+  padding: 1.375rem 1.375rem 1.25rem;
+}
+.one-card .num.big {
+  font-size: clamp(3rem, 7vw, 4.125rem);
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  color: var(--white);
+  display: block;
+  margin: 0.625rem 0 0.375rem;
+}
+.one-card p { font-size: 0.875rem; line-height: 1.5; color: var(--grey); }
+
+/* -------------------------------------------------------------- mechanism */
+.mech-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+@media (max-width: 780px) { .mech-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.mech-step {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1.25rem;
+}
+.mech-step .step-n {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--optimal);
+  letter-spacing: 0.08em;
+}
+.mech-step h3 { margin: 0.625rem 0 0.5rem; }
+.mech-step p { font-size: 0.90625rem; line-height: 1.5; color: var(--grey); }
+
+.mech-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 0.75rem; }
+@media (max-width: 780px) { .mech-pair { grid-template-columns: minmax(0, 1fr); } }
+
+.claim-card {
+  border-radius: 18px;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+.claim-card.exception { background: var(--card-lift); border-color: rgba(244, 100, 60, 0.34); }
+.claim-card h3 { margin-bottom: 0.75rem; }
+.claim-card p + p { margin-top: 0.75rem; }
+.claim-card .micro { margin-bottom: 0.75rem; }
+.claim-card.exception .micro { color: var(--warm-a); }
+
+.survives { list-style: none; margin: 1rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.survives li {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--grey);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.375rem 0.75rem;
+  background: rgba(5, 7, 12, 0.4);
+}
+
+/* -------------------------------------------------------------- readout */
+.readout-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin-top: 0.875rem; }
+@media (max-width: 900px) { .readout-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.readout {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1.125rem 1.125rem 0.5rem;
+}
+.readout > .micro { margin-bottom: 0.75rem; }
+.readout dl { margin: 0; }
+.kv {
+  display: grid;
+  grid-template-columns: minmax(0, 5.75rem) minmax(0, 1fr);
+  gap: 0.875rem;
+  padding: 0.625rem 0;
+  font-size: 0.84375rem;
+  line-height: 1.4;
+  border-top: 1px solid var(--line);
+}
+.kv dt {
+  font-size: 0.65625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--grey-dim);
+  padding-top: 2px;
+}
+.kv dd { margin: 0; color: var(--grey); }
+.kv dd .num { color: var(--white); font-size: 0.90625rem; }
+
+/* -------------------------------------------------------------- states */
+.state-rows { display: grid; gap: 0.625rem; }
+.state-row {
+  display: grid;
+  grid-template-columns: 3px auto minmax(0, 1fr);
+  gap: 0 1rem;
+  align-items: start;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1.125rem 1.25rem 1.125rem 0;
+  overflow: hidden;
+}
+.state-row .rail { align-self: stretch; border-radius: 0 3px 3px 0; }
+.state-row.st-mint  .rail { background: var(--mint); }
+.state-row.st-amber .rail { background: var(--amber); }
+.state-row.st-coral .rail { background: var(--coral); }
+
+.state-time {
+  padding-left: 1.0625rem;
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--white);
+  line-height: 1;
+  letter-spacing: -0.025em;
+  white-space: nowrap;
+}
+.state-body { min-width: 0; }
+.state-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  font-size: 0.65625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0 0 0.4375rem;
+}
+.st-mint  .state-tag { color: var(--mint); }
+.st-amber .state-tag { color: var(--amber); }
+.st-coral .state-tag { color: var(--coral-text); }
+.state-said { font-size: 0.9375rem; color: var(--white); line-height: 1.4; letter-spacing: -0.012em; margin: 0; font-weight: 400; }
+.state-means { font-size: 0.84375rem; color: var(--grey); margin: 0.4375rem 0 0; line-height: 1.5; }
+
+@media (max-width: 640px) {
+  .state-row { grid-template-columns: 3px minmax(0, 1fr); row-gap: 0.625rem; padding: 1rem 1rem 1rem 0; }
+  .state-time { grid-column: 2; font-size: 1.75rem; }
+  .state-body { grid-column: 2; padding-left: 1.0625rem; }
+}
+
+.argument { margin-top: 1.125rem; border-left: 2px solid var(--amber); padding: 0.25rem 0 0.25rem 1.25rem; }
+.argument p {
+  font-size: clamp(1.0625rem, 1.8vw, 1.3125rem);
+  line-height: 1.4;
+  letter-spacing: -0.017em;
+  color: var(--white);
+  max-width: 56ch;
+}
+
+/* verification table */
+.verify-table { width: 100%; min-width: 520px; border-collapse: collapse; text-align: left; font-size: 0.90625rem; }
+.verify-table caption { text-align: left; font-size: 0.84375rem; color: var(--grey); padding-bottom: 0.875rem; max-width: 62ch; }
+.verify-table th, .verify-table td { padding: 0.875rem 1rem 0.875rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.verify-table thead th {
+  font-size: 0.65625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--grey-dim);
+  padding-bottom: 0.625rem;
+}
+.verify-table tbody th { font-size: 0.90625rem; font-weight: 600; color: var(--white); white-space: nowrap; }
+.verify-table td { color: var(--grey); }
+.verify-table tbody tr:last-child th, .verify-table tbody tr:last-child td { border-bottom: 0; }
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  font-size: 0.65625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mint);
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------- device */
+.device-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: clamp(1.75rem, 5vw, 4rem);
+  align-items: center;
+}
+.device-cols.flip { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); }
+@media (max-width: 940px) {
+  .device-cols, .device-cols.flip { grid-template-columns: minmax(0, 1fr); gap: 2.25rem; }
+  .device-cols.flip .device-col { order: 2; }
+}
+
+.device { width: 100%; max-width: 352px; margin: 0 auto; }
+.device-shell {
+  border-radius: 52px;
+  padding: 9px;
+  /* tonal, one hue: the aluminium band of a phone, not atmosphere */
+  background: linear-gradient(160deg, #232A36, #0E1219 42%, #1A202B);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  /* the only shadow in the file, and it is on product photography */
+  box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55);
+}
+.device-screen {
+  position: relative;
+  border-radius: 43px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #101A2B, var(--scr) 46%);
+  color: var(--white);
+  height: 700px;
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+}
+
+.island {
+  position: absolute;
+  top: 11px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 104px;
+  height: 30px;
+  border-radius: 999px;
+  background: #000;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 11px;
+}
+.island i { width: 8px; height: 8px; border-radius: 50%; background: #0C1420; display: block; }
+
+.statusbar {
+  flex: none;
+  height: 52px;
+  padding: 0 26px 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--white);
+  position: relative;
+  z-index: 7;
+}
+.statusbar .sb-time { font-family: var(--num); font-variant-numeric: tabular-nums; font-weight: 700; }
+.sb-icons { display: flex; align-items: center; gap: 6px; }
+
+.appbar {
+  flex: none;
+  text-align: center;
+  font-size: 0.65625rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--grey-dim);
+  padding: 2px 0 10px;
+}
+
+.screen-body { flex: 1; min-height: 0; padding: 4px 20px 22px; overflow: hidden; }
+
+.home-indicator {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 132px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.38);
+  z-index: 9;
+}
+
+.scr-date { font-size: 0.65625rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--grey); margin: 0; }
+.scr-time {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-size: 4.25rem;
+  font-weight: 700;
+  line-height: 0.96;
+  letter-spacing: -0.035em;
+  color: var(--white);
+  margin: 6px 0 0;
+}
+.scr-time.small-words { font-family: var(--ui); font-size: 1.75rem; font-weight: 600; line-height: 1.06; letter-spacing: -0.02em; }
+.scr-standing { font-size: 0.8125rem; line-height: 1.45; color: var(--grey); margin: 10px 0 0; min-height: 3.5rem; }
+.scr-standing b { color: var(--white); font-weight: 600; }
+
+.scr-mini { margin-top: 16px; display: grid; gap: 7px; }
+/* Inside the phone the ramp is carried by the solid rails only, exactly as
+   the app draws it. The gradient wash lives in one place on this page. */
+.mini-row {
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr) auto;
+  gap: 0 12px;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--scr-line);
+  border-radius: 13px;
+  padding: 10px 13px 10px 0;
+  overflow: hidden;
+}
+.mini-rail { align-self: stretch; border-radius: 0 3px 3px 0; }
+.mini-es .mini-rail { background: var(--cool-a); }
+.mini-wh .mini-rail { background: var(--mid-a); }
+.mini-ip .mini-rail { background: var(--warm-a); }
+.mini-id { padding-left: 12px; }
+.mini-name { font-size: 0.625rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--white); margin: 0; }
+.mini-say { font-size: 0.71875rem; color: var(--grey); margin: 3px 0 0; line-height: 1.35; }
+.mini-time { font-family: var(--num); font-variant-numeric: tabular-nums; font-size: 1.3125rem; font-weight: 700; color: var(--white); letter-spacing: -0.02em; }
+
+.sheet {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 6;
+  background: #10141D;
+  border-top: 1px solid var(--scr-line);
+  border-radius: 26px 26px 43px 43px;
+  padding: 18px 18px 26px;
+}
+.sheet-scrim { position: absolute; inset: 0; z-index: 5; background: rgba(3, 5, 10, 0.6); pointer-events: none; }
+.sheet-grab { width: 38px; height: 4px; border-radius: 999px; background: rgba(255,255,255,.22); margin: 0 auto 14px; }
+.sheet-title { font-size: 0.65625rem; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--grey); text-align: center; margin: 0 0 4px; }
+.sheet-lead { font-size: 0.78125rem; line-height: 1.45; color: var(--grey); margin: 8px 0 14px; }
+.wheel {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-size: 3.125rem;
+  font-weight: 700;
+  text-align: center;
+  color: var(--white);
+  margin: 4px 0 16px;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+.choice {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  min-height: 2.75rem;
+  border-radius: 13px;
+  border: 1px solid var(--scr-line);
+  background: var(--scr-lift);
+  color: var(--white);
+  font-family: var(--ui);
+  font-size: 0.84375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  cursor: pointer;
+  margin-bottom: 8px;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+.choice small { display: block; font-weight: 400; font-size: 0.71875rem; line-height: 1.4; color: var(--grey); margin-top: 4px; }
+.choice:hover { border-color: rgba(255,255,255,.28); background: #1A2130; }
+.choice[aria-pressed="true"] { border-color: var(--white); background: #1E2634; }
+.choice.static { cursor: default; }
+.choice.static:hover { border-color: var(--scr-line); background: var(--scr-lift); }
+.honesty { font-size: 0.71875rem; line-height: 1.45; color: var(--grey); border-top: 1px solid var(--scr-line); padding-top: 11px; margin: 12px 0 0; }
+
+/* -------------------------------------------------------------- local */
+.facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  overflow: hidden;
+}
+.facts li { background: var(--tile); padding: 1.375rem 1.25rem 1.5rem; }
+.facts .micro { margin-bottom: 0.625rem; }
+.facts p { font-size: 0.90625rem; line-height: 1.5; color: var(--grey); }
+
+/* -------------------------------------------------------------- limits */
+.limits { list-style: none; margin: 0; padding: 0; counter-reset: lim; }
+.limits > li {
+  counter-increment: lim;
+  display: grid;
+  grid-template-columns: 4.25rem minmax(0, 1fr);
+  gap: clamp(0.875rem, 3vw, 2.25rem);
+  padding: clamp(1.5rem, 3vw, 2.125rem) 0;
+  border-top: 1px solid var(--line);
+}
+.limits > li:last-child { border-bottom: 1px solid var(--line); }
+.limits > li::before {
+  content: counter(lim, decimal-leading-zero);
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 700;
+  color: var(--grey-dim);
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+.limits h3 { margin-bottom: 0.625rem; }
+.limits p { font-size: 1rem; line-height: 1.5; letter-spacing: -0.011em; color: var(--grey); max-width: 68ch; }
+.limits p + p { margin-top: 0.625rem; }
+@media (max-width: 560px) { .limits > li { grid-template-columns: minmax(0, 1fr); gap: 0.625rem; } }
+
+.remedy {
+  margin-top: 0.875rem;
+  display: inline-block;
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 12px;
+  padding: 0.75rem 0.9375rem;
+  max-width: 60ch;
+}
+.remedy p { font-size: 0.875rem; color: var(--grey); margin: 0; }
+.remedy .micro { display: block; margin-bottom: 0.3125rem; }
+
+/* -------------------------------------------------------------- cta
+   The closing band steps off the page ground on purpose, so the last call
+   to action reads as an arrival rather than a repeat. */
+.cta-band { background: var(--band-close); }
+.cta-inner { max-width: 46rem; margin: 0 auto; text-align: center; }
+.cta-inner h2 { margin-bottom: 1rem; }
+.cta-inner > p { margin-left: auto; margin-right: auto; }
+
+.signup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  justify-content: center;
+  margin: 2rem auto 0;
+  max-width: 30rem;
+}
+.signup input[type="email"] {
+  flex: 1 1 15rem;
+  min-width: 0;
+  min-height: 2.875rem;
+  font-family: var(--ui);
+  font-size: 1rem;
+  letter-spacing: -0.011em;
+  color: var(--white);
+  background: rgba(5, 7, 12, 0.55);
+  border: 1px solid var(--line-firm);
+  border-radius: 12px;
+  padding: 0.875rem 1rem;
+}
+.signup input[type="email"]::placeholder { color: var(--grey-dim); }
+.signup input[type="email"]:hover { border-color: rgba(255,255,255,.28); }
+
+.signup-next { margin: 0.875rem auto 0; font-size: 0.84375rem; color: var(--grey); max-width: 44ch; }
+.signup-result { margin: 0.875rem auto 0; font-size: 0.84375rem; color: var(--amber); max-width: 52ch; min-height: 1.25rem; }
+.signup-result:empty { min-height: 0; }
+
+.confirm-note {
+  margin: 1.5rem auto 0;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.5625rem;
+  border: 1px dashed rgba(255, 222, 0, 0.4);
+  border-radius: 10px;
+  padding: 0.625rem 0.875rem;
+  text-align: left;
+  max-width: 52ch;
+}
+.confirm-note .tag { font-family: var(--num); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; color: var(--amber); white-space: nowrap; padding-top: 1px; }
+.confirm-note p { font-size: 0.8125rem; line-height: 1.45; color: var(--grey); margin: 0; }
+
+.what-this-is { margin: 1.75rem auto 0; font-size: 0.875rem; color: var(--grey-dim); max-width: 62ch; }
+
+/* -------------------------------------------------------------- footer */
+.site-footer { background: var(--ground-bot); padding: 1.875rem 0 calc(2.625rem + env(safe-area-inset-bottom)); }
+.footer-in { display: flex; flex-wrap: wrap; align-items: center; gap: 0.875rem 1.5rem; }
+.footer-in .wordmark { font-size: 1rem; margin-right: auto; }
+.footer-in p { font-size: 0.78125rem; color: var(--grey-dim); margin: 0; }
+
+/* ==========================================================================
+   MOTION. The static state is the default, so a browser that never matches
+   the query below still gets a complete, correct page. Motion is added, not
+   subtracted. Transform and opacity only.
+   ========================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+
+  .skip { transition: top var(--dur-fast) var(--ease-out); }
+
+  .js .reveal {
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity var(--dur-slow) var(--ease-out),
+                transform var(--dur-slow) var(--ease-out);
+    transition-delay: var(--d, 0ms);
+  }
+  .js .reveal.in { opacity: 1; transform: none; }
+
+  /* Apple's site wide active state. One line, large perceived return. */
+  .btn:active,
+  .nudge:active,
+  .offset button:not(:disabled):active,
+  .choice:not(.static):active,
+  .reset-btn:active,
+  .signup input[type="email"] + .btn:active { transform: scale(0.95); }
+
+  /* The one spring on the page, on the one moment that deserves it: the
+     three cascade rows landing on their new times, in cascade order. */
+  .crow-time.land { animation: land var(--dur-slow) var(--spring) both; }
+  .crow:nth-child(2) .crow-time.land { animation-delay: 50ms; }
+  .crow:nth-child(3) .crow-time.land { animation-delay: 100ms; }
+
+  @keyframes land {
+    0%   { opacity: 0.45; transform: translateY(-5px) scale(0.94); }
+    100% { opacity: 1;    transform: none; }
+  }
+
+  .inst-live .pulse::after { animation: ring 2.6s var(--ease-out) infinite; }
+  @keyframes ring {
+    0%   { opacity: 0.7; transform: scale(0.7); }
+    70%  { opacity: 0;   transform: scale(1.9); }
+    100% { opacity: 0;   transform: scale(1.9); }
+  }
+}
+
+/* -------------------------------------------------------------- narrow */
+@media (max-width: 420px) {
+  :root { --gut: 1.125rem; }
+  .header-in { height: 3.5rem; }
+  .wordmark { font-size: 1.0625rem; }
+  .device-screen { height: 660px; }
+  .master { gap: 0.375rem; }
+  .nudge { width: 3.25rem; height: 3rem; font-size: 0.9375rem; }
+  .btn { width: 100%; }
+  .btn-sm { width: auto; }
+  .signup .btn { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header" id="siteHeader">
+  <div class="container header-in">
+    <a class="wordmark" href="#top">
+      <svg class="mark" width="17" height="17" viewBox="0 0 17 17" aria-hidden="true" focusable="false">
+        <rect x="0" y="2"    width="8"  height="2.4" rx="1.2" fill="#F5F7F8" opacity="0.45"></rect>
+        <rect x="0" y="7.3"  width="12" height="2.4" rx="1.2" fill="#F5F7F8" opacity="0.72"></rect>
+        <rect x="0" y="12.6" width="17" height="2.4" rx="1.2" fill="#F5F7F8"></rect>
+      </svg>
+      OneAlarm
+    </a>
+    <nav class="site-nav" aria-label="Sections">
+      <a href="#mechanism">How it works</a>
+      <a href="#verified">What it verifies</a>
+      <a href="#limits">What it cannot do</a>
+    </nav>
+    <!-- [to confirm] the real destination for this. There is no App Store
+         listing, no waiting list and no address on record. -->
+    <a class="btn btn-sm" href="#access">Ask for access</a>
+  </div>
+</header>
+
+<main id="main">
+  <span id="top"></span>
+
+  <!-- ============================================================ 1. HERO -->
+  <section class="hero container" aria-labelledby="hero-h">
+    <div class="hero-grid">
+
+      <div class="hero-copy">
+        <p class="micro">iOS . iPhone</p>
+        <h1 id="hero-h">One wake time.<br>Every device follows it.</h1>
+        <p class="lede">
+          Setting the same alarm three times by hand, in three apps, every time the wake time
+          moves. That is the whole problem.
+        </p>
+        <p class="lede">
+          OneAlarm holds one number. Change it once and the bed, the strap and the phone recompute
+          from it, each with its own offset, each read back afterwards to check that it took.
+        </p>
+
+        <div class="btn-row">
+          <!-- [to confirm] destination. Not a download: there is no App Store build. -->
+          <a class="btn btn-solid" href="#access">Ask for access</a>
+          <a class="btn" href="#limits">Read what it cannot do</a>
+        </div>
+
+        <div class="hero-strip">
+          <div><span class="num">3</span> <span class="micro micro-bright">devices</span></div>
+          <div><span class="num">1</span> <span class="micro micro-bright">number to change</span></div>
+          <div><span class="num">0</span> <span class="micro micro-bright">backends</span></div>
+        </div>
+      </div>
+
+      <!-- the live cascade instrument -->
+      <div>
+        <div class="instrument" role="group" aria-label="Live cascade. One master wake time, three device offsets, three resolved times.">
+
+          <div class="inst-head">
+            <p class="micro" id="inst-label">Weekdays routine</p>
+            <span class="inst-live">
+              <span class="pulse" aria-hidden="true"></span>
+              <span class="micro">Live, not a picture</span>
+            </span>
+          </div>
+
+          <div class="master">
+            <button type="button" class="nudge" data-master="-15" aria-label="Move the master wake time 15 minutes earlier">&#8722;15</button>
+            <div class="master-time"
+                 id="masterTime"
+                 role="slider"
+                 tabindex="0"
+                 aria-label="Master wake time"
+                 aria-valuemin="240"
+                 aria-valuemax="780"
+                 aria-valuenow="465"
+                 aria-valuetext="07:45"
+                 aria-describedby="masterHint">07:45</div>
+            <button type="button" class="nudge" data-master="15" aria-label="Move the master wake time 15 minutes later">+15</button>
+          </div>
+
+          <div class="inst-sub">
+            <p class="inst-hint" id="masterHint">Drag the number sideways, use the arrow keys, or nudge it.</p>
+            <button type="button" class="reset-btn" id="resetBtn" hidden>Reset to 07:45</button>
+          </div>
+
+          <ul class="cascade">
+            <li class="crow crow-es">
+              <span class="crow-rail" aria-hidden="true"></span>
+              <div class="crow-id">
+                <p class="crow-name">Eight Sleep</p>
+                <p class="crow-why">Thermal and vibration ramp needs a run-up</p>
+              </div>
+              <div class="offset">
+                <button type="button" data-off="es" data-step="-5" aria-label="Eight Sleep offset, 5 minutes earlier">&#8722;</button>
+                <span class="offset-val" id="off-es">T&#8722;10</span>
+                <button type="button" data-off="es" data-step="5" aria-label="Eight Sleep offset, 5 minutes later">+</button>
+              </div>
+              <div class="crow-out">
+                <span class="dot dot-mint" id="dot-es" aria-hidden="true"></span>
+                <span class="crow-time" id="time-es">07:35</span>
+              </div>
+            </li>
+
+            <li class="crow crow-wh">
+              <span class="crow-rail" aria-hidden="true"></span>
+              <div class="crow-id">
+                <p class="crow-name">Whoop</p>
+                <p class="crow-why">Haptic smart-wake window</p>
+              </div>
+              <div class="offset">
+                <button type="button" data-off="wh" data-step="-5" aria-label="Whoop offset, 5 minutes earlier">&#8722;</button>
+                <span class="offset-val" id="off-wh">T&#8722;5</span>
+                <button type="button" data-off="wh" data-step="5" aria-label="Whoop offset, 5 minutes later">+</button>
+              </div>
+              <div class="crow-out">
+                <span class="dot dot-amber" id="dot-wh" aria-hidden="true"></span>
+                <span class="crow-time" id="time-wh">07:40</span>
+              </div>
+            </li>
+
+            <li class="crow crow-ip">
+              <span class="crow-rail" aria-hidden="true"></span>
+              <div class="crow-id">
+                <p class="crow-name">iPhone</p>
+                <p class="crow-why">The loud backstop that actually gets you up</p>
+              </div>
+              <div class="offset">
+                <button type="button" data-off="ip" data-step="-5" aria-label="iPhone offset, 5 minutes earlier">&#8722;</button>
+                <span class="offset-val" id="off-ip">T</span>
+                <button type="button" data-off="ip" data-step="5" aria-label="iPhone offset, 5 minutes later">+</button>
+              </div>
+              <div class="crow-out">
+                <span class="dot dot-mint" id="dot-ip" aria-hidden="true"></span>
+                <span class="crow-time" id="time-ip">07:45</span>
+              </div>
+            </li>
+          </ul>
+
+          <p class="sr-only" id="cascadeSummary" role="status" aria-live="polite"></p>
+
+          <div class="inst-foot">
+            <span class="dot dot-mint" id="footDot" aria-hidden="true" style="margin-top:6px"></span>
+            <p id="footLine">Confirmed on the bed. Saved on the strap. Armed on this phone.</p>
+          </div>
+
+          <div class="legend" aria-hidden="true">
+            <span><span class="dot dot-mint"></span>Confirmed</span>
+            <span><span class="dot dot-amber"></span>Saved, unconfirmed</span>
+            <span><span class="dot dot-coral"></span>Failed</span>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ========================================================= 2. PROBLEM -->
+  <section class="section tile" id="problem" aria-labelledby="problem-h">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="problem-h">Three apps. Three alarms. Every single time.</h2>
+        <p class="lede">
+          The bed wants a run-up, the strap wants a window, the phone has to be loud. Today that is
+          three different numbers typed into three different apps. Change the master time once and
+          everything recomputes.
+        </p>
+      </div>
+
+      <div class="problem-grid">
+        <div class="hand-stack reveal" style="--d:50ms">
+          <div class="hand-card">
+            <div>
+              <p class="micro">Eight Sleep app</p>
+              <span class="num">07:35</span>
+            </div>
+            <span class="hand-tag">
+              <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true" focusable="false">
+                <path d="M1 12l1-3.2L9.1 1.7a1.6 1.6 0 0 1 2.3 2.3L4.2 11 1 12z" fill="none" stroke="#7F898D" stroke-width="1.2" stroke-linejoin="round"></path>
+              </svg>
+              By hand
+            </span>
+          </div>
+          <div class="hand-card">
+            <div>
+              <p class="micro">Whoop app</p>
+              <span class="num">07:40</span>
+            </div>
+            <span class="hand-tag">
+              <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true" focusable="false">
+                <path d="M1 12l1-3.2L9.1 1.7a1.6 1.6 0 0 1 2.3 2.3L4.2 11 1 12z" fill="none" stroke="#7F898D" stroke-width="1.2" stroke-linejoin="round"></path>
+              </svg>
+              By hand
+            </span>
+          </div>
+          <div class="hand-card">
+            <div>
+              <p class="micro">Clock app</p>
+              <span class="num">07:45</span>
+            </div>
+            <span class="hand-tag">
+              <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true" focusable="false">
+                <path d="M1 12l1-3.2L9.1 1.7a1.6 1.6 0 0 1 2.3 2.3L4.2 11 1 12z" fill="none" stroke="#7F898D" stroke-width="1.2" stroke-linejoin="round"></path>
+              </svg>
+              By hand
+            </span>
+          </div>
+        </div>
+
+        <div class="problem-arrow reveal" style="--d:100ms" aria-hidden="true">
+          <svg width="46" height="20" viewBox="0 0 46 20" aria-hidden="true" focusable="false">
+            <path d="M0 10h40M34 4l6 6-6 6" fill="none" stroke="#7F898D" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+        </div>
+
+        <div class="one-card reveal" style="--d:150ms">
+          <p class="micro">One master time</p>
+          <span class="num big">07:45</span>
+          <p>
+            The offsets are rules, not typing. Eight Sleep at T minus 10, Whoop at T minus 5, the
+            iPhone at T, and the paired Apple Watch mirrors the iPhone alarm on its own. Every
+            offset is per device and adjustable.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= 3. MECHANISM -->
+  <section class="section" id="mechanism" aria-labelledby="mech-h">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="mech-h">It moves alarms you already have.</h2>
+        <p class="lede">
+          Eight Sleep: reads the existing alarm, changes the time, writes it back. Whoop: reads the
+          existing schedule, changes the time, writes it back. Nothing is authored from scratch,
+          because everything not being changed is echoed back exactly as the server sent it.
+        </p>
+      </div>
+
+      <div class="mech-grid">
+        <div class="mech-step reveal" style="--d:50ms">
+          <span class="step-n">01</span>
+          <h3>Read</h3>
+          <p>
+            Pull the alarm or the schedule the service is actually holding right now, and note the
+            time it was read.
+          </p>
+        </div>
+        <div class="mech-step reveal" style="--d:100ms">
+          <span class="step-n">02</span>
+          <h3>Change the time</h3>
+          <p>
+            One field moves. Your thermal settings, your vibration settings and your wake mode are
+            carried across untouched, including the fields with no known meaning.
+          </p>
+        </div>
+        <div class="mech-step reveal" style="--d:150ms">
+          <span class="step-n">03</span>
+          <h3>Write it back, then read it back</h3>
+          <p>
+            The write is followed by a second read. A response code is not a moved alarm, so the
+            app compares the instant it gets back before it says anything at all.
+          </p>
+        </div>
+      </div>
+
+      <div class="mech-pair">
+        <div class="claim-card reveal" style="--d:50ms">
+          <p class="micro">What survives a write</p>
+          <h3>Your settings are yours.</h3>
+          <p class="small">
+            The app authors one value: the time. Everything else in the payload is echoed back
+            exactly as the server sent it, which is why nothing you chose in the Eight Sleep app or
+            the Whoop app quietly changes underneath you.
+          </p>
+          <ul class="survives">
+            <li>Thermal settings</li>
+            <li>Vibration settings</li>
+            <li>Wake mode</li>
+            <li>Day list</li>
+          </ul>
+        </div>
+
+        <div class="claim-card exception reveal" style="--d:100ms">
+          <p class="micro">And the exception, in the same weight</p>
+          <h3>On iPhone it creates an alarm.</h3>
+          <p class="small">
+            It creates one beside whatever the phone already has, because iOS exposes no way to
+            read or change a Clock alarm. Two of the three legs move an alarm. The third makes one.
+          </p>
+          <p class="small">
+            Both halves of that have to be said together. The app said the universal version once,
+            and the universal version was wrong.
+          </p>
+        </div>
+      </div>
+
+      <h3 class="reveal" style="margin-top:clamp(2.5rem,5vw,4rem)">What each device holds, read from the service</h3>
+      <p class="small dim reveal" style="margin-top:0.625rem">
+        Offsets are per device and adjustable, which is why the bed below reads a 30 minute lead
+        while the cascade at the top of this page runs the default 10.
+      </p>
+
+      <div class="readout-grid">
+        <div class="readout reveal" style="--d:50ms">
+          <p class="micro">Eight Sleep</p>
+          <dl>
+            <div class="kv"><dt>Holds now</dt><dd><span class="num">Sat 10:00</span> Zurich</dd></div>
+            <div class="kv"><dt>Read at</dt><dd><span class="num">23:41</span> tonight</dd></div>
+            <div class="kv"><dt>Fires</dt><dd><span class="num">10:00 to 10:30</span>, light sleep</dd></div>
+            <div class="kv"><dt>Lead</dt><dd><span class="num">30 min</span> before you</dd></div>
+            <div class="kv"><dt>Clock</dt><dd>Stays in Zurich</dd></div>
+          </dl>
+        </div>
+        <div class="readout reveal" style="--d:100ms">
+          <p class="micro">Whoop</p>
+          <dl>
+            <div class="kv"><dt>Holds now</dt><dd><span class="num">10:25</span>, saved not confirmed</dd></div>
+            <div class="kv"><dt>Fires</dt><dd>any time in the hour before <span class="num">10:25</span></dd></div>
+            <div class="kv"><dt>Mode</dt><dd>Exact time, yours to change in Whoop</dd></div>
+            <div class="kv"><dt>Reaches the strap</dt><dd>at its next sync with the Whoop app</dd></div>
+          </dl>
+        </div>
+        <div class="readout reveal" style="--d:150ms">
+          <p class="micro">iPhone</p>
+          <dl>
+            <div class="kv"><dt>Holds now</dt><dd>Armed on this phone for <span class="num">10:30</span></dd></div>
+            <div class="kv"><dt>Needs</dt><dd>nothing. No account, no network.</dd></div>
+            <div class="kv"><dt>Role</dt><dd>The one that has to ring</dd></div>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================== 4. VERIFIED -->
+  <section class="section tile" id="verified" aria-labelledby="ver-h">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="ver-h">Nothing claims success it has not verified.</h2>
+        <p class="lede">
+          Every remote write is read back. There are three outcomes, they are three different
+          colours, and at six in the morning the difference between them is the difference between
+          waking up and not.
+        </p>
+      </div>
+
+      <div class="state-rows">
+        <div class="state-row st-mint reveal" style="--d:50ms">
+          <span class="rail" aria-hidden="true"></span>
+          <span class="state-time">07:35</span>
+          <div class="state-body">
+            <p class="state-tag"><span class="dot dot-mint" aria-hidden="true"></span>Confirmed</p>
+            <p class="state-said">Confirmed for Sat 07:35 Zurich, read back 23:41.</p>
+            <p class="state-means">
+              Written, read back, and the instant matched. This is the only state allowed to be
+              green, and only a service that returns an absolute instant can produce it.
+            </p>
+          </div>
+        </div>
+
+        <div class="state-row st-amber reveal" style="--d:100ms">
+          <span class="rail" aria-hidden="true"></span>
+          <span class="state-time">07:40</span>
+          <div class="state-body">
+            <p class="state-tag"><span class="dot dot-amber" aria-hidden="true"></span>Accepted, unconfirmed</p>
+            <p class="state-said">Saved 23:41. Holds Zurich time. Your strap takes it at its next sync.</p>
+            <p class="state-means">
+              The service took it, but it could not be read back, or it read back at a different
+              time. Whoop returns no absolute instant, so saved is its best possible state,
+              permanently.
+            </p>
+          </div>
+        </div>
+
+        <div class="state-row st-coral reveal" style="--d:150ms">
+          <span class="rail" aria-hidden="true"></span>
+          <span class="state-time">10:25</span>
+          <div class="state-body">
+            <p class="state-tag"><span class="dot dot-coral" aria-hidden="true"></span>Failed</p>
+            <p class="state-said">Refused: sign in again. Still holds 10:25, so your wrist buzzes at 10:25 anyway.</p>
+            <p class="state-means">
+              It did not happen, and the cause is named. A leg that could not be written says what
+              it still holds, so the failure is a known time rather than an unknown one. Red here
+              describes a device. It never describes you.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="argument reveal">
+        <p>
+          Colouring "accepted but unconfirmed" green would be claiming a confirmation the app does
+          not have, and the moment that costs anything is 06:00.
+        </p>
+      </div>
+
+      <h3 class="reveal" style="margin-top:clamp(2.75rem,6vw,4.5rem)">Verified on the night of 15 to 16 August 2026</h3>
+      <div class="scroller reveal" style="margin-top:1rem">
+        <table class="verify-table">
+          <caption>Installed on the author's iPhone. All three legs verified against live accounts.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Leg</th>
+              <th scope="col">State</th>
+              <th scope="col">How it was verified</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">iPhone</th>
+              <td><span class="state-pill"><span class="dot dot-mint" aria-hidden="true"></span>Working</span></td>
+              <td>Rang through Silent, through Focus, phone locked and face down.</td>
+            </tr>
+            <tr>
+              <th scope="row">Eight Sleep</th>
+              <td><span class="state-pill"><span class="dot dot-mint" aria-hidden="true"></span>Working</span></td>
+              <td>Written and read back, absolute instant compared.</td>
+            </tr>
+            <tr>
+              <th scope="row">Whoop</th>
+              <td><span class="state-pill"><span class="dot dot-mint" aria-hidden="true"></span>Working</span></td>
+              <td>Written, and the new time confirmed in the Whoop app.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================== 5. VERBS -->
+  <section class="section cv" id="verbs" aria-labelledby="verbs-h">
+    <div class="container">
+      <div class="device-cols">
+        <div>
+          <div class="section-head reveal" style="margin-bottom:1.5rem">
+            <h2 id="verbs-h">Change the number and it asks which you meant.</h2>
+            <p class="lede">
+              Three verbs, one prompt, borrowed from Apple and then made specific. It names the
+              date instead of saying "next alarm only", because a routine you bent on a Saturday
+              should leave Sunday exactly where it was.
+            </p>
+          </div>
+          <p class="small reveal" style="--d:50ms">
+            Tap a choice in the sheet. The line at the top of the screen is the real consequence
+            text the app would then be showing, and that line is the only place the consequence
+            lives: no toast that disappears, no badge to interpret.
+          </p>
+          <p class="small dim reveal" style="--d:100ms; margin-top:0.875rem">
+            Routines are read only on the home screen and edited only on the routines screen, so an
+            override can never quietly become a permanent change.
+          </p>
+        </div>
+
+        <div class="device-col reveal" style="--d:100ms">
+          <div class="device">
+            <div class="device-shell">
+              <div class="device-screen">
+                <div class="island" aria-hidden="true"><i></i></div>
+                <div class="statusbar" aria-hidden="true">
+                  <span class="sb-time">23:41</span>
+                  <span class="sb-icons">
+                    <svg width="17" height="11" viewBox="0 0 17 11" aria-hidden="true" focusable="false">
+                      <rect x="0"    y="7.5" width="2.6" height="3.5"  rx="0.8" fill="#F5F7F8"></rect>
+                      <rect x="4.2"  y="5.4" width="2.6" height="5.6"  rx="0.8" fill="#F5F7F8"></rect>
+                      <rect x="8.4"  y="3.1" width="2.6" height="7.9"  rx="0.8" fill="#F5F7F8"></rect>
+                      <rect x="12.6" y="0.6" width="2.6" height="10.4" rx="0.8" fill="#F5F7F8"></rect>
+                    </svg>
+                    <svg width="16" height="11" viewBox="0 0 16 11" aria-hidden="true" focusable="false">
+                      <path d="M1 3.6a10.4 10.4 0 0 1 14 0" fill="none" stroke="#F5F7F8" stroke-width="1.4" stroke-linecap="round"></path>
+                      <path d="M3.6 6.3a6.7 6.7 0 0 1 8.8 0" fill="none" stroke="#F5F7F8" stroke-width="1.4" stroke-linecap="round"></path>
+                      <circle cx="8" cy="9.2" r="1.35" fill="#F5F7F8"></circle>
+                    </svg>
+                    <svg width="25" height="12" viewBox="0 0 25 12" aria-hidden="true" focusable="false">
+                      <rect x="0.6" y="0.6" width="21" height="10.8" rx="3.2" fill="none" stroke="#F5F7F8" stroke-width="1.1" opacity="0.5"></rect>
+                      <rect x="2.2" y="2.2" width="17.8" height="7.6" rx="2" fill="#F5F7F8"></rect>
+                      <path d="M23.2 4.2v3.6a2 2 0 0 0 0-3.6z" fill="#F5F7F8" opacity="0.5"></path>
+                    </svg>
+                  </span>
+                </div>
+                <p class="appbar">ONEALARM</p>
+
+                <div class="screen-body">
+                  <p class="scr-date">Saturday 16 August</p>
+                  <p class="scr-time" id="verbTime">10:30</p>
+                  <p class="scr-standing" id="verbStanding" role="status" aria-live="polite">
+                    <b>Weekend routine.</b> Saturday and Sunday at 10:30. Tap the time to change it.
+                  </p>
+
+                  <div class="scr-mini" aria-hidden="true">
+                    <div class="mini-row mini-es">
+                      <span class="mini-rail"></span>
+                      <div class="mini-id">
+                        <p class="mini-name">Eight Sleep</p>
+                        <p class="mini-say">Confirmed, read back 23:41</p>
+                      </div>
+                      <span class="mini-time" id="verbEs">10:20</span>
+                    </div>
+                    <div class="mini-row mini-wh">
+                      <span class="mini-rail"></span>
+                      <div class="mini-id">
+                        <p class="mini-name">Whoop</p>
+                        <p class="mini-say">Saved, not confirmed</p>
+                      </div>
+                      <span class="mini-time" id="verbWh">10:25</span>
+                    </div>
+                    <div class="mini-row mini-ip">
+                      <span class="mini-rail"></span>
+                      <div class="mini-id">
+                        <p class="mini-name">iPhone</p>
+                        <p class="mini-say">Armed on this phone</p>
+                      </div>
+                      <span class="mini-time" id="verbIp">10:30</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="sheet-scrim" aria-hidden="true"></div>
+                <div class="sheet">
+                  <div class="sheet-grab" aria-hidden="true"></div>
+                  <p class="sheet-title">Saturday 16 August</p>
+                  <p class="wheel">10:00</p>
+                  <div role="group" aria-label="What did you mean by 10:00 on Saturday 16 August">
+                    <button type="button" class="choice" data-verb="date" aria-pressed="false">
+                      Just Saturday 16 August
+                      <small>Sunday stays 10:30. Next Saturday stays 10:30.</small>
+                    </button>
+                    <button type="button" class="choice" data-verb="routine" aria-pressed="false">
+                      Every weekend, from now on
+                      <small>Overwrites Saturday and Sunday in the Weekend routine.</small>
+                    </button>
+                    <button type="button" class="choice" data-verb="skip" aria-pressed="false">
+                      No alarm on Saturday 16 August
+                      <small>The routine is untouched and comes back on Sunday.</small>
+                    </button>
+                  </div>
+                  <p class="honesty">
+                    Your phone rings at the time above. Your bed starts 30 minutes earlier. Your
+                    wrist may buzz any time in the hour before, because Whoop chooses the moment,
+                    not us.
+                  </p>
+                </div>
+
+                <div class="home-indicator" aria-hidden="true"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================================= 6. FOREIGN -->
+  <section class="section tile cv" id="foreign" aria-labelledby="foreign-h">
+    <div class="container">
+      <div class="device-cols flip">
+
+        <div class="device-col reveal">
+          <div class="device">
+            <div class="device-shell">
+              <div class="device-screen">
+                <div class="island" aria-hidden="true"><i></i></div>
+                <div class="statusbar" aria-hidden="true">
+                  <span class="sb-time">23:41</span>
+                  <span class="sb-icons">
+                    <svg width="17" height="11" viewBox="0 0 17 11" aria-hidden="true" focusable="false">
+                      <rect x="0"    y="7.5" width="2.6" height="3.5"  rx="0.8" fill="#F5F7F8"></rect>
+                      <rect x="4.2"  y="5.4" width="2.6" height="5.6"  rx="0.8" fill="#F5F7F8"></rect>
+                      <rect x="8.4"  y="3.1" width="2.6" height="7.9"  rx="0.8" fill="#F5F7F8"></rect>
+                      <rect x="12.6" y="0.6" width="2.6" height="10.4" rx="0.8" fill="#F5F7F8"></rect>
+                    </svg>
+                    <svg width="16" height="11" viewBox="0 0 16 11" aria-hidden="true" focusable="false">
+                      <path d="M1 3.6a10.4 10.4 0 0 1 14 0" fill="none" stroke="#F5F7F8" stroke-width="1.4" stroke-linecap="round"></path>
+                      <path d="M3.6 6.3a6.7 6.7 0 0 1 8.8 0" fill="none" stroke="#F5F7F8" stroke-width="1.4" stroke-linecap="round"></path>
+                      <circle cx="8" cy="9.2" r="1.35" fill="#F5F7F8"></circle>
+                    </svg>
+                    <svg width="25" height="12" viewBox="0 0 25 12" aria-hidden="true" focusable="false">
+                      <rect x="0.6" y="0.6" width="21" height="10.8" rx="3.2" fill="none" stroke="#F5F7F8" stroke-width="1.1" opacity="0.5"></rect>
+                      <rect x="2.2" y="2.2" width="17.8" height="7.6" rx="2" fill="#F5F7F8"></rect>
+                      <path d="M23.2 4.2v3.6a2 2 0 0 0 0-3.6z" fill="#F5F7F8" opacity="0.5"></path>
+                    </svg>
+                  </span>
+                </div>
+                <p class="appbar">ONEALARM</p>
+
+                <div class="screen-body">
+                  <p class="scr-date">Saturday 16 August</p>
+                  <p class="scr-time">10:30</p>
+                  <p class="scr-standing">
+                    <b>Whoop holds a time OneAlarm did not write.</b> Nothing has been sent.
+                  </p>
+                </div>
+
+                <div class="sheet-scrim" aria-hidden="true"></div>
+                <div class="sheet">
+                  <div class="sheet-grab" aria-hidden="true"></div>
+                  <p class="sheet-title">Whoop was changed somewhere else</p>
+                  <p class="sheet-lead">
+                    Your strap holds <b>05:00</b>. OneAlarm last wrote 10:25, so somebody set this
+                    in the Whoop app. Nothing has been sent.
+                  </p>
+                  <div class="choice static">
+                    Follow the strap
+                    <small>Your wrist runs 5 minutes early, so this sets Saturday to 05:05 and your phone rings at 05:05. Your bed starts 04:35.</small>
+                  </div>
+                  <div class="choice static">
+                    Put 10:25 back on the strap
+                    <small>Overwrites what was set in the Whoop app.</small>
+                  </div>
+                  <div class="choice static">
+                    Leave the strap alone
+                    <small>Your phone still rings at 10:30. Your wrist buzzes at 05:00.</small>
+                  </div>
+                  <p class="honesty">
+                    There is no default button here on purpose. This one already cost a real
+                    schedule: a test rewrote a Monday to Friday alarm into every day, silently.
+                  </p>
+                </div>
+
+                <div class="home-indicator" aria-hidden="true"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-head reveal" style="margin-bottom:1.5rem">
+            <h2 id="foreign-h">Any device can be the one that gets changed.</h2>
+            <p class="lede">
+              Set 05:00 in the Whoop app for a flight and OneAlarm notices before it writes
+              anything. It does not overwrite you, and it does not pretend the conflict is not
+              there.
+            </p>
+          </div>
+          <p class="small reveal" style="--d:50ms">
+            Three choices: follow the strap, put the old time back, or leave the strap alone. All
+            three are equal weight in the sheet, and the sheet says why.
+          </p>
+          <p class="small dim reveal" style="--d:100ms; margin-top:0.875rem">
+            Nothing on that screen is styled as the recommended answer, because the app has no
+            opinion about which of your two schedules is the real one.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================== 7. LOCAL -->
+  <section class="section cv" id="local" aria-labelledby="local-h">
+    <div class="container">
+      <div class="section-head reveal">
+        <h2 id="local-h">There is nowhere else for your data to be.</h2>
+        <p class="lede">
+          Not a policy page. Five facts about where things are and what the app refuses to send.
+        </p>
+      </div>
+
+      <ul class="facts">
+        <li class="reveal" style="--d:40ms">
+          <p class="micro">Keychain</p>
+          <p>
+            Credentials and tokens live in the iOS Keychain and nowhere else. Never in
+            UserDefaults, never in plaintext, never logged, never committed.
+          </p>
+        </li>
+        <li class="reveal" style="--d:90ms">
+          <p class="micro">No backend</p>
+          <p>
+            No backend. No telemetry. No third party analytics. There is no account to make with
+            anyone, because there is nobody to make it with.
+          </p>
+        </li>
+        <li class="reveal" style="--d:140ms">
+          <p class="micro">Refused addresses</p>
+          <p>
+            Destructive, firmware and wipe commands are refused before a request leaves the phone.
+            It cannot change your bed temperature or run the pump.
+          </p>
+        </li>
+        <li class="reveal" style="--d:190ms">
+          <p class="micro">Preview, then send</p>
+          <p>
+            The resolved values and the literal outbound request are visible before anything goes
+            out, and the screen states plainly that nothing has been sent.
+          </p>
+        </li>
+        <li class="reveal" style="--d:240ms">
+          <p class="micro">The iPhone leg</p>
+          <p>
+            Needs no credentials, no network and no accounts. It works the moment it installs, and
+            it is the one that has to ring.
+          </p>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ========================================================== 8. LIMITS -->
+  <section class="section tile-2" id="limits" aria-labelledby="limits-h">
+    <div class="container">
+      <div class="section-head reveal">
+        <p class="micro">Five things, stated once, permanently</p>
+        <h2 id="limits-h">What it cannot do.</h2>
+        <p class="lede">
+          These are not footnotes and they are not a banner you can dismiss. An alarm clock that
+          overstates itself is an alarm clock you find out about at 06:00.
+        </p>
+      </div>
+
+      <ol class="limits">
+        <li class="reveal" style="--d:40ms">
+          <div>
+            <h3>Your phone's own alarms still ring.</h3>
+            <p>
+              OneAlarm cannot see or change a Clock alarm or the Health sleep schedule. If you
+              already have one set, it keeps going off at its own time, next to the one OneAlarm
+              arms.
+            </p>
+            <div class="remedy">
+              <span class="micro">The remedy</span>
+              <p>
+                Turn the Alarm toggle off inside the Sleep Schedule. The app says this permanently
+                rather than as a banner you can dismiss and forget.
+              </p>
+            </div>
+          </div>
+        </li>
+
+        <li class="reveal" style="--d:80ms">
+          <div>
+            <h3>Whoop holds one schedule per account.</h3>
+            <p>
+              So it cannot express two routines the way Eight Sleep can. The day list of whichever
+              routine covers tonight is what gets written, and that is the whole of what the strap
+              knows.
+            </p>
+          </div>
+        </li>
+
+        <li class="reveal" style="--d:120ms">
+          <div>
+            <h3>Whoop's server holding the time is not your wrist buzzing.</h3>
+            <p>
+              Those are two different claims and only the first one is verified. The strap takes
+              the new time at its next sync with the Whoop app. That is why Whoop's best state is
+              saved, and why it is amber rather than green.
+            </p>
+          </div>
+        </li>
+
+        <li class="reveal" style="--d:160ms">
+          <div>
+            <h3>No snooze.</h3>
+            <p>
+              Apple's sleep alarm has a nine minute snooze. This has none. If that is the feature
+              you rely on, this is the wrong alarm clock.
+            </p>
+          </div>
+        </li>
+
+        <li class="reveal" style="--d:200ms">
+          <div>
+            <h3>Not on the App Store, and not heading there.</h3>
+            <p>
+              It uses Whoop's and Eight Sleep's own internal web services, which is a question
+              about their terms rather than about Apple's technical rules. It is a personal, single
+              account build.
+            </p>
+            <p>
+              It uses no private Apple APIs, so a personal build and TestFlight internal testing
+              are both open routes.
+            </p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============================================================= 9. CTA -->
+  <section class="section cta-band" id="access" aria-labelledby="cta-h">
+    <div class="container">
+      <div class="cta-inner reveal">
+        <h2 id="cta-h">Ask for access.</h2>
+        <p class="lede">
+          There is no download button here because there is nothing to download. This is a
+          personal, single account build that uses no private Apple APIs, which means a personal
+          build and TestFlight internal testing are the two routes that exist.
+        </p>
+
+        <form class="signup" id="accessForm" novalidate>
+          <label class="sr-only" for="accessEmail">Your email address</label>
+          <input type="email" id="accessEmail" name="email" inputmode="email"
+                 autocomplete="email" placeholder="Your email address" required>
+          <button type="submit" class="btn btn-solid">Ask for access</button>
+        </form>
+
+        <p class="signup-next">One email, when there is a build you can put on your phone. Nothing else.</p>
+        <p class="signup-result" id="formResult" role="status" aria-live="polite"></p>
+
+        <div class="confirm-note">
+          <span class="tag">[to confirm]</span>
+          <p>
+            Where this form goes. Nothing on record names a destination, so it sends nowhere until
+            you pick one, and it says so rather than pretending.
+          </p>
+        </div>
+
+        <p class="what-this-is">
+          OneAlarm is an iOS app for iPhone. One wake time, and every device follows it.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="container footer-in">
+    <a class="wordmark" href="#top">
+      <svg class="mark" width="15" height="15" viewBox="0 0 17 17" aria-hidden="true" focusable="false">
+        <rect x="0" y="2"    width="8"  height="2.4" rx="1.2" fill="#F5F7F8" opacity="0.45"></rect>
+        <rect x="0" y="7.3"  width="12" height="2.4" rx="1.2" fill="#F5F7F8" opacity="0.72"></rect>
+        <rect x="0" y="12.6" width="17" height="2.4" rx="1.2" fill="#F5F7F8"></rect>
+      </svg>
+      OneAlarm
+    </a>
+    <p>One wake time. Every device follows it.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  function $(id) { return document.getElementById(id); }
+
+  /* Motion is opt in, matching the CSS: the static page is the default and
+     motion is added only when the browser says it is welcome. */
+  var motionQuery = window.matchMedia
+    ? window.matchMedia('(prefers-reduced-motion: no-preference)')
+    : null;
+  function motionOK() { return !!(motionQuery && motionQuery.matches); }
+
+  /* ------------------------------------------------------------ helpers */
+  function hhmm(m) {
+    m = ((m % 1440) + 1440) % 1440;
+    var h = Math.floor(m / 60);
+    var mm = m % 60;
+    return (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm;
+  }
+
+  function offsetLabel(o) {
+    if (o === 0) { return 'T'; }
+    if (o < 0) { return 'T−' + Math.abs(o); }
+    return 'T+' + o;
+  }
+
+  function offsetWords(o) {
+    if (o === 0) { return 'on the master time'; }
+    if (o < 0) { return Math.abs(o) + ' minutes earlier'; }
+    return o + ' minutes later';
+  }
+
+  /* ============================================================== HEADER */
+  var header = $('siteHeader');
+  var sentinel = document.createElement('div');
+  sentinel.style.cssText = 'position:absolute;top:0;left:0;width:1px;height:1px;pointer-events:none';
+  document.body.insertBefore(sentinel, document.body.firstChild);
+
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) {
+      header.classList.toggle('is-scrolled', !entries[0].isIntersecting);
+    }, { rootMargin: '-8px 0px 0px 0px' }).observe(sentinel);
+  }
+
+  /* ============================================================== REVEAL
+     The CSS hides .reveal only inside the no-preference query, so if the
+     observer never runs, or the query never matches, the page is already
+     correct. This only adds the class that finishes the transition. */
+  var reveals = document.querySelectorAll('.reveal');
+
+  function showAll() {
+    for (var i = 0; i < reveals.length; i++) { reveals[i].classList.add('in'); }
+  }
+
+  if (!('IntersectionObserver' in window)) {
+    showAll();
+  } else {
+    var revealObs = new IntersectionObserver(function (entries, obs) {
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting) {
+          entries[i].target.classList.add('in');
+          obs.unobserve(entries[i].target);
+        }
+      }
+    }, { rootMargin: '0px 0px -6% 0px', threshold: 0.05 });
+
+    for (var r = 0; r < reveals.length; r++) { revealObs.observe(reveals[r]); }
+  }
+
+  /* ========================================================== INSTRUMENT
+     Its initial state is in the HTML. This script only makes it operable. */
+  var DEFAULT_MASTER = 465;               /* 07:45, the Weekdays routine */
+  var DEFAULTS = { es: -10, wh: -5, ip: 0 };
+  var MIN = 240;                          /* 04:00 */
+  var MAX = 780;                          /* 13:00 */
+
+  var state = {
+    master: DEFAULT_MASTER,
+    off: { es: DEFAULTS.es, wh: DEFAULTS.wh, ip: DEFAULTS.ip },
+    touched: false
+  };
+
+  var NAMES = { es: 'Eight Sleep', wh: 'Whoop', ip: 'iPhone' };
+  var KEYS = ['es', 'wh', 'ip'];
+
+  var masterEl = $('masterTime');
+  var summaryEl = $('cascadeSummary');
+  var footLine = $('footLine');
+  var footDot = $('footDot');
+  var resetBtn = $('resetBtn');
+  var summaryTimer = null;
+  var landTimer = null;
+
+  function isTouched() {
+    return state.master !== DEFAULT_MASTER
+      || state.off.es !== DEFAULTS.es
+      || state.off.wh !== DEFAULTS.wh
+      || state.off.ip !== DEFAULTS.ip;
+  }
+
+  /* The one spring on the page. Fired when the numbers settle, not on every
+     frame of a drag, so the overshoot stays a moment rather than a tic. */
+  function land() {
+    if (!motionOK()) { return; }
+    if (landTimer) { clearTimeout(landTimer); }
+    landTimer = setTimeout(function () {
+      for (var i = 0; i < KEYS.length; i++) {
+        var el = $('time-' + KEYS[i]);
+        el.classList.remove('land');
+        void el.offsetWidth;              /* restart the animation */
+        el.classList.add('land');
+      }
+    }, 60);
+  }
+
+  function render() {
+    var i, k, el, val;
+
+    masterEl.textContent = hhmm(state.master);
+    masterEl.setAttribute('aria-valuenow', String(state.master));
+    masterEl.setAttribute('aria-valuetext', hhmm(state.master));
+
+    for (i = 0; i < KEYS.length; i++) {
+      k = KEYS[i];
+      el = $('time-' + k);
+      val = hhmm(state.master + state.off[k]);
+      el.textContent = val;
+      $('off-' + k).textContent = offsetLabel(state.off[k]);
+    }
+
+    /* Untouched, these dots are the app's real reported states. The moment
+       the visitor changes anything, nothing has been sent, so nothing is
+       allowed to claim a state. That is the product's own rule. */
+    for (i = 0; i < KEYS.length; i++) {
+      k = KEYS[i];
+      $('dot-' + k).className = 'dot ' + (state.touched
+        ? 'dot-idle'
+        : (k === 'wh' ? 'dot-amber' : 'dot-mint'));
+    }
+
+    if (state.touched) {
+      footDot.className = 'dot dot-idle';
+      footLine.textContent = 'Nothing has been sent. These are the resolved values, and the app '
+        + 'shows the literal outbound request before any of them leave the phone.';
+      resetBtn.hidden = false;
+    } else {
+      footDot.className = 'dot dot-mint';
+      footLine.textContent = 'Confirmed on the bed. Saved on the strap. Armed on this phone.';
+      resetBtn.hidden = true;
+    }
+
+    /* One sentence for a screen reader instead of three separate numbers,
+       debounced so dragging does not flood the live region. */
+    if (summaryTimer) { clearTimeout(summaryTimer); }
+    summaryTimer = setTimeout(function () {
+      var parts = [];
+      for (var j = 0; j < KEYS.length; j++) {
+        var kk = KEYS[j];
+        parts.push(NAMES[kk] + ' ' + hhmm(state.master + state.off[kk])
+          + ', ' + offsetWords(state.off[kk]));
+      }
+      summaryEl.textContent = 'Master wake time ' + hhmm(state.master) + '. '
+        + parts.join('. ') + '.'
+        + (state.touched ? ' Nothing has been sent.' : '');
+    }, 280);
+  }
+
+  function setMaster(m, spring) {
+    m = Math.max(MIN, Math.min(MAX, m));
+    if (m === state.master) { return; }
+    state.master = m;
+    state.touched = isTouched();
+    render();
+    if (spring !== false) { land(); }
+  }
+
+  var nudges = document.querySelectorAll('[data-master]');
+  for (var n = 0; n < nudges.length; n++) {
+    (function (btn) {
+      btn.addEventListener('click', function () {
+        setMaster(state.master + parseInt(btn.getAttribute('data-master'), 10));
+      });
+    }(nudges[n]));
+  }
+
+  var offBtns = document.querySelectorAll('[data-off]');
+  for (var o = 0; o < offBtns.length; o++) {
+    (function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.getAttribute('data-off');
+        var step = parseInt(btn.getAttribute('data-step'), 10);
+        var next = Math.max(-60, Math.min(0, state.off[key] + step));
+        if (next === state.off[key]) { return; }
+        state.off[key] = next;
+        state.touched = isTouched();
+        render();
+        land();
+      });
+    }(offBtns[o]));
+  }
+
+  masterEl.addEventListener('keydown', function (e) {
+    var handled = true;
+    switch (e.key) {
+      case 'ArrowUp':
+      case 'ArrowRight': setMaster(state.master + (e.shiftKey ? 60 : 5)); break;
+      case 'ArrowDown':
+      case 'ArrowLeft':  setMaster(state.master - (e.shiftKey ? 60 : 5)); break;
+      case 'PageUp':     setMaster(state.master + 60); break;
+      case 'PageDown':   setMaster(state.master - 60); break;
+      case 'Home':       setMaster(MIN); break;
+      case 'End':        setMaster(MAX); break;
+      default: handled = false;
+    }
+    if (handled) { e.preventDefault(); }
+  });
+
+  var drag = null;
+
+  masterEl.addEventListener('pointerdown', function (e) {
+    if (e.button !== undefined && e.button !== 0) { return; }
+    drag = { x: e.clientX, start: state.master };
+    masterEl.classList.add('is-dragging');
+    if (masterEl.setPointerCapture) { masterEl.setPointerCapture(e.pointerId); }
+    e.preventDefault();
+  });
+
+  masterEl.addEventListener('pointermove', function (e) {
+    if (!drag) { return; }
+    var mins = Math.round(((e.clientX - drag.x) / 6) / 5) * 5;
+    setMaster(drag.start + mins, false);
+  });
+
+  function endDrag(e) {
+    if (!drag) { return; }
+    drag = null;
+    masterEl.classList.remove('is-dragging');
+    if (masterEl.releasePointerCapture && e && e.pointerId !== undefined) {
+      try { masterEl.releasePointerCapture(e.pointerId); } catch (err) { /* already gone */ }
+    }
+    land();
+  }
+
+  masterEl.addEventListener('pointerup', endDrag);
+  masterEl.addEventListener('pointercancel', endDrag);
+  masterEl.addEventListener('lostpointercapture', endDrag);
+
+  resetBtn.addEventListener('click', function () {
+    state.master = DEFAULT_MASTER;
+    state.off.es = DEFAULTS.es;
+    state.off.wh = DEFAULTS.wh;
+    state.off.ip = DEFAULTS.ip;
+    state.touched = false;
+    render();
+    land();
+    masterEl.focus();
+  });
+
+  /* =============================================================== VERBS */
+  var verbTime = $('verbTime');
+  var verbStanding = $('verbStanding');
+  var verbEs = $('verbEs');
+  var verbWh = $('verbWh');
+  var verbIp = $('verbIp');
+  var verbBtns = document.querySelectorAll('[data-verb]');
+
+  var VERB_DEFAULT = {
+    time: '10:30', words: false, es: '10:20', wh: '10:25', ip: '10:30',
+    html: '<b>Weekend routine.</b> Saturday and Sunday at 10:30. Tap the time to change it.'
+  };
+
+  var VERB_COPY = {
+    date: {
+      time: '10:00', words: false, es: '09:50', wh: '09:55', ip: '10:00',
+      html: '<b>Tomorrow only, 10:00.</b> Your weekend routine is still 10:30 and returns on Sunday.'
+    },
+    routine: {
+      time: '10:00', words: false, es: '09:50', wh: '09:55', ip: '10:00',
+      html: '<b>Weekend routine is now 10:00,</b> Saturday and Sunday. This is a change to the '
+          + 'routine, not to one date.'
+    },
+    skip: {
+      time: 'No alarm tomorrow', words: true, es: 'off', wh: 'off', ip: 'off',
+      html: '<b>No alarm on Saturday 16 August.</b> The routine is untouched and comes back on '
+          + 'Sunday, 10:30.'
+    }
+  };
+
+  function applyVerb(cfg) {
+    verbTime.textContent = cfg.time;
+    verbTime.classList.toggle('small-words', !!cfg.words);
+    verbStanding.innerHTML = cfg.html;
+    verbEs.textContent = cfg.es;
+    verbWh.textContent = cfg.wh;
+    verbIp.textContent = cfg.ip;
+  }
+
+  for (var v = 0; v < verbBtns.length; v++) {
+    (function (btn) {
+      btn.addEventListener('click', function () {
+        var already = btn.getAttribute('aria-pressed') === 'true';
+        for (var w = 0; w < verbBtns.length; w++) {
+          verbBtns[w].setAttribute('aria-pressed', 'false');
+        }
+        if (already) {
+          applyVerb(VERB_DEFAULT);
+        } else {
+          btn.setAttribute('aria-pressed', 'true');
+          applyVerb(VERB_COPY[btn.getAttribute('data-verb')]);
+        }
+      });
+    }(verbBtns[v]));
+  }
+
+  /* ================================================================ FORM
+     The page has no backend, so it does not pretend to have one. Which is
+     the same rule the app follows: say what happened, not what you hoped. */
+  var form = $('accessForm');
+  var formResult = $('formResult');
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    formResult.textContent = 'Nothing was sent. This page has no backend and the destination is '
+      + 'not decided yet, so it says so rather than showing you a tick.';
+  });
+
+}());
+</script>
+
+</body>
+</html>
